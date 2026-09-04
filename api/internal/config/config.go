@@ -11,17 +11,25 @@ type Config struct {
 	SessionSecret      string
 	GitHubClientID     string
 	GitHubClientSecret string
-	BaseURL            string
+	// The GitHub App settings are optional at load time, so the API still
+	// boots before anyone has installed the App.
+	GitHubWebhookSecret string
+	GitHubAppID         string
+	GitHubAppPrivateKey string
+	BaseURL             string
 }
 
 func Load() (*Config, error) {
 	c := &Config{
-		DatabaseURL:        os.Getenv("DATABASE_URL"),
-		Port:               envOr("PORT", "8080"),
-		SessionSecret:      os.Getenv("SESSION_SECRET"),
-		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
-		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
-		BaseURL:            envOr("BASE_URL", "http://localhost:8080"),
+		DatabaseURL:         os.Getenv("DATABASE_URL"),
+		Port:                envOr("PORT", "8080"),
+		SessionSecret:       os.Getenv("SESSION_SECRET"),
+		GitHubClientID:      os.Getenv("GITHUB_CLIENT_ID"),
+		GitHubClientSecret:  os.Getenv("GITHUB_CLIENT_SECRET"),
+		GitHubWebhookSecret: os.Getenv("GITHUB_WEBHOOK_SECRET"),
+		GitHubAppID:         os.Getenv("GITHUB_APP_ID"),
+		GitHubAppPrivateKey: os.Getenv("GITHUB_APP_PRIVATE_KEY"),
+		BaseURL:             envOr("BASE_URL", "http://localhost:8080"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

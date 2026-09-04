@@ -41,6 +41,10 @@ func (s *Server) Handler() http.Handler {
 		WriteError(w, http.StatusNotFound, "not_found", "no such endpoint")
 	})
 
+	// Outside /api/v1 and unauthenticated by design: GitHub authenticates
+	// itself with the HMAC signature, not a session.
+	mux.HandleFunc("POST /webhooks/github", s.handleGitHubWebhook)
+
 	s.registerAuthRoutes(mux)
 	s.registerSprintRoutes(mux)
 	s.registerMilestoneRoutes(mux)

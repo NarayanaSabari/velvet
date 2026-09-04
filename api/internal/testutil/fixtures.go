@@ -33,6 +33,14 @@ type Fixture struct {
 // admin, and a ready HTTP handler.
 func NewFixture(t *testing.T) *Fixture {
 	t.Helper()
+	return NewFixtureWithWebhookSecret(t, "")
+}
+
+// NewFixtureWithWebhookSecret is NewFixture with the GitHub webhook secret
+// configured, for the tests that sign a delivery. There is one construction
+// path so a fixture cannot drift from the server the other tests exercise.
+func NewFixtureWithWebhookSecret(t *testing.T, secret string) *Fixture {
+	t.Helper()
 	pool := NewPostgres(t)
 	st := store.New(pool)
 	ctx := t.Context()
@@ -55,7 +63,8 @@ func NewFixture(t *testing.T) *Fixture {
 	require.NoError(t, err)
 
 	cfg := &config.Config{BaseURL: "http://localhost:8080",
-		SessionSecret: "0123456789abcdef0123456789abcdef"}
+		SessionSecret:       "0123456789abcdef0123456789abcdef",
+		GitHubWebhookSecret: secret}
 
 	return &Fixture{
 		T: t, Pool: pool, Store: st,
