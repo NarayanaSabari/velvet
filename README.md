@@ -132,6 +132,8 @@ cd deploy && ./preflight.sh your-slug
 
 That verifies the API answers, sign-in redirects to GitHub, a correctly signed webhook is accepted and an unsigned one refused, the private key is a complete PEM, and at least one repository and member exist. Every one of those fails silently in normal use, which is why they are worth asserting explicitly.
 
+`./verify-setup.sh` walks this whole procedure from an empty stack against a stub GitHub, ending with a signed webhook that must link a pull request to an issue. It exists because the individual scripts working is not the same claim as the documented steps producing a working integration: the first run of it found that preflight rejected a correctly quoted private key, which would have told a new operator they had made a mistake when they had not.
+
 ### The OAuth app - who is this human
 
 Members sign in with GitHub OAuth; there are no passwords, because every member already has a GitHub account and a second credential store is a liability without a benefit.

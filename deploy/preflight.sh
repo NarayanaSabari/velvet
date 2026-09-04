@@ -28,15 +28,29 @@ fi
 env_get() {
   python3 - "$env_file" "$1" <<'PYEOF'
 import sys
+
 path, key = sys.argv[1], sys.argv[2]
-val = ""
-with open(path) as fh:
-    for line in fh:
-        line = line.strip()
-        if line.startswith(key + "="):
-            val = line[len(key) + 1:].strip().strip('"').strip("'")
-            break
-print(val)
+raw = open(path).read()
+
+value = ""
+for start in range(len(raw)):
+    if not raw.startswith(key + "=", start):
+        continue
+    if start and raw[start - 1] != "\n":
+        continue
+    rest = raw[start + len(key) + 1:]
+    # A quoted value runs to its closing quote, newlines and all. That is how
+    # a PEM is written, and reading only the first line would report a
+    # correctly quoted key as truncated.
+    if rest[:1] in ('"', "'"):
+        quote = rest[0]
+        end = rest.find(quote, 1)
+        value = rest[1:end] if end != -1 else rest[1:]
+    else:
+        value = rest.split("\n", 1)[0].strip()
+    break
+
+print(value)
 PYEOF
 }
 
