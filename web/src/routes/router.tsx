@@ -16,17 +16,10 @@ import { SprintList } from '../features/sprints/SprintList'
 import { SprintBoard } from '../features/sprints/SprintBoard'
 import { MilestonePage } from '../features/milestones/MilestonePage'
 import { IssuePage } from '../features/issues/IssuePage'
+import { UnlinkedPRs } from '../features/evidence/UnlinkedPRs'
 import { Reports } from '../features/reports/Reports'
 
 const rootRoute = createRootRoute({ component: RootLayout })
-
-function page(path: string, title: string) {
-  return createRoute({
-    getParentRoute: () => rootRoute,
-    path,
-    component: () => <Placeholder title={title} />,
-  })
-}
 
 // `/` cannot know the workspace slug on its own, so it asks the session which
 // workspace the caller actually belongs to before redirecting.
@@ -106,6 +99,15 @@ const reportsRoute = createRoute({
   },
 })
 
+const unlinkedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug/unlinked',
+  component: function UnlinkedRoute() {
+    const { slug } = unlinkedRoute.useParams()
+    return <UnlinkedPRs slug={slug} />
+  },
+})
+
 const routes = [
   indexRoute,
   dashboardRoute,
@@ -114,7 +116,7 @@ const routes = [
   sprintRoute,
   milestoneRoute,
   issueRoute,
-  page('/w/$slug/unlinked', 'Unlinked PRs'),
+  unlinkedRoute,
   reportsRoute,
   createRoute({
     getParentRoute: () => rootRoute,
