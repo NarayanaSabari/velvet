@@ -102,6 +102,10 @@ func (s *Store) ActivateSprint(ctx context.Context, workspaceID, id, actorID uui
 	return out, err
 }
 
+// CloseSprint completes a sprint, freezes its report, and carries unfinished
+// work into the next one. All three happen in a single transaction, so the
+// snapshot can never describe a state that the roll-forward has already
+// changed.
 func (s *Store) CloseSprint(ctx context.Context, workspaceID, id, actorID uuid.UUID) (Sprint, error) {
 	var out Sprint
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
@@ -111,6 +115,14 @@ func (s *Store) CloseSprint(ctx context.Context, workspaceID, id, actorID uuid.U
 			RETURNING `+sprintCols, workspaceID, id)
 		var err error
 		if out, err = scanSprint(row); err != nil {
+			return err
+		}
+		// Capture before rolling forward: the snapshot must describe the
+		// sprint as it was closed, not as it looks after the carry.
+		if err := captureSnapshot(ctx, tx, workspaceID, id); err != nil {
+			return err
+		}
+		if err := rollIncompleteIssuesForward(ctx, tx, workspaceID, id); err != nil {
 			return err
 		}
 		return RecordActivity(ctx, tx, ActivityInput{

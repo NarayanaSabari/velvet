@@ -25,6 +25,25 @@ func (s *Server) registerSprintRoutes(mux *http.ServeMux) {
 		s.RequireWorkspace(writer(http.HandlerFunc(s.handleActivateSprint))))
 	mux.Handle("POST /api/v1/w/{slug}/sprints/{id}/close",
 		s.RequireWorkspace(writer(http.HandlerFunc(s.handleCloseSprint))))
+	mux.Handle("GET /api/v1/w/{slug}/sprints/{id}/snapshot",
+		s.RequireWorkspace(http.HandlerFunc(s.handleSprintSnapshot)))
+}
+
+// handleSprintSnapshot reads the report frozen when the sprint closed. An
+// open sprint has none, which is a 404 rather than an empty body: no numbers
+// is different from all zeroes.
+func (s *Server) handleSprintSnapshot(w http.ResponseWriter, r *http.Request) {
+	ws, _ := CurrentWorkspace(r.Context())
+	id, ok := pathUUID(w, r, "id")
+	if !ok {
+		return
+	}
+	snapshot, err := s.store.GetSnapshot(r.Context(), ws.WorkspaceID, id)
+	if err != nil {
+		writeStoreError(w, err, "snapshot")
+		return
+	}
+	WriteJSON(w, http.StatusOK, snapshot)
 }
 
 func (s *Server) handleListSprints(w http.ResponseWriter, r *http.Request) {
