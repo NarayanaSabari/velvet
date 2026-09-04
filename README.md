@@ -45,6 +45,7 @@ A system whose correctness depends on never missing a webhook is quietly wrong w
 ```
 api/     Go: HTTP API, queue worker, migrations - one binary, three subcommands
 web/     React SPA (Vite, TanStack Query and Router, Tailwind)
+e2e/     Playwright suite, run against the real Compose stack
 deploy/  Compose file, Caddyfile, backup script
 ```
 
@@ -143,6 +144,20 @@ Roles are `admin` (membership, repo connections, sprint lifecycle), `member` (cr
 
 Secrets are supplied through the environment and never committed.
 `deploy/.env.example` holds variable names only; `.gitignore` covers every `.env*` except the example.
+
+## Tests
+
+```
+cd api  && go test ./...            # domain and integration, real Postgres via testcontainers
+cd web  && npx vitest run           # components
+cd e2e  && npx playwright test      # the whole system, in a browser
+```
+
+The Playwright suite brings up the production Compose stack on port 8099, drives it in Chromium, and tears it down.
+It runs against the real deployment rather than a dev server because several of this project's worst bugs lived there and nowhere else: a worker that crash-looped when no GitHub App was configured, a Caddy port mismatch that refused every request, and timestamps a browser could not parse.
+None of those were visible to a unit test.
+
+Auth is seeded directly rather than clicked through github.com: driving GitHub's login page would test GitHub, not this application. The seeded cookie is the same one the OAuth callback issues, so everything after sign-in is exercised for real.
 
 ## Backup and restore
 
