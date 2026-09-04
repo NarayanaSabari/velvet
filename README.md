@@ -134,6 +134,51 @@ That verifies the API answers, sign-in redirects to GitHub, a correctly signed w
 
 `./verify-setup.sh` walks this whole procedure from an empty stack against a stub GitHub, ending with a signed webhook that must link a pull request to an issue. It exists because the individual scripts working is not the same claim as the documented steps producing a working integration: the first run of it found that preflight rejected a correctly quoted private key, which would have told a new operator they had made a mistake when they had not.
 
+### Do you need webhooks at all?
+
+No. They are a latency optimisation, not a requirement.
+
+Both paths run the same code. A webhook delivery and the hourly reconciliation
+pass both end in the same `syncPullRequest`, so the difference is only *when* a
+pull request appears on its issue:
+
+| | With webhooks | Without |
+|---|---|---|
+| PR appears on the issue | seconds | within the hour |
+| Links by branch name | yes | yes |
+| Commits and reviews mirrored | yes | yes |
+| Survives downtime | reconciliation backfills it | same |
+
+Reconciliation is not a degraded fallback bolted on afterwards. It exists
+because deliveries are missed in practice - a restart, a GitHub incident, an
+exhausted retry - so a system that only worked when every webhook arrived would
+be quietly wrong within a month. It reads every pull request updated since the
+last successful sync, and 90 days back on first run.
+
+So webhooks are worth configuring when you can reach the host from the
+internet, and worth skipping when you cannot.
+
+### Running on localhost
+
+A webhook URL of `http://localhost:8088/webhooks/github` cannot work: GitHub
+sends deliveries from its own servers, and `localhost` there means GitHub's
+machine, not yours. The delivery fails and never arrives.
+
+Two honest options:
+
+1. **Leave the webhook URL blank.** Everything works, pull requests appear
+   within the hour. This is the right choice for a local trial, and
+   `preflight.sh` reports it as a note rather than a failure.
+
+2. **Expose the port while you test**, with `cloudflared tunnel --url
+   http://localhost:8088` or `ngrok http 8088`, and use the public URL it
+   prints. The URL changes each restart, so update the App's webhook setting
+   when it does.
+
+Neither affects sign-in: OAuth redirects happen in *your* browser, so
+`http://localhost:8088/api/v1/auth/github/callback` is a perfectly good
+callback URL.
+
 ### The OAuth app - who is this human
 
 Members sign in with GitHub OAuth; there are no passwords, because every member already has a GitHub account and a second credential store is a liability without a benefit.

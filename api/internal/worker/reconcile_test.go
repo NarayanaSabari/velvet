@@ -106,3 +106,26 @@ func TestRateLimitLeavesSyncedAtUntouched(t *testing.T) {
 	require.Nil(t, syncedAt,
 		"stamping synced_at after a failed fetch would silently skip the gap")
 }
+
+// Reconciliation alone must link a pull request, with no webhook ever
+// delivered. This is what makes a localhost install usable: there is no public
+// URL for GitHub to reach, so polling is the only path, and it has to be a
+// complete one rather than a degraded fallback.
+func TestReconcileAloneLinksWithoutAnyWebhook(t *testing.T) {
+	f := testutil.NewFixture(t)
+	issue := testutil.CreateIssue(t, f, "Wire up sign-in")
+	testutil.LinkRepo(t, f, 555, "acme", "widgets")
+
+	w := testutil.NewWorker(t, f, stubWithPR(t, 77))
+	require.NoError(t, w.Reconcile(t.Context()))
+
+	var linked int
+	require.NoError(t, f.Pool.QueryRow(t.Context(),
+		`SELECT count(*) FROM pr_link WHERE issue_id = $1`, issue.ID).Scan(&linked))
+	require.Equal(t, 1, linked, "polling alone must link the PR")
+
+	var events int
+	require.NoError(t, f.Pool.QueryRow(t.Context(),
+		`SELECT count(*) FROM github_event`).Scan(&events))
+	require.Equal(t, 0, events, "no webhook was delivered in this test")
+}

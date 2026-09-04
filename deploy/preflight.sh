@@ -136,8 +136,10 @@ if [ -n "${GITHUB_WEBHOOK_SECRET:-}" ]; then
         "This endpoint is public; it must reject anything it cannot verify."
   fi
 else
-  bad "GITHUB_WEBHOOK_SECRET is empty" \
-      "Deliveries will be refused, so no pull request will ever link itself."
+  # Not a failure: without a public URL there is nothing for GitHub to call,
+  # and reconciliation still links pull requests on its hourly pass. Webhooks
+  # buy latency, not capability.
+  warn "no webhook secret set; pull requests will link on the hourly poll instead of instantly"
 fi
 
 # --- App private key ---------------------------------------------------------
