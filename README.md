@@ -179,6 +179,10 @@ Neither affects sign-in: OAuth redirects happen in *your* browser, so
 `http://localhost:8088/api/v1/auth/github/callback` is a perfectly good
 callback URL.
 
+`./verify-localhost.sh` proves the first option end to end: it stands up a
+stack with no webhook secret at all, connects a repository, and asserts a pull
+request reaches its issue through reconciliation with zero deliveries made.
+
 ### The OAuth app - who is this human
 
 Members sign in with GitHub OAuth; there are no passwords, because every member already has a GitHub account and a second credential store is a liability without a benefit.

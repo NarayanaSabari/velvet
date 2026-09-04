@@ -57,7 +57,7 @@ func run(args []string) error {
 		var client *github.Client
 		if cfg.GitHubAppID != "" && cfg.GitHubAppPrivateKey != "" {
 			var err error
-			client, err = github.NewClient(cfg.GitHubAppID, []byte(cfg.GitHubAppPrivateKey), "")
+			client, err = github.NewClient(cfg.GitHubAppID, []byte(cfg.GitHubAppPrivateKey), cfg.GitHubAPIURL)
 			if err != nil {
 				return err
 			}

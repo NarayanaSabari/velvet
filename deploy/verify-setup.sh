@@ -72,7 +72,7 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+HTTPServer(("0.0.0.0", int(sys.argv[1])), H).serve_forever()
 PY
 
 python3 "$workdir/stub.py" "$stub_port" &
@@ -107,6 +107,7 @@ openssl genrsa -out "$workdir/app.pem" 2048 2>/dev/null
   printf 'GITHUB_APP_PRIVATE_KEY="'
   cat "$workdir/app.pem"
   printf '"\n'
+  echo "GITHUB_API_URL=http://host.docker.internal:${stub_port}"
   echo "BACKUP_S3_URL="
 } > "$env_file"
 ok "env written, private key quoted across multiple lines"
