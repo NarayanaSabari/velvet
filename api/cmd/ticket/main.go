@@ -51,12 +51,18 @@ func run(args []string) error {
 		slog.Info("listening", "addr", srv.Addr)
 		return srv.ListenAndServe()
 	case "worker":
-		if cfg.GitHubAppID == "" || cfg.GitHubAppPrivateKey == "" {
-			return fmt.Errorf("GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are required to run the worker")
-		}
-		client, err := github.NewClient(cfg.GitHubAppID, []byte(cfg.GitHubAppPrivateKey), "")
-		if err != nil {
-			return err
+		// The GitHub App is optional so a fresh install runs before it is
+		// configured. Without it the worker still drains local jobs and simply
+		// has nothing to sync, which beats crash-looping on day one.
+		var client *github.Client
+		if cfg.GitHubAppID != "" && cfg.GitHubAppPrivateKey != "" {
+			var err error
+			client, err = github.NewClient(cfg.GitHubAppID, []byte(cfg.GitHubAppPrivateKey), "")
+			if err != nil {
+				return err
+			}
+		} else {
+			slog.Warn("GitHub App not configured; worker will not sync pull requests")
 		}
 		slog.Info("worker starting")
 		return worker.New(store.New(pool), client).Run(ctx)

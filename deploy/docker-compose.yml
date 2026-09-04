@@ -73,8 +73,10 @@ services:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
       BASE_URL: ${BASE_URL:?set BASE_URL}
-      GITHUB_APP_ID: ${GITHUB_APP_ID:?set GITHUB_APP_ID}
-      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:?set GITHUB_APP_PRIVATE_KEY}
+      # Optional, matching config.Load: the worker starts before GitHub is
+      # configured and simply has nothing to sync until it is.
+      GITHUB_APP_ID: ${GITHUB_APP_ID}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -96,8 +98,13 @@ services:
   caddy:
     image: caddy:2-alpine
     ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
+      # SITE_ADDRESS decides which port Caddy listens on inside the container,
+      # so the mapping has to target that same port rather than a fixed 80.
+      # A site address like http://localhost:8088 otherwise leaves Caddy
+      # listening on 8088 while the mapping points at 80, and every request
+      # is refused.
+      - "${HTTP_PORT:-80}:${CADDY_HTTP_PORT:-80}"
+      - "${HTTPS_PORT:-443}:${CADDY_HTTPS_PORT:-443}"
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS}
     volumes:

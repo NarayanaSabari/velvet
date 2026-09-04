@@ -19,6 +19,13 @@ const backfillWindow = 90 * 24 * time.Hour
 // practice, so this is what keeps the record honest rather than
 // approximately right.
 func (w *Worker) Reconcile(ctx context.Context) error {
+	// With no GitHub App configured there is nothing to reconcile against, and
+	// no repository can have been linked. Idling is correct: the worker still
+	// drains local jobs, and starts syncing once the App is configured.
+	if w.gh == nil {
+		return nil
+	}
+
 	repos, err := w.store.ReposDueForSync(ctx, reconcileInterval)
 	if err != nil {
 		return err
