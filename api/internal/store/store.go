@@ -8,9 +8,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ErrNotFound is returned for a missing row, so callers never have to know
-// that pgx.ErrNoRows exists.
-var ErrNotFound = errors.New("not found")
+var (
+	// ErrNotFound is returned for a missing row, so callers never have to know
+	// that pgx.ErrNoRows exists.
+	ErrNotFound = errors.New("not found")
+	// ErrInvalidNesting reports the depth guards, which the database enforces
+	// with a trigger rather than trusting any one code path.
+	ErrInvalidNesting = errors.New("sub-issues may be nested only one level")
+	// ErrInvalidCursor reports a pagination cursor the client did not get from
+	// this API, which is a client bug rather than a server failure.
+	ErrInvalidCursor = errors.New("invalid cursor")
+)
 
 type Store struct {
 	pool *pgxpool.Pool

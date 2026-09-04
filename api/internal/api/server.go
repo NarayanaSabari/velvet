@@ -43,6 +43,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerAuthRoutes(mux)
 	s.registerSprintRoutes(mux)
 	s.registerMilestoneRoutes(mux)
+	s.registerIssueRoutes(mux)
 
 	return RequestID(Logging(Recover(mux)))
 }
