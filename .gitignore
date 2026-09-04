@@ -1,7 +1,10 @@
 .env
+.env.*
 *.env
+!.env.example
 !*.env.example
 /api/bin/
 /web/node_modules/
 /web/dist/
+/deploy/backups/
 .DS_Store

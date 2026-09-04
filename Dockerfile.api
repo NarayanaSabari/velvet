@@ -1,0 +1,13 @@
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY api/go.mod api/go.sum ./
+RUN go mod download
+COPY api/ ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/ticket ./cmd/ticket
+
+FROM alpine:3.21
+RUN adduser -D -u 10001 ticket && apk add --no-cache ca-certificates
+COPY --from=build /out/ticket /usr/local/bin/ticket
+USER ticket
+ENTRYPOINT ["ticket"]
+CMD ["serve"]

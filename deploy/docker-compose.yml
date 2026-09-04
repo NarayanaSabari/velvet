@@ -1,0 +1,118 @@
+name: worklog
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-worklog}
+    volumes:
+      # Postgres 18 keeps its data in a version-named subdirectory, so the
+      # mount belongs one level up. Mounting /var/lib/postgresql/data instead
+      # leaves the volume empty and the container never becomes healthy.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1"]
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+  # Migrations run exactly once, before anything that reads the schema starts.
+  # Letting api and worker each migrate on boot would race two writers against
+  # the same DDL.
+  migrate:
+    build:
+      context: ..
+      dockerfile: Dockerfile.api
+    command: ["migrate"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile.api
+    command: ["serve"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+      BASE_URL: ${BASE_URL:?set BASE_URL}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
+      GITHUB_APP_ID: ${GITHUB_APP_ID}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile.api
+    command: ["worker"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+      BASE_URL: ${BASE_URL:?set BASE_URL}
+      GITHUB_APP_ID: ${GITHUB_APP_ID:?set GITHUB_APP_ID}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:?set GITHUB_APP_PRIVATE_KEY}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  # Build-only service: it copies the SPA build into the shared volume Caddy
+  # serves from, then exits 0.
+  web:
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
+    volumes:
+      - webdist:/srv
+    command: ["sh", "-c", "rm -rf /srv/* && cp -a /dist/. /srv/"]
+    restart: "no"
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - webdist:/srv:ro
+      - caddydata:/data
+    depends_on:
+      api:
+        condition: service_started
+      web:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  caddydata:
+  webdist:

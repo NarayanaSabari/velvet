@@ -1,0 +1,25 @@
+{$SITE_ADDRESS} {
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	handle /webhooks/* {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		root * /srv
+		# Without try_files, a hard refresh on a deep link such as
+		# /w/lab/issues/ENG-42 asks Caddy for a file that does not exist.
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}
