@@ -16,6 +16,7 @@ import { SprintList } from '../features/sprints/SprintList'
 import { SprintBoard } from '../features/sprints/SprintBoard'
 import { MilestonePage } from '../features/milestones/MilestonePage'
 import { IssuePage } from '../features/issues/IssuePage'
+import { Reports } from '../features/reports/Reports'
 
 const rootRoute = createRootRoute({ component: RootLayout })
 
@@ -96,6 +97,15 @@ const issueRoute = createRoute({
   },
 })
 
+const reportsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug/reports',
+  component: function ReportsRoute() {
+    const { slug } = reportsRoute.useParams()
+    return <Reports slug={slug} />
+  },
+})
+
 const routes = [
   indexRoute,
   dashboardRoute,
@@ -105,7 +115,7 @@ const routes = [
   milestoneRoute,
   issueRoute,
   page('/w/$slug/unlinked', 'Unlinked PRs'),
-  page('/w/$slug/reports', 'Reports'),
+  reportsRoute,
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/signin',

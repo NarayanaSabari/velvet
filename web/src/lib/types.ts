@@ -173,3 +173,48 @@ export interface Evidence {
   reviews: Review[]
   commits: Commit[]
 }
+
+export interface PersonActivityRow {
+  user_id: string | null
+  github_login: string
+  name: string
+  verbs: Record<string, number>
+  total: number
+}
+
+export interface MilestoneCompletionRow {
+  sprint_id: string
+  sprint_name: string
+  starts_on: string
+  planned: number
+  completed: number
+}
+
+export interface SprintClosedRow {
+  sprint_id: string
+  sprint_name: string
+  starts_on: string
+  closed: number
+  total: number
+}
+
+export interface StaleIssueRow {
+  id: string
+  key: string
+  title?: string
+  status: IssueStatus
+  assignee_login: string
+  milestone_name?: string
+  last_signal_at?: string
+  days_silent: number
+}
+
+export interface SprintSnapshot {
+  sprint_id: string
+  workspace_id: string
+  milestones_planned: number
+  milestones_completed: number
+  issue_counts: Record<string, number>
+  person_totals: Record<string, number>
+  captured_at: string
+}
