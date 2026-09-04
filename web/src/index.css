@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+/* The whole palette. Adding to this list is a visible diff, which is the
+   point: the monochrome constraint is enforced by what exists, not by
+   remembering to be disciplined. */
+@theme {
+  --color-ink: #000000;
+  --color-paper: #ffffff;
+  --color-grey-100: #f5f5f5;
+  --color-grey-200: #e5e5e5;
+  --color-grey-300: #d4d4d4;
+  --color-grey-500: #737373;
+  --color-grey-700: #404040;
+
+  /* Semantic, and only semantic. Never decoration. */
+  --color-blocked: #b91c1c;
+  --color-stale: #b45309;
+  --color-done: #15803d;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-lg: 1.125rem;
+}
+
+@layer base {
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Dark mode inverts the same palette rather than introducing a second one. */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-ink: #ffffff;
+      --color-paper: #0a0a0a;
+      --color-grey-100: #171717;
+      --color-grey-200: #262626;
+      --color-grey-300: #404040;
+      --color-grey-500: #a3a3a3;
+      --color-grey-700: #d4d4d4;
+      --color-blocked: #f87171;
+      --color-stale: #fbbf24;
+      --color-done: #4ade80;
+    }
+  }
+
+  /* Focus must always be visible: the app is keyboard-first. */
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 1px;
+  }
+}
