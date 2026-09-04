@@ -124,6 +124,14 @@ The worker backfills the last 90 days of pull requests on its next reconcile pas
 
 There is no admin screen for this yet: repository connection and member invites are scripts against the API and the database.
 
+When it is all wired up, check it:
+
+```
+cd deploy && ./preflight.sh your-slug
+```
+
+That verifies the API answers, sign-in redirects to GitHub, a correctly signed webhook is accepted and an unsigned one refused, the private key is a complete PEM, and at least one repository and member exist. Every one of those fails silently in normal use, which is why they are worth asserting explicitly.
+
 ### The OAuth app - who is this human
 
 Members sign in with GitHub OAuth; there are no passwords, because every member already has a GitHub account and a second credential store is a liability without a benefit.
