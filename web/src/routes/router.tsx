@@ -10,6 +10,8 @@ import type { SessionPayload } from '../lib/types'
 import { SignIn } from '../features/auth/SignIn'
 import { NotInvited } from '../features/auth/NotInvited'
 import { Placeholder, RootLayout } from './root'
+import { Dashboard } from '../features/dashboard/Dashboard'
+import { TeamFeed } from '../features/feed/TeamFeed'
 
 const rootRoute = createRootRoute({ component: RootLayout })
 
@@ -36,10 +38,28 @@ const indexRoute = createRoute({
   component: () => <Placeholder title="Work log" />,
 })
 
+const dashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug',
+  component: function DashboardRoute() {
+    const { slug } = dashboardRoute.useParams()
+    return <Dashboard slug={slug} />
+  },
+})
+
+const feedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug/feed',
+  component: function FeedRoute() {
+    const { slug } = feedRoute.useParams()
+    return <TeamFeed slug={slug} />
+  },
+})
+
 const routes = [
   indexRoute,
-  page('/w/$slug', 'Dashboard'),
-  page('/w/$slug/feed', 'Team feed'),
+  dashboardRoute,
+  feedRoute,
   page('/w/$slug/sprints', 'Sprints'),
   page('/w/$slug/sprints/$sprintId', 'Sprint'),
   page('/w/$slug/milestones/$milestoneId', 'Milestone'),
