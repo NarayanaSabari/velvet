@@ -12,9 +12,9 @@ import (
 )
 
 type reviewEvent struct {
-	Action     string            `json:"action"`
-	Review     github.Review     `json:"review"`
-	Repository github.Repository `json:"repository"`
+	Action      string            `json:"action"`
+	Review      github.Review     `json:"review"`
+	Repository  github.Repository `json:"repository"`
 	PullRequest struct {
 		Number int `json:"number"`
 	} `json:"pull_request"`

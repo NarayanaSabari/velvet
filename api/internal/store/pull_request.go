@@ -99,6 +99,12 @@ const prCols = `id, workspace_id, repo_id, number, title, state::text, draft,
 	author_login, author_id, head_ref, body, additions, deletions, html_url,
 	merged_at, closed_at, gh_created_at, gh_updated_at`
 
+// prColsP is prCols qualified for queries that join another table, where an
+// unqualified id would be ambiguous.
+const prColsP = `p.id, p.workspace_id, p.repo_id, p.number, p.title, p.state::text, p.draft,
+	p.author_login, p.author_id, p.head_ref, p.body, p.additions, p.deletions, p.html_url,
+	p.merged_at, p.closed_at, p.gh_created_at, p.gh_updated_at`
+
 func scanPR(row pgx.Row) (PullRequest, error) {
 	var p PullRequest
 	err := row.Scan(&p.ID, &p.WorkspaceID, &p.RepoID, &p.Number, &p.Title, &p.State,
@@ -254,7 +260,7 @@ func (s *Store) UnlinkedPullRequests(ctx context.Context, workspaceID uuid.UUID,
 		limit = 50
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT `+prCols+`
+		SELECT `+prColsP+`
 		FROM pull_request p
 		WHERE p.workspace_id = $1
 		  AND NOT EXISTS (SELECT 1 FROM pr_link l WHERE l.pull_request_id = p.id)
@@ -282,7 +288,7 @@ func (s *Store) EvidenceForIssue(ctx context.Context, workspaceID, issueID uuid.
 	out := Evidence{PullRequests: []PullRequest{}, Reviews: []Review{}, Commits: []Commit{}}
 
 	prRows, err := s.pool.Query(ctx, `
-		SELECT `+prCols+`
+		SELECT `+prColsP+`
 		FROM pull_request p
 		JOIN pr_link l ON l.pull_request_id = p.id
 		WHERE p.workspace_id = $1 AND l.issue_id = $2

@@ -52,6 +52,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerLabelRoutes(mux)
 	s.registerCommentRoutes(mux)
 	s.registerActivityRoutes(mux)
+	s.registerGitHubRoutes(mux)
 
 	return RequestID(Logging(Recover(mux)))
 }

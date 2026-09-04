@@ -36,13 +36,27 @@ func New(st *store.Store, gh *github.Client) *Worker {
 	return &Worker{store: st, gh: gh}
 }
 
-// Run drains the queue until the context is cancelled. It only loops over
-// ProcessOnce, so no test has to depend on timing.
+// Run drains the queue until the context is cancelled, reconciling on a ticker
+// alongside. It only loops over ProcessOnce, so no test has to depend on
+// timing.
 func (w *Worker) Run(ctx context.Context) error {
+	ticker := time.NewTicker(reconcileInterval)
+	defer ticker.Stop()
+
+	// Reconcile once at start, which is also what backfills a freshly
+	// onboarded repository without waiting an hour for the first tick.
+	if err := w.Reconcile(ctx); err != nil {
+		slog.Error("reconcile", "err", err)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-ticker.C:
+			if err := w.Reconcile(ctx); err != nil {
+				slog.Error("reconcile", "err", err)
+			}
 		default:
 		}
 
