@@ -6,15 +6,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/config"
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 )
 
 type Server struct {
-	pool *pgxpool.Pool
-	cfg  *config.Config
+	pool  *pgxpool.Pool
+	cfg   *config.Config
+	store *store.Store
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
-	return &Server{pool: pool, cfg: cfg}
+	return &Server{pool: pool, cfg: cfg, store: store.New(pool)}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -37,6 +39,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusNotFound, "not_found", "no such endpoint")
 	})
+
+	s.registerAuthRoutes(mux)
 
 	return RequestID(Logging(Recover(mux)))
 }
