@@ -147,6 +147,32 @@ GITHUB_API_URL="http://127.0.0.1:${stub_port}" \
   ./connect-repo.sh narayana/platform lab >/dev/null
 ok "repository connected"
 
+# Reinstalling the App issues a new installation id, and re-running this script
+# is exactly how an operator would recover. Adopting the new id is what keeps
+# syncing alive; keeping the dead one fails silently, weeks later.
+GITHUB_API_URL="http://127.0.0.1:${stub_port}" \
+  BASE_URL="http://localhost:${port}" \
+  SESSION_TOKEN=setupcheck \
+  INSTALLATION_ID=99887766 \
+  ./connect-repo.sh narayana/platform lab >/dev/null
+
+adopted=$(docker compose --env-file "$env_file" -p "$project" exec -T postgres \
+  psql -U worklog -d worklog -tA -c \
+  "SELECT installation_id FROM repo WHERE github_id = 700123" | tr -d '[:space:]')
+[ "$adopted" = "99887766" ] || die "re-connecting kept the stale installation id (${adopted})"
+
+rows=$(docker compose --env-file "$env_file" -p "$project" exec -T postgres \
+  psql -U worklog -d worklog -tA -c \
+  "SELECT count(*) FROM repo WHERE github_id = 700123" | tr -d '[:space:]')
+[ "$rows" = "1" ] || die "re-connecting duplicated the repository row"
+ok "re-connecting after an App reinstall adopts the new installation id"
+
+# Put it back so the rest of the walkthrough uses the working installation.
+GITHUB_API_URL="http://127.0.0.1:${stub_port}" \
+  BASE_URL="http://localhost:${port}" \
+  SESSION_TOKEN=setupcheck \
+  ./connect-repo.sh narayana/platform lab >/dev/null
+
 step "Step 5: preflight must report a clean configuration"
 if ! output=$(ENV_FILE="$env_file" COMPOSE_PROJECT="$project" ./preflight.sh lab 2>&1); then
   printf '%s\n' "$output"
