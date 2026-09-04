@@ -25,6 +25,9 @@ var (
 	// ErrForeignReference reports a reference to a record that belongs to
 	// another workspace.
 	ErrForeignReference = errors.New("referenced record belongs to another workspace")
+	// ErrForbidden reports an action the caller is not entitled to take on a
+	// record they can otherwise see, such as editing someone else's comment.
+	ErrForbidden = errors.New("forbidden")
 )
 
 type Store struct {

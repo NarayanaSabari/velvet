@@ -128,8 +128,9 @@ func (s *Store) ListMilestonesForSprint(ctx context.Context, workspaceID, sprint
 		       to_char(m.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
 		       to_char(m.updated_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
 		       COALESCE(counts.by_status, '{}'::jsonb),
-		       lc.id, lc.body, lc.author_id,
-		       to_char(lc.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+		       lc.id, lc.body,
+		       to_char(lc.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
+		       lc.author_id, lc.github_id, lc.github_login, lc.author_name, lc.avatar_url
 		FROM milestone m
 		LEFT JOIN LATERAL (
 		    SELECT jsonb_object_agg(status, n) AS by_status
@@ -137,8 +138,9 @@ func (s *Store) ListMilestonesForSprint(ctx context.Context, workspaceID, sprint
 		          FROM issue WHERE milestone_id = m.id GROUP BY status) s
 		) counts ON true
 		LEFT JOIN LATERAL (
-		    SELECT c.id, c.body, c.author_id, c.created_at
-		    FROM comment c
+		    SELECT c.id, c.body, c.created_at, c.author_id,
+		           u.github_id, u.github_login, u.name AS author_name, u.avatar_url
+		    FROM comment c JOIN app_user u ON u.id = c.author_id
 		    WHERE c.target_type = 'milestone' AND c.target_id = m.id AND c.deleted_at IS NULL
 		    ORDER BY c.created_at DESC LIMIT 1
 		) lc ON true
@@ -156,9 +158,12 @@ func (s *Store) ListMilestonesForSprint(ctx context.Context, workspaceID, sprint
 		var commentID *uuid.UUID
 		var body, createdAt *string
 		var authorID *uuid.UUID
+		var githubID *int64
+		var githubLogin, authorName, avatarURL *string
 		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.SprintID, &m.Name, &m.Description,
 			&m.OwnerID, &m.TargetDate, &m.Status, &m.Position, &m.CreatedAt, &m.UpdatedAt,
-			&counts, &commentID, &body, &authorID, &createdAt); err != nil {
+			&counts, &commentID, &body, &createdAt,
+			&authorID, &githubID, &githubLogin, &authorName, &avatarURL); err != nil {
 			return nil, err
 		}
 		if counts == nil {
@@ -178,6 +183,18 @@ func (s *Store) ListMilestonesForSprint(ctx context.Context, workspaceID, sprint
 			}
 			if authorID != nil {
 				c.Author = User{ID: *authorID}
+				if githubID != nil {
+					c.Author.GitHubID = *githubID
+				}
+				if githubLogin != nil {
+					c.Author.GitHubLogin = *githubLogin
+				}
+				if authorName != nil {
+					c.Author.Name = *authorName
+				}
+				if avatarURL != nil {
+					c.Author.AvatarURL = *avatarURL
+				}
 			}
 			m.LastComment = &c
 		}

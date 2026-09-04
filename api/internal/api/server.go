@@ -45,6 +45,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerMilestoneRoutes(mux)
 	s.registerIssueRoutes(mux)
 	s.registerLabelRoutes(mux)
+	s.registerCommentRoutes(mux)
 
 	return RequestID(Logging(Recover(mux)))
 }
