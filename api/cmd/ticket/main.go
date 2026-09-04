@@ -3,8 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"os"
+	"time"
 
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/api"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/config"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/db"
 )
@@ -36,7 +40,13 @@ func run(args []string) error {
 	case "migrate":
 		return db.Migrate(ctx, pool)
 	case "serve":
-		return fmt.Errorf("serve is implemented in task 2")
+		srv := &http.Server{
+			Addr:              ":" + cfg.Port,
+			Handler:           api.NewServer(pool, cfg).Handler(),
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+		slog.Info("listening", "addr", srv.Addr)
+		return srv.ListenAndServe()
 	case "worker":
 		return fmt.Errorf("worker is implemented in plan 2")
 	default:
