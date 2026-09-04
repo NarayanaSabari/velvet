@@ -12,6 +12,10 @@ import { NotInvited } from '../features/auth/NotInvited'
 import { Placeholder, RootLayout } from './root'
 import { Dashboard } from '../features/dashboard/Dashboard'
 import { TeamFeed } from '../features/feed/TeamFeed'
+import { SprintList } from '../features/sprints/SprintList'
+import { SprintBoard } from '../features/sprints/SprintBoard'
+import { MilestonePage } from '../features/milestones/MilestonePage'
+import { IssuePage } from '../features/issues/IssuePage'
 
 const rootRoute = createRootRoute({ component: RootLayout })
 
@@ -56,14 +60,50 @@ const feedRoute = createRoute({
   },
 })
 
+const sprintsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug/sprints',
+  component: function SprintsRoute() {
+    const { slug } = sprintsRoute.useParams()
+    return <SprintList slug={slug} />
+  },
+})
+
+const sprintRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug/sprints/$sprintId',
+  component: function SprintRoute() {
+    const { slug, sprintId } = sprintRoute.useParams()
+    return <SprintBoard slug={slug} sprintId={sprintId} />
+  },
+})
+
+const milestoneRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug/milestones/$milestoneId',
+  component: function MilestoneRoute() {
+    const { slug, milestoneId } = milestoneRoute.useParams()
+    return <MilestonePage slug={slug} milestoneId={milestoneId} />
+  },
+})
+
+const issueRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug/issues/$issueKey',
+  component: function IssueRoute() {
+    const { slug, issueKey } = issueRoute.useParams()
+    return <IssuePage slug={slug} issueKey={issueKey} />
+  },
+})
+
 const routes = [
   indexRoute,
   dashboardRoute,
   feedRoute,
-  page('/w/$slug/sprints', 'Sprints'),
-  page('/w/$slug/sprints/$sprintId', 'Sprint'),
-  page('/w/$slug/milestones/$milestoneId', 'Milestone'),
-  page('/w/$slug/issues/$issueKey', 'Issue'),
+  sprintsRoute,
+  sprintRoute,
+  milestoneRoute,
+  issueRoute,
   page('/w/$slug/unlinked', 'Unlinked PRs'),
   page('/w/$slug/reports', 'Reports'),
   createRoute({

@@ -127,3 +127,49 @@ export interface DashboardPayload {
   active_sprint: Sprint | null
   milestones: Milestone[]
 }
+
+export interface PullRequest {
+  id: string
+  workspace_id?: string
+  repo_id?: string
+  number: number
+  title: string
+  state: string
+  draft: boolean
+  author_login: string
+  author_id?: string | null
+  head_ref?: string
+  body?: string
+  additions: number
+  deletions: number
+  html_url: string
+  merged_at: string | null
+  closed_at?: string | null
+  gh_created_at?: string | null
+  gh_updated_at?: string | null
+}
+
+export interface Review {
+  id: string
+  pull_request_id: string
+  github_id: number
+  reviewer_login: string
+  state: string
+  submitted_at: string
+}
+
+export interface Commit {
+  sha: string
+  issue_id: string | null
+  branch: string
+  message: string
+  author_login: string
+  html_url: string
+  committed_at: string
+}
+
+export interface Evidence {
+  pull_requests: PullRequest[]
+  reviews: Review[]
+  commits: Commit[]
+}
