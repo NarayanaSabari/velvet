@@ -110,14 +110,34 @@ func (s *Store) CreateComment(ctx context.Context, in CreateCommentInput) (Comme
 			return err
 		}
 
+		// The feed names what was commented on, so resolve the label here
+		// rather than making every reader join back to the target.
+		meta := map[string]any{
+			"target_type": in.TargetType,
+			"target_id":   in.TargetID.String(),
+			"excerpt":     excerpt(in.Body),
+		}
+		switch in.TargetType {
+		case "issue":
+			var key string
+			if err := tx.QueryRow(ctx,
+				`SELECT key FROM issue WHERE id = $1 AND workspace_id = $2`,
+				in.TargetID, in.WorkspaceID).Scan(&key); err == nil {
+				meta["key"] = key
+			}
+		case "milestone":
+			var name string
+			if err := tx.QueryRow(ctx,
+				`SELECT name FROM milestone WHERE id = $1 AND workspace_id = $2`,
+				in.TargetID, in.WorkspaceID).Scan(&name); err == nil {
+				meta["name"] = name
+			}
+		}
+
 		if err := RecordActivity(ctx, tx, ActivityInput{
 			WorkspaceID: in.WorkspaceID, ActorID: in.ActorID,
 			Verb: VerbCommented, TargetType: "comment", TargetID: out.ID,
-			Metadata: map[string]any{
-				"target_type": in.TargetType,
-				"target_id":   in.TargetID.String(),
-				"excerpt":     excerpt(in.Body),
-			},
+			Metadata: meta,
 		}); err != nil {
 			return err
 		}

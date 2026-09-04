@@ -125,7 +125,7 @@ func (s *Store) UpsertPullRequest(ctx context.Context, in UpsertPRInput) (PullRe
 		VALUES ($1, $2, $3, $4, $5::pr_state, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
 			(SELECT u.id FROM app_user u
 			 JOIN membership m ON m.user_id = u.id AND m.workspace_id = $1
-			 WHERE u.github_login = $7))
+			 WHERE lower(u.github_login) = lower($7)))
 		ON CONFLICT (repo_id, number) DO UPDATE SET
 			title = EXCLUDED.title, state = EXCLUDED.state, draft = EXCLUDED.draft,
 			body = EXCLUDED.body, additions = EXCLUDED.additions,
@@ -183,6 +183,16 @@ func (s *Store) LinkPR(ctx context.Context, workspaceID, prID, issueID uuid.UUID
 			return mapErr(err)
 		}
 
+		// The feed names the issue a PR was attached to. Without the key here
+		// the row read "attached PR #42 to an issue", which tells a reader
+		// nothing they can act on.
+		var key string
+		if err := tx.QueryRow(ctx,
+			`SELECT key FROM issue WHERE id = $1 AND workspace_id = $2`,
+			issueID, workspaceID).Scan(&key); err != nil {
+			return mapErr(err)
+		}
+
 		var actor uuid.UUID
 		if actorID != nil {
 			actor = *actorID
@@ -196,6 +206,7 @@ func (s *Store) LinkPR(ctx context.Context, workspaceID, prID, issueID uuid.UUID
 				"html_url":        url,
 				"source":          source,
 				"closing":         closing,
+				"key":             key,
 			},
 		})
 	})
@@ -492,7 +503,7 @@ func (s *Store) UpsertReview(ctx context.Context, in UpsertReviewInput) error {
 		VALUES ($1, $2, $3, $4,
 			(SELECT u.id FROM app_user u
 			 JOIN membership m ON m.user_id = u.id AND m.workspace_id = $1
-			 WHERE u.github_login = $4),
+			 WHERE lower(u.github_login) = lower($4)),
 			$5, $6)
 		ON CONFLICT (github_id) DO UPDATE SET
 			state = EXCLUDED.state, submitted_at = EXCLUDED.submitted_at`,

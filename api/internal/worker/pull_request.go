@@ -78,8 +78,11 @@ func (w *Worker) syncPullRequest(ctx context.Context, repo store.Repo, pr github
 		if err != nil {
 			return err
 		}
+		// Attribute the link to the PR's author when that GitHub login maps to
+		// a member. Otherwise the feed reads "Someone attached PR #42", which
+		// hides the one person who most obviously did the work.
 		if _, err := w.store.LinkPR(ctx, repo.WorkspaceID, stored.ID, issueID,
-			match.Source, match.Closing, nil); err != nil {
+			match.Source, match.Closing, stored.AuthorID); err != nil {
 			return err
 		}
 	}

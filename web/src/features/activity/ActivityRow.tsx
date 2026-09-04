@@ -28,6 +28,27 @@ function IssueKey({ metadata }: { metadata: Record<string, unknown> }) {
 }
 
 /**
+ * Names what an activity happened to. A comment on a milestone carries no
+ * issue key, so without this the row rendered a dangling "commented on" with
+ * nothing after it.
+ */
+function Target({
+  metadata,
+  targetType,
+}: {
+  metadata: Record<string, unknown>
+  targetType: string
+}) {
+  const key = str(metadata, 'key')
+  if (key) return <span className="text-ink">{key}</span>
+
+  const name = str(metadata, 'name') ?? str(metadata, 'title')
+  if (name) return <span className="text-ink">{name}</span>
+
+  return <span className="text-ink">{targetType === 'milestone' ? 'a milestone' : 'an issue'}</span>
+}
+
+/**
  * One row of the work log. The verb switch has a default branch on purpose:
  * the API may add verbs before the SPA knows them, and a vague row is a far
  * better failure than a feed that crashes.
@@ -43,7 +64,7 @@ export function ActivityRow({ activity }: { activity: Activity }) {
       body = (
         <>
           <span>
-            commented on <IssueKey metadata={metadata} />
+            commented on <Target metadata={metadata} targetType={activity.target_type} />
           </span>
           {excerpt ? (
             <span className="mt-0.5 block border-l border-grey-300 pl-2 text-grey-700">
@@ -82,7 +103,7 @@ export function ActivityRow({ activity }: { activity: Activity }) {
       body = (
         <span>
           attached PR <span className="text-ink">#{num(metadata, 'number')}</span> to{' '}
-          <IssueKey metadata={metadata} />
+          <Target metadata={metadata} targetType={activity.target_type} />
         </span>
       )
       break

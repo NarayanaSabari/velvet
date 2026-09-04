@@ -74,3 +74,25 @@ describe('EvidenceCard', () => {
     expect(screen.getByText(/merged/i)).toBeInTheDocument()
   })
 })
+
+describe('EvidenceCard palette', () => {
+  it('does not paint the diff size red or green: it is information, not judgement', () => {
+    const { container } = render(
+      <EvidenceCard
+        pr={{
+          id: 'p1', number: 42, title: 'Fix auth', state: 'merged', draft: false,
+          author_login: 'sabari', additions: 88, deletions: 4,
+          html_url: '#', merged_at: '2026-09-01T12:00:00Z',
+        }}
+        issueStatus="done"
+        onMarkDone={vi.fn()}
+      />,
+    )
+    const additions = screen.getByText('+88')
+    const deletions = screen.getByText('-4')
+    expect(additions.className).not.toMatch(/text-(done|blocked)/)
+    expect(deletions.className).not.toMatch(/text-(done|blocked)/)
+    // Red in particular is reserved for blocked or destructive.
+    expect(container.querySelectorAll('.text-blocked')).toHaveLength(0)
+  })
+})

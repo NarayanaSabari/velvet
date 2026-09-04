@@ -34,8 +34,10 @@ export function EvidenceCard({
 
       <div className="mt-0.5 flex items-center gap-2 text-grey-500">
         <span>{pr.author_login}</span>
-        <span className="text-done">+{pr.additions}</span>
-        <span className="text-blocked">-{pr.deletions}</span>
+        {/* Diff size is information, not judgement: a deletion is not a
+            problem, and red is reserved for blocked or destructive. */}
+        <span className="text-grey-700">+{pr.additions}</span>
+        <span className="text-grey-700">-{pr.deletions}</span>
         {pr.merged_at ? <RelativeTime iso={pr.merged_at} /> : null}
       </div>
 

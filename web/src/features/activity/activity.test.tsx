@@ -57,3 +57,36 @@ describe('ActivityRow', () => {
     expect(screen.getByText(/someone/i)).toBeInTheDocument()
   })
 })
+
+describe('ActivityRow targets', () => {
+  it('names a milestone comment instead of dangling on "commented on"', () => {
+    render(
+      <ActivityRow
+        activity={row({
+          verb: 'commented',
+          target_type: 'milestone',
+          metadata: { name: 'Ship auth', excerpt: 'On track.' },
+        })}
+      />,
+    )
+    expect(screen.getByText('Ship auth')).toBeInTheDocument()
+  })
+
+  it('still names a target when metadata carries nothing useful', () => {
+    const { container } = render(
+      <ActivityRow activity={row({ verb: 'commented', target_type: 'issue', metadata: {} })} />,
+    )
+    // The sentence must not end on a preposition.
+    expect(container.textContent).not.toMatch(/commented on\s*$/)
+    expect(screen.getByText('an issue')).toBeInTheDocument()
+  })
+
+  it('names the target an attached PR belongs to', () => {
+    const { container } = render(
+      <ActivityRow
+        activity={row({ verb: 'attached_pr', target_type: 'issue', metadata: { number: 42 } })}
+      />,
+    )
+    expect(container.textContent).not.toMatch(/to\s*$/)
+  })
+})

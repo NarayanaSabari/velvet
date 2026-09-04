@@ -137,3 +137,42 @@ func TestDeletedCommentIsHiddenButPreserved(t *testing.T) {
 		c.ID).Scan(&stillThere))
 	require.Equal(t, 1, stillThere, "the row is retained for the audit trail")
 }
+
+// The feed names what was commented on. Without these the row rendered
+// "commented on" followed by nothing, which only showed up in a browser.
+func TestCommentActivityNamesItsTarget(t *testing.T) {
+	f := testutil.NewFixture(t)
+	issue := createIssue(t, f, map[string]any{"title": "Ship it"})
+
+	require.Equal(t, http.StatusCreated,
+		f.Do(http.MethodPost, "/api/v1/w/lab/issues/"+issue.Key+"/comments",
+			map[string]any{"body": "Progress"}).Code)
+
+	var key string
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `
+		SELECT metadata->>'key' FROM activity
+		WHERE verb = $1 ORDER BY id DESC LIMIT 1`, store.VerbCommented).Scan(&key))
+	require.Equal(t, issue.Key, key)
+}
+
+func TestMilestoneCommentActivityNamesTheMilestone(t *testing.T) {
+	f := testutil.NewFixture(t)
+	sprint := newSprint(t, f)
+
+	rec := f.Do(http.MethodPost,
+		"/api/v1/w/lab/sprints/"+sprint.ID.String()+"/milestones",
+		map[string]any{"name": "Ship auth"})
+	var m store.Milestone
+	f.DecodeInto(rec, &m)
+
+	require.Equal(t, http.StatusCreated,
+		f.Do(http.MethodPost, "/api/v1/w/lab/milestones/"+m.ID.String()+"/comments",
+			map[string]any{"body": "On track."}).Code)
+
+	var name string
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `
+		SELECT metadata->>'name' FROM activity
+		WHERE verb = $1 ORDER BY id DESC LIMIT 1`, store.VerbCommented).Scan(&name))
+	require.Equal(t, "Ship auth", name,
+		"a milestone comment carries no issue key, so the name is what the feed can show")
+}
