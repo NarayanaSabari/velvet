@@ -19,7 +19,7 @@ Self-hosting is a requirement: the team owns the data and the deployment.
 - Story points or estimates.
 - Custom per-workspace status workflows.
 - Automatic status transitions driven by GitHub.
-- Cycle-time and throughput analytics (deferred, see section 8).
+- Cycle-time and throughput analytics (deferred, see section 9).
 - Multi-tenancy as a product feature (the schema is prepared for it; the product is not).
 
 ## 2. Users and access
@@ -213,7 +213,24 @@ The latest comment is shown because it carries more information than the counts:
 
 **Unlinked PRs** - pull requests with no matching issue, with one-click attach.
 
-## 7. Reports
+## 7. Visual design
+
+Monochrome and minimal.
+Black text on white, a small set of greys for borders and secondary text, and no brand colour.
+
+Colour is reserved for meaning, never decoration.
+Exactly three semantic colours exist - red for destructive or blocked, amber for stale, green for merged or done - and each appears only where it carries information the layout cannot.
+Status is otherwise conveyed by label text and position, so the interface stays readable and never depends on a user distinguishing hues.
+
+One sans-serif family at three or four sizes, generous whitespace, and hairline borders instead of cards with shadows.
+No gradients, no illustrations, no animation beyond instant state changes and a subtle transition on hover.
+
+Dense by default, in the Linear sense: lists show many rows without scrolling, and keyboard navigation is a first-class path rather than an accessory.
+A dark mode inverts the same palette and is the only theme variation.
+
+Implementation is Tailwind with a deliberately narrow token set, so the constraint is enforced by the available classes rather than by discipline.
+
+## 8. Reports
 
 Deliberately small:
 
@@ -224,7 +241,7 @@ Deliberately small:
 
 Staleness is the one expected to earn its keep, because it surfaces work that quietly stopped.
 
-## 8. Deferred
+## 9. Deferred
 
 Cycle-time and throughput analytics.
 Status here is human-entered, so those numbers would measure logging discipline rather than delivery speed, and a metric that measures the wrong thing is worse than no metric.
@@ -232,7 +249,7 @@ Revisit if status entry proves consistently prompt.
 
 Also deferred: estimates, custom workflows, multiple workspaces as a user-facing feature, and notification channels beyond in-app and email digest.
 
-## 9. Testing
+## 10. Testing
 
 Go domain logic covered by table-driven unit tests.
 
@@ -242,7 +259,7 @@ Webhook processing is tested by replaying captured GitHub fixture payloads, incl
 
 The SPA uses Vitest for units and a small Playwright suite over the paths that matter: sign in, create issue, comment, attach a PR, close a sprint.
 
-## 10. Delivery
+## 11. Delivery
 
 `docker compose up` on a VPS, with `caddy`, `api`, `worker`, `postgres`, and `redis`.
 
