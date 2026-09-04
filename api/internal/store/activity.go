@@ -42,15 +42,23 @@ type Activity struct {
 
 // RecordActivity must be called with the same tx as the change it describes,
 // so the feed can never disagree with the underlying data.
+//
+// A zero ActorID stores NULL rather than a zero UUID, because some activity
+// has no human actor: a webhook attaching a PR is the system reporting what
+// GitHub said, not a person acting.
 func RecordActivity(ctx context.Context, tx pgx.Tx, a ActivityInput) error {
 	meta := a.Metadata
 	if meta == nil {
 		meta = map[string]any{}
 	}
+	var actor *uuid.UUID
+	if a.ActorID != uuid.Nil {
+		actor = &a.ActorID
+	}
 	_, err := tx.Exec(ctx, `
 		INSERT INTO activity (workspace_id, actor_id, verb, target_type, target_id, metadata)
 		VALUES ($1, $2, $3, $4, $5, $6)`,
-		a.WorkspaceID, a.ActorID, a.Verb, a.TargetType, a.TargetID, meta)
+		a.WorkspaceID, actor, a.Verb, a.TargetType, a.TargetID, meta)
 	if err != nil {
 		return fmt.Errorf("record activity %s: %w", a.Verb, err)
 	}

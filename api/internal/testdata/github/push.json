@@ -1,0 +1,108 @@
+{
+  "ref": "refs/heads/sabari/eng-1-fix-auth",
+  "before": "ad5e1cb0cd8e0b5b57ad2d2a1d8fbf7b5d4b8f4c",
+  "after": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+  "created": false,
+  "deleted": false,
+  "forced": false,
+  "base_ref": null,
+  "compare": "https://github.com/acme/widgets/compare/ad5e1cb0cd8e...6dcb09b5b578",
+  "commits": [
+    {
+      "id": "0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c",
+      "tree_id": "f9d2a4b4cf6b6b2e6a1ef1f3e5b8d1b6c1c9a3d2",
+      "distinct": true,
+      "message": "Tighten the session lookup",
+      "timestamp": "2026-08-31T09:40:00+05:30",
+      "url": "https://github.com/acme/widgets/commit/0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c",
+      "author": {
+        "name": "Sabari",
+        "email": "sabari@example.com",
+        "username": "sabari"
+      },
+      "committer": {
+        "name": "Sabari",
+        "email": "sabari@example.com",
+        "username": "sabari"
+      },
+      "added": [],
+      "removed": [],
+      "modified": ["internal/auth/session.go"]
+    },
+    {
+      "id": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+      "tree_id": "c1a2b3d4e5f60718293a4b5c6d7e8f9012345678",
+      "distinct": true,
+      "message": "Reject an expired session token",
+      "timestamp": "2026-08-31T09:55:00+05:30",
+      "url": "https://github.com/acme/widgets/commit/6dcb09b5b57875f334f61aebed695e2e4193db5e",
+      "author": {
+        "name": "Sabari",
+        "email": "sabari@example.com",
+        "username": "sabari"
+      },
+      "committer": {
+        "name": "Sabari",
+        "email": "sabari@example.com",
+        "username": "sabari"
+      },
+      "added": [],
+      "removed": [],
+      "modified": ["internal/auth/session.go"]
+    }
+  ],
+  "head_commit": {
+    "id": "6dcb09b5b57875f334f61aebed695e2e4193db5e",
+    "tree_id": "c1a2b3d4e5f60718293a4b5c6d7e8f9012345678",
+    "distinct": true,
+    "message": "Reject an expired session token",
+    "timestamp": "2026-08-31T09:55:00+05:30",
+    "url": "https://github.com/acme/widgets/commit/6dcb09b5b57875f334f61aebed695e2e4193db5e",
+    "author": {
+      "name": "Sabari",
+      "email": "sabari@example.com",
+      "username": "sabari"
+    },
+    "committer": {
+      "name": "Sabari",
+      "email": "sabari@example.com",
+      "username": "sabari"
+    },
+    "added": [],
+    "removed": [],
+    "modified": ["internal/auth/session.go"]
+  },
+  "repository": {
+    "id": 555,
+    "node_id": "MDEwOlJlcG9zaXRvcnk1NTU=",
+    "name": "widgets",
+    "full_name": "acme/widgets",
+    "private": false,
+    "html_url": "https://github.com/acme/widgets",
+    "default_branch": "main",
+    "master_branch": "main",
+    "owner": {
+      "name": "acme",
+      "login": "acme",
+      "id": 9001,
+      "type": "Organization"
+    }
+  },
+  "pusher": {
+    "name": "sabari",
+    "email": "sabari@example.com"
+  },
+  "organization": {
+    "login": "acme",
+    "id": 9001
+  },
+  "sender": {
+    "login": "sabari",
+    "id": 1001,
+    "type": "User"
+  },
+  "installation": {
+    "id": 99,
+    "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uOTk="
+  }
+}

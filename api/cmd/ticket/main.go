@@ -11,6 +11,9 @@ import (
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/api"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/config"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/db"
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/github"
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/worker"
 )
 
 func main() {
@@ -48,7 +51,15 @@ func run(args []string) error {
 		slog.Info("listening", "addr", srv.Addr)
 		return srv.ListenAndServe()
 	case "worker":
-		return fmt.Errorf("worker is implemented in plan 2")
+		if cfg.GitHubAppID == "" || cfg.GitHubAppPrivateKey == "" {
+			return fmt.Errorf("GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY are required to run the worker")
+		}
+		client, err := github.NewClient(cfg.GitHubAppID, []byte(cfg.GitHubAppPrivateKey), "")
+		if err != nil {
+			return err
+		}
+		slog.Info("worker starting")
+		return worker.New(store.New(pool), client).Run(ctx)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
