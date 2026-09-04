@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -18,6 +19,12 @@ var (
 	// ErrInvalidCursor reports a pagination cursor the client did not get from
 	// this API, which is a client bug rather than a server failure.
 	ErrInvalidCursor = errors.New("invalid cursor")
+	// ErrDuplicate reports a unique violation, so a handler can answer 409
+	// without inspecting driver errors.
+	ErrDuplicate = errors.New("already exists")
+	// ErrForeignReference reports a reference to a record that belongs to
+	// another workspace.
+	ErrForeignReference = errors.New("referenced record belongs to another workspace")
 )
 
 type Store struct {
@@ -45,6 +52,10 @@ func (s *Store) InTx(ctx context.Context, fn func(tx pgx.Tx) error) error {
 func mapErr(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return ErrDuplicate
 	}
 	return err
 }

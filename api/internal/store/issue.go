@@ -290,7 +290,7 @@ func (s *Store) GetIssueByKey(ctx context.Context, workspaceID uuid.UUID, key st
 		return Issue{}, err
 	}
 
-	if issue.Labels, err = s.labelsForIssue(ctx, workspaceID, issue.ID); err != nil {
+	if issue.Labels, err = labelsForIssue(ctx, s.pool, workspaceID, issue.ID); err != nil {
 		return Issue{}, err
 	}
 
