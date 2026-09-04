@@ -159,6 +159,15 @@ None of those were visible to a unit test.
 
 Auth is seeded directly rather than clicked through github.com: driving GitHub's login page would test GitHub, not this application. The seeded cookie is the same one the OAuth callback issues, so everything after sign-in is exercised for real.
 
+### CI
+
+`.github/workflows/ci.yml` runs all three suites on every push and pull request.
+The end-to-end job depends on the other two, so a broken unit test fails fast instead of paying to build the whole stack.
+
+The gate was checked against a deliberate regression, not just a green tree: reintroducing the timestamp bug on a branch turned CI red in the Go job with the expected message and skipped end-to-end, then the branch was deleted.
+
+**`main` is not yet protected.** Branch protection and rulesets need GitHub Pro or a public repository, and this one is private on the free plan, so a red run reports but does not block a merge. Enable "Require status checks to pass" for `Go API`, `Web app`, and `End to end` once either applies.
+
 ## Backup and restore
 
 `deploy/backup.sh` writes a timestamped `pg_dump -Fc` into `deploy/backups/`, uploads it when `BACKUP_S3_URL` is set, and prunes local dumps older than 14 days.
