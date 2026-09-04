@@ -109,7 +109,20 @@ App permissions survive any one person leaving the team, whereas a personal acce
 6. Install the App on the organisation and choose which repositories map to the workspace.
 
 Put the App ID in `GITHUB_APP_ID`, the PEM contents in `GITHUB_APP_PRIVATE_KEY`, and the webhook secret in `GITHUB_WEBHOOK_SECRET`.
-Then connect each repository from the admin UI, which backfills the last 90 days of pull requests so the views are not empty on day one.
+
+The downloaded key is a multi-line PEM, so quote it when you paste it into `.env.local`, keeping the `BEGIN` and `END` lines. An unquoted value silently truncates at the first newline and every App call then fails to sign.
+
+Then connect each repository:
+
+```
+SESSION_TOKEN=<your ticket_session cookie> GITHUB_TOKEN=<a token that can read the repo> \
+  ./deploy/connect-repo.sh your-org/your-repo your-workspace-slug
+```
+
+The script resolves the numeric repository id and the App installation id for you, because GitHub scatters them across three different pages.
+The worker backfills the last 90 days of pull requests on its next reconcile pass, which runs at startup and hourly after that, so the views are not empty on day one.
+
+There is no admin screen for this yet: repository connection and member invites are scripts against the API and the database.
 
 ### The OAuth app - who is this human
 
@@ -121,6 +134,24 @@ Members sign in with GitHub OAuth; there are no passwords, because every member 
 
 A GitHub login must be invited to the workspace before it can sign in; a stranger who finds the URL sees a "not invited" page rather than an account.
 Roles are `admin` (membership, repo connections, sprint lifecycle), `member` (create and edit issues, comment, attach PRs), and `viewer` (read).
+
+### First workspace and invites
+
+Sign-in is invite-gated, so the first admin cannot be invited through the app by anyone. Create the workspace and that first invite once:
+
+```
+cd deploy
+./bootstrap.sh <your-github-login> "Your Team" your-slug ENG
+```
+
+Everyone after them is an ordinary invite:
+
+```
+./invite.sh <github-login> member
+./invite.sh <github-login> admin
+```
+
+An invite works before the person has ever signed in, so the whole team can be seeded up front. Re-running either script changes the role rather than failing.
 
 ## Environment variables
 
