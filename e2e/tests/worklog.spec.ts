@@ -107,7 +107,14 @@ test('timestamps render as relative time, not raw database strings', async ({
   // Postgres renders a bare "+00" offset, which JavaScript's Date parser
   // rejects; the UI then silently printed the raw string. jsdom tests could
   // not see it because they fed the component JS-generated dates.
-  await expect(page.getByText(/ago$/).first()).toBeVisible()
+  //
+  // Match "now" as well as "... ago": Intl.RelativeTimeFormat with
+  // numeric: 'auto' renders a sub-second-old timestamp as "now", so asserting
+  // only on /ago$/ failed whenever the run was fast enough. The real
+  // requirement is that a relative label is rendered at all.
+  await expect(page.getByText(/(ago|now)$/).first()).toBeVisible()
+
+  // The actual regression guard: a raw ISO string must never reach the page.
   await expect(page.getByText(/^\d{4}-\d{2}-\d{2}T/)).toHaveCount(0)
 })
 
