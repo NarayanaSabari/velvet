@@ -92,3 +92,35 @@ func TestPullRequestOfAnotherWorkspaceCannotBeAttached(t *testing.T) {
 		map[string]any{"pull_request_id": foreign.String()})
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
+
+// Reinstalling a GitHub App issues a new installation id. Re-connecting the
+// repository has to adopt it: keeping the dead id means every token mint fails
+// and pull requests silently stop syncing, months after anyone touched setup.
+func TestReconnectingARepoAdoptsTheNewInstallation(t *testing.T) {
+	f := testutil.NewFixture(t)
+
+	link := func(installationID int64) {
+		rec := f.Do(http.MethodPost, "/api/v1/w/lab/repos", map[string]any{
+			"github_id":       9001,
+			"owner":           "acme",
+			"name":            "widgets",
+			"installation_id": installationID,
+			"default_branch":  "main",
+		})
+		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+	link(111)
+	link(222)
+
+	var installationID int64
+	require.NoError(t, f.Pool.QueryRow(t.Context(),
+		`SELECT installation_id FROM repo WHERE github_id = 9001`).Scan(&installationID))
+	require.Equal(t, int64(222), installationID,
+		"a re-connect must adopt the new installation id, not keep the stale one")
+
+	var repos int
+	require.NoError(t, f.Pool.QueryRow(t.Context(),
+		`SELECT count(*) FROM repo WHERE github_id = 9001`).Scan(&repos))
+	require.Equal(t, 1, repos, "re-connecting must update the row rather than duplicate it")
+}

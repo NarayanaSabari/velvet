@@ -17,6 +17,9 @@ set -euo pipefail
 repo_full="${1:-}"
 slug="${2:-lab}"
 base="${BASE_URL:-http://localhost:8088}"
+# Overridable so the script works against GitHub Enterprise, and so its parsing
+# can be tested against a stub instead of the real API.
+gh_api="${GITHUB_API_URL:-https://api.github.com}"
 
 if [ -z "$repo_full" ]; then
   echo "usage: GITHUB_TOKEN=... $0 <owner/repo> [workspace-slug]" >&2
@@ -42,18 +45,19 @@ api() {
 }
 
 echo "Looking up ${owner}/${name}…"
-repo_id=$(api "https://api.github.com/repos/${owner}/${name}" |
-  python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
-
-default_branch=$(api "https://api.github.com/repos/${owner}/${name}" |
-  python3 -c 'import sys,json; print(json.load(sys.stdin)["default_branch"])')
+if ! repo_json=$(api "${gh_api}/repos/${owner}/${name}"); then
+  echo "error: could not read ${owner}/${name}. Check the name and that GITHUB_TOKEN can see it." >&2
+  exit 1
+fi
+read -r repo_id default_branch <<<"$(printf '%s' "$repo_json" |
+  python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["id"], d["default_branch"])')"
 
 # The installation id is what lets the worker mint a token for this repo. It is
 # also visible in the URL when you open the App's install settings page.
 installation_id="${INSTALLATION_ID:-}"
 if [ -z "$installation_id" ]; then
   echo "Looking up the App installation for ${owner}…"
-  installation_id=$(api "https://api.github.com/repos/${owner}/${name}/installation" |
+  installation_id=$(api "${gh_api}/repos/${owner}/${name}/installation" |
     python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])' 2>/dev/null || true)
 fi
 
@@ -84,7 +88,7 @@ response=$(curl -fsS -X POST "${base}/api/v1/w/${slug}/repos" \
 echo "$response" | python3 -c '
 import sys, json
 r = json.load(sys.stdin)
-print(f"connected {r[\"owner\"]}/{r[\"name\"]}")
+print("connected", r["owner"] + "/" + r["name"])
 '
 
 cat <<EOF

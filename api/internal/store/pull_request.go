@@ -418,7 +418,8 @@ func (s *Store) LinkRepo(ctx context.Context, in LinkRepoInput) (Repo, error) {
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO github_installation (id, account_login) VALUES ($1, $2)
-			ON CONFLICT (id) DO NOTHING`, in.InstallationID, in.Owner); err != nil {
+			ON CONFLICT (id) DO UPDATE SET account_login = EXCLUDED.account_login`,
+			in.InstallationID, in.Owner); err != nil {
 			return err
 		}
 		var err error
@@ -427,7 +428,11 @@ func (s *Store) LinkRepo(ctx context.Context, in LinkRepoInput) (Repo, error) {
 			VALUES ($1, $2, $3, $4, $5, $6)
 			ON CONFLICT (github_id) DO UPDATE SET
 				owner = EXCLUDED.owner, name = EXCLUDED.name,
-				default_branch = EXCLUDED.default_branch
+				default_branch = EXCLUDED.default_branch,
+				-- Reinstalling the App issues a new installation id. Without
+				-- this the repo keeps the dead one and every token mint fails.
+				installation_id = EXCLUDED.installation_id,
+				workspace_id = EXCLUDED.workspace_id
 			RETURNING `+repoCols,
 			in.WorkspaceID, in.InstallationID, in.GitHubID, in.Owner, in.Name, in.DefaultBranch))
 		return err
