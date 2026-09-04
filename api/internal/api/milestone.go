@@ -144,11 +144,13 @@ func (s *Server) handleUpdateMilestone(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	sinceID, _ := s.store.LatestActivityID(r.Context(), ws.WorkspaceID)
 	milestone, err := s.store.UpdateMilestone(r.Context(), ws.WorkspaceID, id, user.ID, patch)
 	if err != nil {
 		writeStoreError(w, err, "milestone")
 		return
 	}
+	s.publishRecent(r.Context(), ws.WorkspaceID, sinceID)
 	WriteJSON(w, http.StatusOK, milestone)
 }
 

@@ -10,13 +10,14 @@ import (
 )
 
 type Server struct {
-	pool  *pgxpool.Pool
-	cfg   *config.Config
-	store *store.Store
+	pool   *pgxpool.Pool
+	cfg    *config.Config
+	store  *store.Store
+	broker *Broker
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
-	return &Server{pool: pool, cfg: cfg, store: store.New(pool)}
+	return &Server{pool: pool, cfg: cfg, store: store.New(pool), broker: NewBroker()}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -46,6 +47,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerIssueRoutes(mux)
 	s.registerLabelRoutes(mux)
 	s.registerCommentRoutes(mux)
+	s.registerActivityRoutes(mux)
 
 	return RequestID(Logging(Recover(mux)))
 }

@@ -103,6 +103,7 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request, targetTyp
 
 	ws, _ := CurrentWorkspace(r.Context())
 	user, _ := CurrentUser(r.Context())
+	sinceID, _ := s.store.LatestActivityID(r.Context(), ws.WorkspaceID)
 	comment, err := s.store.CreateComment(r.Context(), store.CreateCommentInput{
 		WorkspaceID: ws.WorkspaceID, ActorID: user.ID,
 		TargetType: targetType, TargetID: targetID,
@@ -112,6 +113,7 @@ func (s *Server) createComment(w http.ResponseWriter, r *http.Request, targetTyp
 		writeCommentError(w, err)
 		return
 	}
+	s.publishRecent(r.Context(), ws.WorkspaceID, sinceID)
 	WriteJSON(w, http.StatusCreated, comment)
 }
 

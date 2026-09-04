@@ -103,11 +103,13 @@ func (s *Server) mutateSprint(w http.ResponseWriter, r *http.Request, fn sprintM
 	if !ok {
 		return
 	}
+	sinceID, _ := s.store.LatestActivityID(r.Context(), ws.WorkspaceID)
 	sprint, err := fn(r.Context(), ws.WorkspaceID, id, user.ID)
 	if err != nil {
 		writeStoreError(w, err, "sprint")
 		return
 	}
+	s.publishRecent(r.Context(), ws.WorkspaceID, sinceID)
 	WriteJSON(w, http.StatusOK, sprint)
 }
 

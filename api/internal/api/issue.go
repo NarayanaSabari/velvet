@@ -123,11 +123,13 @@ func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
 	in.WorkspaceID = ws.WorkspaceID
 	in.ActorID = user.ID
 
+	sinceID, _ := s.store.LatestActivityID(r.Context(), ws.WorkspaceID)
 	issue, err := s.store.CreateIssue(r.Context(), in)
 	if err != nil {
 		writeIssueError(w, err)
 		return
 	}
+	s.publishRecent(r.Context(), ws.WorkspaceID, sinceID)
 	WriteJSON(w, http.StatusCreated, issue)
 }
 
@@ -209,11 +211,13 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 		writeIssueError(w, err)
 		return
 	}
+	sinceID, _ := s.store.LatestActivityID(r.Context(), ws.WorkspaceID)
 	updated, err := s.store.UpdateIssue(r.Context(), ws.WorkspaceID, issue.ID, user.ID, patch)
 	if err != nil {
 		writeIssueError(w, err)
 		return
 	}
+	s.publishRecent(r.Context(), ws.WorkspaceID, sinceID)
 	WriteJSON(w, http.StatusOK, updated)
 }
 
