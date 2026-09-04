@@ -28,8 +28,8 @@ type CreateSprintInput struct {
 
 const sprintCols = `id, workspace_id, name,
 	to_char(starts_on, 'YYYY-MM-DD'), to_char(ends_on, 'YYYY-MM-DD'),
-	state::text, to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
-	to_char(completed_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')`
+	state::text, to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
+	to_char(completed_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM')`
 
 func scanSprint(row pgx.Row) (Sprint, error) {
 	var s Sprint

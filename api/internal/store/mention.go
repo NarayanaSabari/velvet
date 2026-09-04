@@ -44,7 +44,7 @@ type Mention struct {
 func (s *Store) ListMentions(ctx context.Context, workspaceID, userID uuid.UUID, unreadOnly bool) ([]Mention, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+commentCols+`,
-		       to_char(cm.read_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+		       to_char(cm.read_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM')
 		FROM comment_mention cm
 		JOIN comment c ON c.id = cm.comment_id
 		JOIN app_user u ON u.id = c.author_id

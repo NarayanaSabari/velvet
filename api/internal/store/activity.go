@@ -137,7 +137,7 @@ func (s *Store) ListActivity(ctx context.Context, workspaceID uuid.UUID, f Activ
 
 	rows, err := s.pool.Query(ctx, `
 		SELECT a.id, a.workspace_id, a.verb, a.target_type, a.target_id, a.metadata,
-		       to_char(a.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
+		       to_char(a.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
 		       u.id, u.github_id, u.github_login, u.name, u.avatar_url
 		FROM activity a
 		LEFT JOIN app_user u ON u.id = a.actor_id

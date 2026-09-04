@@ -85,8 +85,8 @@ func ValidIssueStatus(s string) bool {
 
 const issueCols = `id, workspace_id, key, number, title, description, status::text,
 	priority, assignee_id, milestone_id, parent_id, position, created_by,
-	to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
-	to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')`
+	to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
+	to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM')`
 
 func scanIssue(row pgx.Row) (Issue, error) {
 	var i Issue

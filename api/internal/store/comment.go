@@ -46,9 +46,9 @@ const excerptLen = 140
 
 const commentCols = `c.id, c.workspace_id, c.target_type::text, c.target_id, c.parent_id,
 	c.body,
-	to_char(c.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
-	to_char(c.edited_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
-	to_char(c.deleted_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
+	to_char(c.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
+	to_char(c.edited_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
+	to_char(c.deleted_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
 	u.id, u.github_id, u.github_login, u.name, u.avatar_url`
 
 // scanCommentRow reads commentCols, plus any extra destinations a caller has

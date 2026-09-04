@@ -206,7 +206,7 @@ func (s *Store) StaleIssues(ctx context.Context, workspaceID uuid.UUID, days int
 		)
 		SELECT i.id, i.key, i.title, i.status::text,
 		       COALESCE(u.github_login, ''), COALESCE(m.name, ''),
-		       to_char(g.last_signal_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
+		       to_char(g.last_signal_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
 		       EXTRACT(day FROM now() - g.last_signal_at)::int
 		FROM issue i
 		JOIN signal g ON g.id = i.id

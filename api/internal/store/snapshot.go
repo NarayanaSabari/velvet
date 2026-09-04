@@ -25,7 +25,7 @@ type SprintSnapshot struct {
 
 const snapshotCols = `sprint_id, workspace_id, milestones_planned, milestones_completed,
 	issue_counts, person_totals,
-	to_char(captured_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')`
+	to_char(captured_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM')`
 
 func scanSnapshot(row pgx.Row) (SprintSnapshot, error) {
 	var s SprintSnapshot

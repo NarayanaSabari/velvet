@@ -58,8 +58,8 @@ func ValidMilestoneStatus(s string) bool {
 
 const milestoneCols = `id, workspace_id, sprint_id, name, description, owner_id,
 	to_char(target_date, 'YYYY-MM-DD'), status::text, position,
-	to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
-	to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')`
+	to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
+	to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM')`
 
 func scanMilestone(row pgx.Row) (Milestone, error) {
 	var m Milestone
@@ -125,11 +125,11 @@ func (s *Store) ListMilestonesForSprint(ctx context.Context, workspaceID, sprint
 	rows, err := s.pool.Query(ctx, `
 		SELECT m.id, m.workspace_id, m.sprint_id, m.name, m.description, m.owner_id,
 		       to_char(m.target_date, 'YYYY-MM-DD'), m.status::text, m.position,
-		       to_char(m.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
-		       to_char(m.updated_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
+		       to_char(m.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
+		       to_char(m.updated_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
 		       COALESCE(counts.by_status, '{}'::jsonb),
 		       lc.id, lc.body,
-		       to_char(lc.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF'),
+		       to_char(lc.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
 		       lc.author_id, lc.github_id, lc.github_login, lc.author_name, lc.avatar_url
 		FROM milestone m
 		LEFT JOIN LATERAL (
