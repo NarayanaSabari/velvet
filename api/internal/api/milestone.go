@@ -12,12 +12,24 @@ func (s *Server) registerMilestoneRoutes(mux *http.ServeMux) {
 	writer := RequireRole("admin", "member")
 	mux.Handle("GET /api/v1/w/{slug}/sprints/{sprintID}/milestones",
 		s.RequireWorkspace(http.HandlerFunc(s.handleListMilestones)))
+	mux.Handle("GET /api/v1/w/{slug}/milestones",
+		s.RequireWorkspace(http.HandlerFunc(s.handleListAllMilestones)))
 	mux.Handle("POST /api/v1/w/{slug}/sprints/{sprintID}/milestones",
 		s.RequireWorkspace(writer(http.HandlerFunc(s.handleCreateMilestone))))
 	mux.Handle("GET /api/v1/w/{slug}/milestones/{id}",
 		s.RequireWorkspace(http.HandlerFunc(s.handleGetMilestone)))
 	mux.Handle("PATCH /api/v1/w/{slug}/milestones/{id}",
 		s.RequireWorkspace(writer(http.HandlerFunc(s.handleUpdateMilestone))))
+}
+
+func (s *Server) handleListAllMilestones(w http.ResponseWriter, r *http.Request) {
+	ws, _ := CurrentWorkspace(r.Context())
+	milestones, err := s.store.ListMilestones(r.Context(), ws.WorkspaceID)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "internal", "could not list milestones")
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"milestones": milestones})
 }
 
 func (s *Server) handleListMilestones(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +60,7 @@ func (s *Server) handleCreateMilestone(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "invalid_request", "name is required")
 		return
 	}
-	if body.TargetDate != nil && !dateRe.MatchString(*body.TargetDate) {
+	if body.TargetDate != nil && *body.TargetDate != "" && !dateRe.MatchString(*body.TargetDate) {
 		WriteError(w, http.StatusBadRequest, "invalid_request", "target_date must be YYYY-MM-DD")
 		return
 	}
@@ -64,10 +76,14 @@ func (s *Server) handleCreateMilestone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	targetDate := body.TargetDate
+	if targetDate != nil && *targetDate == "" {
+		targetDate = nil
+	}
 	milestone, err := s.store.CreateMilestone(r.Context(), store.CreateMilestoneInput{
 		WorkspaceID: ws.WorkspaceID, SprintID: sprintID, ActorID: user.ID,
 		Name: body.Name, Description: body.Description,
-		OwnerID: ownerID, TargetDate: body.TargetDate,
+		OwnerID: ownerID, TargetDate: targetDate,
 	})
 	if err != nil {
 		writeStoreError(w, err, "sprint")
@@ -108,14 +124,21 @@ func (s *Server) handleUpdateMilestone(w http.ResponseWriter, r *http.Request) {
 			"status must be one of planned, in_progress, completed, cancelled")
 		return
 	}
-	if body.TargetDate != nil && !dateRe.MatchString(*body.TargetDate) {
+	if body.TargetDate != nil && *body.TargetDate != "" && !dateRe.MatchString(*body.TargetDate) {
 		WriteError(w, http.StatusBadRequest, "invalid_request", "target_date must be YYYY-MM-DD")
 		return
 	}
 
 	patch := store.MilestonePatch{
 		Name: body.Name, Description: body.Description,
-		Status: body.Status, TargetDate: body.TargetDate,
+		Status: body.Status,
+	}
+	if body.TargetDate != nil {
+		var targetDate *string
+		if *body.TargetDate != "" {
+			targetDate = body.TargetDate
+		}
+		patch.TargetDate = &targetDate
 	}
 	// An explicit owner_id of null clears the owner, while omitting the field
 	// leaves it alone, which is why the patch field is a double pointer.

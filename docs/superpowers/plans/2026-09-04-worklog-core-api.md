@@ -36,7 +36,7 @@
 **Interfaces:**
 - Consumes: nothing.
 - Produces:
-  - `config.Load() (*config.Config, error)` with fields `DatabaseURL, Port, SessionSecret, GitHubClientID, GitHubClientSecret, BaseURL string`.
+  - `config.Load() (*config.Config, error)` with fields `DatabaseURL, Port, GitHubClientID, GitHubClientSecret, BaseURL string`.
   - `db.Connect(ctx context.Context, url string) (*pgxpool.Pool, error)`
   - `db.Migrate(ctx context.Context, pool *pgxpool.Pool) error`
   - `testutil.NewPostgres(t *testing.T) *pgxpool.Pool` - starts a container, migrates, returns a pool, registers cleanup.
@@ -82,7 +82,6 @@ import (
 type Config struct {
 	DatabaseURL        string
 	Port               string
-	SessionSecret      string
 	GitHubClientID     string
 	GitHubClientSecret string
 	BaseURL            string
@@ -92,16 +91,12 @@ func Load() (*Config, error) {
 	c := &Config{
 		DatabaseURL:        os.Getenv("DATABASE_URL"),
 		Port:               envOr("PORT", "8080"),
-		SessionSecret:      os.Getenv("SESSION_SECRET"),
 		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
 		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
 		BaseURL:            envOr("BASE_URL", "http://localhost:8080"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
-	}
-	if len(c.SessionSecret) < 32 {
-		return nil, fmt.Errorf("SESSION_SECRET must be at least 32 characters")
 	}
 	return c, nil
 }
@@ -120,7 +115,6 @@ func envOr(key, fallback string) string {
 DATABASE_URL=postgres://ticket:ticket@localhost:5432/ticket?sslmode=disable
 PORT=8080
 BASE_URL=http://localhost:8080
-SESSION_SECRET=replace-with-32-plus-random-characters
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 ```
@@ -669,8 +663,7 @@ func newTestServer(t *testing.T) http.Handler {
 	t.Helper()
 	pool := testutil.NewPostgres(t)
 	cfg := &config.Config{
-		BaseURL:       "http://localhost:8080",
-		SessionSecret: "0123456789abcdef0123456789abcdef",
+		BaseURL: "http://localhost:8080",
 	}
 	return api.NewServer(pool, cfg).Handler()
 }
@@ -1549,8 +1542,7 @@ import (
 
 func TestMeRequiresASession(t *testing.T) {
 	pool := testutil.NewPostgres(t)
-	cfg := &config.Config{BaseURL: "http://localhost:8080",
-		SessionSecret: "0123456789abcdef0123456789abcdef"}
+	cfg := &config.Config{BaseURL: "http://localhost:8080"}
 	h := api.NewServer(pool, cfg).Handler()
 
 	rec := httptest.NewRecorder()
@@ -1576,8 +1568,7 @@ func TestMeReturnsUserAndMemberships(t *testing.T) {
 	token, err := st.CreateSession(ctx, u.ID, time.Hour)
 	require.NoError(t, err)
 
-	cfg := &config.Config{BaseURL: "http://localhost:8080",
-		SessionSecret: "0123456789abcdef0123456789abcdef"}
+	cfg := &config.Config{BaseURL: "http://localhost:8080"}
 	h := api.NewServer(pool, cfg).Handler()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
@@ -2019,8 +2010,7 @@ func NewFixture(t *testing.T) *Fixture {
 	token, err := st.CreateSession(ctx, user.ID, time.Hour)
 	require.NoError(t, err)
 
-	cfg := &config.Config{BaseURL: "http://localhost:8080",
-		SessionSecret: "0123456789abcdef0123456789abcdef"}
+	cfg := &config.Config{BaseURL: "http://localhost:8080"}
 
 	return &Fixture{
 		T: t, Pool: pool, Store: st,

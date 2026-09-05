@@ -1,4 +1,4 @@
-import { Outlet, useParams, Link } from '@tanstack/react-router'
+import { Outlet, useParams, useRouterState, Link } from '@tanstack/react-router'
 
 import { Shell } from '../app/Shell'
 import { NavLinkProvider, type NavLinkProps } from '../app/nav'
@@ -13,11 +13,18 @@ function RouterNavLink({ to, children, className }: NavLinkProps) {
 
 export function RootLayout() {
   const params = useParams({ strict: false }) as { slug?: string }
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const isPublicAuthRoute = pathname === '/signin' || pathname === '/not-invited'
+
   return (
     <NavLinkProvider value={RouterNavLink}>
-      <Shell slug={params.slug}>
+      {isPublicAuthRoute ? (
         <Outlet />
-      </Shell>
+      ) : (
+        <Shell slug={params.slug}>
+          <Outlet />
+        </Shell>
+      )}
     </NavLinkProvider>
   )
 }

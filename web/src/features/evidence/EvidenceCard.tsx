@@ -13,10 +13,10 @@ export function EvidenceCard({
 }: {
   pr: PullRequest
   issueStatus: IssueStatus
-  onMarkDone: () => void
+  onMarkDone?: () => void
 }) {
   const merged = pr.state === 'merged' || Boolean(pr.merged_at)
-  const prompt = merged && !RESOLVED.includes(issueStatus)
+  const prompt = merged && !RESOLVED.includes(issueStatus) && onMarkDone
 
   return (
     <div className="border border-grey-200 px-2 py-1.5 text-sm">

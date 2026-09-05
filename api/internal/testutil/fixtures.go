@@ -78,7 +78,6 @@ func NewFixtureWithWebhookSecret(t *testing.T, secret string) *Fixture {
 	require.NoError(t, err)
 
 	cfg := &config.Config{BaseURL: "http://localhost:8080",
-		SessionSecret:       "0123456789abcdef0123456789abcdef",
 		GitHubWebhookSecret: secret}
 
 	return &Fixture{

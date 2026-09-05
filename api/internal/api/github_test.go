@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
@@ -123,4 +124,30 @@ func TestReconnectingARepoAdoptsTheNewInstallation(t *testing.T) {
 	require.NoError(t, f.Pool.QueryRow(t.Context(),
 		`SELECT count(*) FROM repo WHERE github_id = 9001`).Scan(&repos))
 	require.Equal(t, 1, repos, "re-connecting must update the row rather than duplicate it")
+}
+
+func TestConnectingARepoCannotMoveItFromAnotherWorkspace(t *testing.T) {
+	f := testutil.NewFixture(t)
+	var foreignWorkspaceID string
+	require.NoError(t, f.Pool.QueryRow(t.Context(),
+		`INSERT INTO workspace (name, slug) VALUES ('Foreign', 'foreign') RETURNING id`).
+		Scan(&foreignWorkspaceID))
+	_, err := f.Store.LinkRepo(t.Context(), store.LinkRepoInput{
+		WorkspaceID:    uuid.MustParse(foreignWorkspaceID),
+		InstallationID: 111,
+		GitHubID:       9001,
+		Owner:          "foreign",
+		Name:           "private",
+	})
+	require.NoError(t, err)
+
+	rec := f.Do(http.MethodPost, "/api/v1/w/lab/repos", map[string]any{
+		"github_id": 9001, "owner": "acme", "name": "widgets", "installation_id": 222,
+	})
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+
+	var workspaceID string
+	require.NoError(t, f.Pool.QueryRow(t.Context(),
+		`SELECT workspace_id FROM repo WHERE github_id = 9001`).Scan(&workspaceID))
+	require.Equal(t, foreignWorkspaceID, workspaceID)
 }

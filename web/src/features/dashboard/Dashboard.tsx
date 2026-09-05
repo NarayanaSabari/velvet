@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
 import type { DashboardPayload, Issue, Milestone } from '../../lib/types'
@@ -8,6 +8,8 @@ import { EmptyState } from '../../ui/EmptyState'
 import { StatusBadge } from '../../ui/StatusBadge'
 import { NavLink } from '../../app/nav'
 import { ActivityRow } from '../activity/ActivityRow'
+import { useSession } from '../auth/useSession'
+import { IssueForm, type IssueInput } from '../work/CoreForms'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -64,9 +66,16 @@ function MilestoneSummary({ slug, milestone }: { slug: string; milestone: Milest
 
 export function Dashboard({ slug }: { slug: string }) {
   useStream(slug)
+  const queryClient = useQueryClient()
+  const { workspace } = useSession(slug)
+  const canWrite = workspace?.role === 'admin' || workspace?.role === 'member'
   const query = useQuery({
     queryKey: ['dashboard', slug],
     queryFn: () => api.get<DashboardPayload>(`/w/${slug}/dashboard`),
+  })
+  const createIssue = useMutation({
+    mutationFn: (input: IssueInput) => api.post<Issue>(`/w/${slug}/issues`, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['dashboard', slug] }),
   })
 
   if (query.isPending) return <p className="text-grey-500">Loading…</p>
@@ -79,10 +88,21 @@ export function Dashboard({ slug }: { slug: string }) {
     <div className="max-w-3xl">
       <h1 className="mb-4 text-lg">Dashboard</h1>
 
+      {canWrite ? (
+        <details className="mb-4">
+          <summary className="cursor-pointer text-sm underline">New unfiled issue</summary>
+          <div className="mt-2">
+            <IssueForm onSubmit={(input) => createIssue.mutateAsync(input)} />
+          </div>
+        </details>
+      ) : null}
+
       {data.unread_mentions > 0 ? (
         <p className="mb-4 border border-grey-300 px-2 py-1 text-sm">
-          {data.unread_mentions} unread{' '}
-          {data.unread_mentions === 1 ? 'mention' : 'mentions'}
+          <NavLink to={`/w/${slug}/mentions`} className="underline">
+            {data.unread_mentions} unread{' '}
+            {data.unread_mentions === 1 ? 'mention' : 'mentions'}
+          </NavLink>
         </p>
       ) : null}
 

@@ -36,13 +36,13 @@ type CreateMilestoneInput struct {
 	TargetDate  *string
 }
 
-// MilestonePatch leaves a nil field unchanged. OwnerID is a double pointer so
-// that clearing an owner is distinguishable from not mentioning one.
+// MilestonePatch leaves a nil field unchanged. TargetDate and OwnerID are
+// double pointers so clearing a value is distinguishable from omitting it.
 type MilestonePatch struct {
 	Name        *string
 	Description *string
 	Status      *string
-	TargetDate  *string
+	TargetDate  **string
 	OwnerID     **uuid.UUID
 	AfterID     *uuid.UUID
 	BeforeID    *uuid.UUID
@@ -99,6 +99,11 @@ func (s *Store) CreateMilestone(ctx context.Context, in CreateMilestoneInput) (M
 		}
 		if !exists {
 			return ErrNotFound
+		}
+		if in.OwnerID != nil {
+			if err := checkWorkspaceMember(ctx, tx, in.WorkspaceID, *in.OwnerID); err != nil {
+				return err
+			}
 		}
 
 		position, err := nextMilestonePosition(ctx, tx, in.WorkspaceID, in.SprintID)
@@ -203,6 +208,30 @@ func (s *Store) ListMilestonesForSprint(ctx context.Context, workspaceID, sprint
 	return out, rows.Err()
 }
 
+// ListMilestones returns the workspace-wide filing choices used when moving
+// an issue. Sprint-specific boards use ListMilestonesForSprint for rollups.
+func (s *Store) ListMilestones(ctx context.Context, workspaceID uuid.UUID) ([]Milestone, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+milestoneCols+`
+		FROM milestone
+		WHERE workspace_id = $1
+		ORDER BY created_at DESC, position`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []Milestone{}
+	for rows.Next() {
+		milestone, err := scanMilestone(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, milestone)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) GetMilestone(ctx context.Context, workspaceID, id uuid.UUID) (Milestone, error) {
 	return scanMilestone(s.pool.QueryRow(ctx,
 		`SELECT `+milestoneCols+` FROM milestone WHERE workspace_id = $1 AND id = $2`,
@@ -243,11 +272,16 @@ func (s *Store) UpdateMilestone(ctx context.Context, workspaceID, id, actorID uu
 		}
 		targetDate := before.TargetDate
 		if patch.TargetDate != nil {
-			targetDate = patch.TargetDate
+			targetDate = *patch.TargetDate
 		}
 		ownerID := before.OwnerID
 		if patch.OwnerID != nil {
 			ownerID = *patch.OwnerID
+		}
+		if ownerID != nil {
+			if err := checkWorkspaceMember(ctx, tx, workspaceID, *ownerID); err != nil {
+				return err
+			}
 		}
 
 		out, err = scanMilestone(tx.QueryRow(ctx, `

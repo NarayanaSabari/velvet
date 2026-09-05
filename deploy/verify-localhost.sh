@@ -98,7 +98,6 @@ openssl genrsa -out "$workdir/app.pem" 2048 2>/dev/null
   echo "POSTGRES_PASSWORD=localcheck-local"
   echo "POSTGRES_DB=worklog"
   echo "DATABASE_URL=postgres://worklog:localcheck-local@postgres:5432/worklog?sslmode=disable"
-  echo "SESSION_SECRET=localcheck-session-secret-at-least-32-chars"
   echo "GITHUB_CLIENT_ID=Iv1.localCheckClient"
   echo "GITHUB_CLIENT_SECRET=localcheck-oauth-secret"
   echo "GITHUB_APP_ID=424242"

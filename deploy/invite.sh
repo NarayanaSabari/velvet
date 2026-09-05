@@ -34,9 +34,9 @@ cd "$here"
 docker compose --env-file "$env_file" -p "$project" exec -T postgres \
   psql -U "${POSTGRES_USER:-worklog}" -d "${POSTGRES_DB:-worklog}" -v ON_ERROR_STOP=1 <<SQL
 INSERT INTO membership (workspace_id, invited_login, role)
-SELECT w.id, '${login}', '${role}'::membership_role
+SELECT w.id, lower('${login}'), '${role}'::membership_role
 FROM workspace w WHERE w.slug = '${slug}'
-ON CONFLICT (workspace_id, invited_login)
+ON CONFLICT (workspace_id, lower(invited_login))
 DO UPDATE SET role = EXCLUDED.role;
 
 -- If they have signed in before, bind the invite to the existing account so

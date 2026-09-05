@@ -27,6 +27,10 @@ const reconcileInterval = time.Hour
 // worker from spinning on the database.
 const idlePause = 2 * time.Second
 
+// sessionCleanupInterval bounds how long expired authentication rows remain
+// after they stop being usable.
+const sessionCleanupInterval = 24 * time.Hour
+
 type Worker struct {
 	store *store.Store
 	gh    *github.Client
@@ -42,6 +46,17 @@ func New(st *store.Store, gh *github.Client) *Worker {
 func (w *Worker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(reconcileInterval)
 	defer ticker.Stop()
+	sessionTicker := time.NewTicker(sessionCleanupInterval)
+	defer sessionTicker.Stop()
+	select {
+	case <-ctx.Done():
+		return nil
+	default:
+	}
+
+	if _, err := w.store.DeleteExpiredSessions(ctx); err != nil {
+		slog.Error("delete expired sessions", "err", err)
+	}
 
 	// Reconcile once at start, which is also what backfills a freshly
 	// onboarded repository without waiting an hour for the first tick.
@@ -52,10 +67,14 @@ func (w *Worker) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil
 		case <-ticker.C:
 			if err := w.Reconcile(ctx); err != nil {
 				slog.Error("reconcile", "err", err)
+			}
+		case <-sessionTicker.C:
+			if _, err := w.store.DeleteExpiredSessions(ctx); err != nil {
+				slog.Error("delete expired sessions", "err", err)
 			}
 		default:
 		}
@@ -67,7 +86,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		if !did {
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return nil
 			case <-time.After(idlePause):
 			}
 		}

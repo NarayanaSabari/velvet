@@ -1,3 +1,5 @@
+import { SignOutButton } from './SignOutButton'
+
 export function NotInvited() {
   return (
     <div className="mx-auto mt-24 max-w-sm border border-grey-200 px-6 py-8">
@@ -6,9 +8,7 @@ export function NotInvited() {
         This GitHub account is not a member of any workspace here. Ask an admin
         to invite your login, then sign in again.
       </p>
-      <a className="mt-4 inline-block text-sm underline" href="/api/v1/auth/logout">
-        Sign out
-      </a>
+      <SignOutButton />
     </div>
   )
 }

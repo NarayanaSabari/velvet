@@ -20,13 +20,6 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--save", "60", "1"]
-    volumes:
-      - redisdata:/data
-    restart: unless-stopped
-
   # Migrations run exactly once, before anything that reads the schema starts.
   # Letting api and worker each migrate on boot would race two writers against
   # the same DDL.
@@ -37,7 +30,6 @@ services:
     command: ["migrate"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
-      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,7 +42,6 @@ services:
     command: ["serve"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
-      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
       BASE_URL: ${BASE_URL:?set BASE_URL}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
@@ -62,8 +53,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      redis:
-        condition: service_started
     restart: unless-stopped
 
   worker:
@@ -73,7 +62,6 @@ services:
     command: ["worker"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
-      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
       BASE_URL: ${BASE_URL:?set BASE_URL}
       # Optional, matching config.Load: the worker starts before GitHub is
       # configured and simply has nothing to sync until it is.
@@ -84,8 +72,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      redis:
-        condition: service_started
     restart: unless-stopped
 
   # Build-only service: it copies the SPA build into the shared volume Caddy
@@ -124,6 +110,5 @@ services:
 
 volumes:
   pgdata:
-  redisdata:
   caddydata:
   webdist:

@@ -128,7 +128,7 @@ func nextIssuePosition(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, mi
 func (s *Store) CreateIssue(ctx context.Context, in CreateIssueInput) (Issue, error) {
 	var out Issue
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
-		if err := checkIssueReferences(ctx, tx, in.WorkspaceID, in.MilestoneID, in.ParentID); err != nil {
+		if err := checkIssueReferences(ctx, tx, in.WorkspaceID, in.AssigneeID, in.MilestoneID, in.ParentID); err != nil {
 			return err
 		}
 
@@ -168,7 +168,12 @@ func (s *Store) CreateIssue(ctx context.Context, in CreateIssueInput) (Issue, er
 
 // checkIssueReferences keeps a valid UUID from another workspace from being
 // used as a milestone or a parent.
-func checkIssueReferences(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, milestoneID, parentID *uuid.UUID) error {
+func checkIssueReferences(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, assigneeID, milestoneID, parentID *uuid.UUID) error {
+	if assigneeID != nil {
+		if err := checkWorkspaceMember(ctx, tx, workspaceID, *assigneeID); err != nil {
+			return err
+		}
+	}
 	if milestoneID != nil {
 		var exists bool
 		if err := tx.QueryRow(ctx, `
@@ -352,7 +357,7 @@ func (s *Store) UpdateIssue(ctx context.Context, workspaceID, id, actorID uuid.U
 		if patch.ParentID != nil {
 			parentID = *patch.ParentID
 		}
-		if err := checkIssueReferences(ctx, tx, workspaceID, milestoneID, parentID); err != nil {
+		if err := checkIssueReferences(ctx, tx, workspaceID, assigneeID, milestoneID, parentID); err != nil {
 			return err
 		}
 

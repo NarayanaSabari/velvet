@@ -2,10 +2,9 @@
 #
 # Connects a GitHub repository to a workspace.
 #
-# There is no admin UI for this yet, and the values GitHub gives you are
-# scattered across three different pages, so this script does the lookup for
-# you: give it an owner/name and it resolves the numeric repository id and the
-# installation id from the API, then posts them to the app.
+# The admin UI accepts these values directly. This script remains the quickest
+# path when the values GitHub gives you are scattered across different pages:
+# give it an owner/name and it resolves both numeric ids before posting them.
 #
 # Usage:
 #   GITHUB_TOKEN=ghp_... ./connect-repo.sh <owner/repo> [workspace-slug]

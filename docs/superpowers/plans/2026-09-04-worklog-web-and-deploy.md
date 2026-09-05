@@ -1221,7 +1221,7 @@ git commit -m "Freeze sprint snapshot on close and roll incomplete issues forwar
 - Create: `Dockerfile.api`, `web/Dockerfile`, `deploy/docker-compose.yml`, `deploy/Caddyfile`, `deploy/.env.example`, `deploy/backup.sh`, `README.md` (rewrite)
 
 **Interfaces:**
-- Produces: a working `docker compose up` bringing up `caddy`, `api`, `worker`, `postgres`, `redis`.
+- Produces: a working `docker compose up` bringing up long-lived `caddy`, `api`, `worker`, and `postgres` containers, plus the one-shot `migrate` and `web` services.
 
 - [ ] **Step 1: Write the API Dockerfile**
 
@@ -1282,13 +1282,6 @@ services:
       retries: 10
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--save", "60", "1"]
-    volumes:
-      - redisdata:/data
-    restart: unless-stopped
-
   migrate:
     build:
       context: ..
@@ -1296,7 +1289,6 @@ services:
     command: ["migrate"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
-      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
@@ -1309,7 +1301,6 @@ services:
     command: ["serve"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
-      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
       BASE_URL: ${BASE_URL:?set BASE_URL}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
@@ -1328,7 +1319,6 @@ services:
     command: ["worker"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
-      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
       BASE_URL: ${BASE_URL:?set BASE_URL}
       GITHUB_APP_ID: ${GITHUB_APP_ID}
       GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY}
@@ -1363,7 +1353,6 @@ services:
 
 volumes:
   pgdata:
-  redisdata:
   caddydata:
   webdist:
 ```

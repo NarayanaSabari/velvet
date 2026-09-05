@@ -134,6 +134,16 @@ test('dark mode inverts the same palette', async ({ signedIn: page }) => {
   expect(body.fg).toBe('rgb(255, 255, 255)')
 })
 
+test('the workspace navigation does not consume half a phone screen', async ({ signedIn: page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/w/lab')
+
+  const nav = await page.getByRole('navigation').boundingBox()
+  const main = await page.getByRole('main').boundingBox()
+  expect(nav?.width).toBe(390)
+  expect(main?.x).toBe(0)
+})
+
 test('a deep link survives a hard refresh', async ({ signedIn: page }) => {
   // Without try_files in the Caddyfile this 404s, which is a deployment bug no
   // client-side navigation would ever reveal.
