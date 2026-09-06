@@ -30,7 +30,9 @@ func CurrentWorkspace(ctx context.Context) (store.Membership, bool) {
 func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/auth/github/login", s.handleLogin)
 	mux.HandleFunc("GET /api/v1/auth/github/callback", s.handleCallback)
-	mux.Handle("POST /api/v1/auth/logout", s.RequireAuth(http.HandlerFunc(s.handleLogout)))
+	// Logout is deliberately idempotent. It must clear a stale browser cookie
+	// even when the backing session has expired or was already removed.
+	mux.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)
 	mux.Handle("GET /api/v1/me", s.RequireAuth(http.HandlerFunc(s.handleMe)))
 }
 
@@ -100,7 +102,10 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(auth.CookieName); err == nil {
-		_ = s.store.DeleteSession(r.Context(), c.Value)
+		if err := s.store.DeleteSession(r.Context(), c.Value); err != nil {
+			WriteError(w, http.StatusInternalServerError, "internal", "could not end the session")
+			return
+		}
 	}
 	auth.ClearSessionCookie(w, s.secureCookies())
 	WriteJSON(w, http.StatusOK, map[string]string{"status": "signed_out"})

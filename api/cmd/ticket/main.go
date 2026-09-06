@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/api"
@@ -17,18 +21,18 @@ import (
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string) error {
+func run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: ticket <serve|worker|migrate>")
 	}
-	ctx := context.Background()
-
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -48,8 +52,12 @@ func run(args []string) error {
 			Handler:           api.NewServer(pool, cfg).Handler(),
 			ReadHeaderTimeout: 10 * time.Second,
 		}
-		slog.Info("listening", "addr", srv.Addr)
-		return srv.ListenAndServe()
+		listener, err := net.Listen("tcp", srv.Addr)
+		if err != nil {
+			return err
+		}
+		slog.Info("listening", "addr", listener.Addr())
+		return serve(ctx, srv, listener)
 	case "worker":
 		// The GitHub App is optional so a fresh install runs before it is
 		// configured. Without it the worker still drains local jobs and simply
@@ -68,5 +76,30 @@ func run(args []string) error {
 		return worker.New(store.New(pool), client).Run(ctx)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
+	}
+}
+
+func serve(ctx context.Context, srv *http.Server, listener net.Listener) error {
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Serve(listener)
+	}()
+
+	select {
+	case err := <-errCh:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("shutdown server: %w", err)
+		}
+		if err := <-errCh; !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
 	}
 }

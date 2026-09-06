@@ -3,6 +3,7 @@ import {
   createRoute,
   createRouter,
   redirect,
+  type RouterHistory,
 } from '@tanstack/react-router'
 
 import { api } from '../lib/api'
@@ -18,6 +19,8 @@ import { MilestonePage } from '../features/milestones/MilestonePage'
 import { IssuePage } from '../features/issues/IssuePage'
 import { UnlinkedPRs } from '../features/evidence/UnlinkedPRs'
 import { Reports } from '../features/reports/Reports'
+import { Admin } from '../features/admin/Admin'
+import { Mentions } from '../features/mentions/Mentions'
 
 const rootRoute = createRootRoute({ component: RootLayout })
 
@@ -108,6 +111,24 @@ const unlinkedRoute = createRoute({
   },
 })
 
+const adminRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug/admin',
+  component: function AdminRoute() {
+    const { slug } = adminRoute.useParams()
+    return <Admin slug={slug} />
+  },
+})
+
+const mentionsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug/mentions',
+  component: function MentionsRoute() {
+    const { slug } = mentionsRoute.useParams()
+    return <Mentions slug={slug} />
+  },
+})
+
 const routes = [
   indexRoute,
   dashboardRoute,
@@ -117,6 +138,8 @@ const routes = [
   milestoneRoute,
   issueRoute,
   unlinkedRoute,
+  mentionsRoute,
+  adminRoute,
   reportsRoute,
   createRoute({
     getParentRoute: () => rootRoute,
@@ -130,7 +153,13 @@ const routes = [
   }),
 ]
 
-export const router = createRouter({ routeTree: rootRoute.addChildren(routes) })
+const routeTree = rootRoute.addChildren(routes)
+
+export function createAppRouter(history?: RouterHistory) {
+  return createRouter({ routeTree, history })
+}
+
+export const router = createAppRouter()
 
 declare module '@tanstack/react-router' {
   interface Register {

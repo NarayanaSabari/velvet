@@ -14,17 +14,17 @@ import (
 var dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 func (s *Server) registerSprintRoutes(mux *http.ServeMux) {
-	writer := RequireRole("admin", "member")
+	admin := RequireRole("admin")
 	mux.Handle("GET /api/v1/w/{slug}/sprints",
 		s.RequireWorkspace(http.HandlerFunc(s.handleListSprints)))
 	mux.Handle("POST /api/v1/w/{slug}/sprints",
-		s.RequireWorkspace(writer(http.HandlerFunc(s.handleCreateSprint))))
+		s.RequireWorkspace(admin(http.HandlerFunc(s.handleCreateSprint))))
 	mux.Handle("GET /api/v1/w/{slug}/sprints/{id}",
 		s.RequireWorkspace(http.HandlerFunc(s.handleGetSprint)))
 	mux.Handle("POST /api/v1/w/{slug}/sprints/{id}/activate",
-		s.RequireWorkspace(writer(http.HandlerFunc(s.handleActivateSprint))))
+		s.RequireWorkspace(admin(http.HandlerFunc(s.handleActivateSprint))))
 	mux.Handle("POST /api/v1/w/{slug}/sprints/{id}/close",
-		s.RequireWorkspace(writer(http.HandlerFunc(s.handleCloseSprint))))
+		s.RequireWorkspace(admin(http.HandlerFunc(s.handleCloseSprint))))
 	mux.Handle("GET /api/v1/w/{slug}/sprints/{id}/snapshot",
 		s.RequireWorkspace(http.HandlerFunc(s.handleSprintSnapshot)))
 }

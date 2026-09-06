@@ -1,4 +1,4 @@
-import { test, expect, resetWorkspaceData } from './fixtures'
+import { test, expect, resetWorkspaceData, seedWorkspace } from './fixtures'
 
 /**
  * The core work-log loop, driven the way a person drives it.
@@ -29,6 +29,38 @@ test('an unauthenticated visitor is offered sign-in, not an account', async ({ b
   await context.close()
 })
 
+test('an uninvited visitor sees the reason instead of another sign-in prompt', async ({ browser }) => {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await page.goto('/not-invited')
+  await expect(page.getByRole('heading', { name: 'Not invited' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /sign in with github/i })).toHaveCount(0)
+  await context.close()
+})
+
+test('sign out ends the server session and returns to sign in', async ({ browser, baseURL, playwright }) => {
+  const token = `logout-${Date.now()}`
+  seedWorkspace(token)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  const url = new URL(baseURL!)
+  await context.addCookies([{ name: 'ticket_session', value: token, domain: url.hostname, path: '/' }])
+
+  await page.goto('/w/lab')
+  await page.getByRole('button', { name: 'Sign out' }).click()
+  await expect(page).toHaveURL(/\/signin$/)
+  await expect(page.getByRole('link', { name: /sign in with github/i })).toBeVisible()
+
+  const verifier = await playwright.request.newContext({
+    baseURL,
+    extraHTTPHeaders: { Cookie: `ticket_session=${token}` },
+  })
+  const response = await verifier.get('/api/v1/me')
+  expect(response.status()).toBe(401)
+  await verifier.dispose()
+  await context.close()
+})
+
 test('a signed-in member lands on their dashboard', async ({ signedIn: page }) => {
   await page.goto('/')
 
@@ -37,36 +69,28 @@ test('a signed-in member lands on their dashboard', async ({ signedIn: page }) =
   await expect(page.getByRole('navigation').getByText('Lab')).toBeVisible()
 })
 
-test('sprint, milestone, and issue can be created and read back', async ({
-  signedIn: page,
-  request,
-}) => {
-  const sprint = await request
-    .post('/api/v1/w/lab/sprints', {
-      data: { name: 'September 2026', starts_on: '2026-09-01', ends_on: '2026-09-30' },
-    })
-    .then((r) => r.json())
+test('sprint, milestone, and issue can be created through the UI', async ({ signedIn: page }) => {
+  await page.goto('/w/lab/sprints')
+  await page.getByText('New sprint').click()
+  await page.getByLabel('Sprint name').fill('September 2026')
+  await page.getByLabel('Starts on').fill('2026-09-01')
+  await page.getByLabel('Ends on').fill('2026-09-30')
+  await page.getByRole('button', { name: 'Create sprint' }).click()
 
-  await request.post(`/api/v1/w/lab/sprints/${sprint.id}/activate`)
+  await page.getByRole('option', { name: /September 2026/ }).click()
+  await page.getByRole('button', { name: 'Activate sprint' }).click()
+  await page.getByText('New milestone').click()
+  await page.getByLabel('Milestone name').fill('Ship auth')
+  await page.getByRole('button', { name: 'Create milestone' }).click()
 
-  const milestone = await request
-    .post(`/api/v1/w/lab/sprints/${sprint.id}/milestones`, { data: { name: 'Ship auth' } })
-    .then((r) => r.json())
+  await page.getByRole('link', { name: 'Ship auth' }).click()
+  await page.getByText('New issue').click()
+  await page.getByLabel('Issue title').fill('Implement GitHub OAuth')
+  await page.getByRole('button', { name: 'Create issue' }).click()
 
-  const issue = await request
-    .post('/api/v1/w/lab/issues', {
-      data: { title: 'Implement GitHub OAuth', milestone_id: milestone.id },
-    })
-    .then((r) => r.json())
-
-  // The counter was reset with the rest of the workspace data, so this is the
-  // first issue of the run.
-  expect(issue.key).toBe('ENG-1')
-  expect(issue.status).toBe('backlog')
-
-  await page.goto(`/w/lab/issues/${issue.key}`)
+  await expect(page).toHaveURL(/\/w\/lab\/issues\/ENG-1$/)
   await expect(page.getByRole('heading', { name: 'Implement GitHub OAuth' })).toBeVisible()
-  await expect(page.getByText(issue.key)).toBeVisible()
+  await expect(page.getByText('ENG-1')).toBeVisible()
 })
 
 test('a comment written in the UI becomes the work log and reaches the feed', async ({
@@ -75,12 +99,13 @@ test('a comment written in the UI becomes the work log and reaches the feed', as
   await page.goto('/w/lab/issues/ENG-1')
 
   const body = `Wired up the OAuth callback at ${Date.now()}.`
-  await page.getByRole('textbox').fill(body)
+  const composer = page.getByPlaceholder('Write an update…')
+  await composer.fill(body)
   await page.getByRole('button', { name: 'Comment' }).click()
 
   // The composer clears only after the write succeeds, so an empty box is the
   // signal the comment landed.
-  await expect(page.getByRole('textbox')).toHaveValue('')
+  await expect(composer).toHaveValue('')
   await expect(page.getByText(body)).toBeVisible()
 
   await page.goto('/w/lab/feed')

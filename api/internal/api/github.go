@@ -153,6 +153,11 @@ func (s *Server) handleLinkRepo(w http.ResponseWriter, r *http.Request) {
 		GitHubID: body.GitHubID, Owner: body.Owner, Name: body.Name,
 		DefaultBranch: body.DefaultBranch})
 	if err != nil {
+		if errors.Is(err, store.ErrForeignReference) {
+			WriteError(w, http.StatusBadRequest, "invalid_request",
+				"that repository is already connected to another workspace")
+			return
+		}
 		writePRError(w, err)
 		return
 	}

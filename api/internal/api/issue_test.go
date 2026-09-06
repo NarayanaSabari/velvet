@@ -85,6 +85,25 @@ func TestIssueRejectsUnknownStatus(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
+func TestIssueRejectsAssigneeFromAnotherWorkspace(t *testing.T) {
+	f := testutil.NewFixture(t)
+	foreign, err := f.Store.UpsertUserByGitHub(t.Context(),
+		store.GitHubIdentity{ID: 9999, Login: "outsider"})
+	require.NoError(t, err)
+	var otherWorkspace string
+	require.NoError(t, f.Pool.QueryRow(t.Context(),
+		`INSERT INTO workspace (name, slug) VALUES ('Other', 'other') RETURNING id`).Scan(&otherWorkspace))
+	_, err = f.Pool.Exec(t.Context(),
+		`INSERT INTO membership (workspace_id, user_id, invited_login)
+		 VALUES ($1, $2, 'outsider')`, otherWorkspace, foreign.ID)
+	require.NoError(t, err)
+
+	rec := f.Do(http.MethodPost, "/api/v1/w/lab/issues", map[string]any{
+		"title": "Secret assignment", "assignee_id": foreign.ID.String(),
+	})
+	require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+}
+
 func TestSubIssueNestingIsRejectedByTheAPI(t *testing.T) {
 	f := testutil.NewFixture(t)
 	parent := createIssue(t, f, map[string]any{"title": "Parent"})

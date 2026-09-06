@@ -48,7 +48,7 @@ export function seedWorkspace(token: string, slug = 'lab'): void {
     SELECT w.id, u.id, 'sabari', 'admin'
     FROM workspace w, app_user u
     WHERE w.slug = '${slug}' AND u.github_id = 1
-    ON CONFLICT (workspace_id, invited_login) DO NOTHING;
+    ON CONFLICT (workspace_id, lower(invited_login)) DO NOTHING;
 
     INSERT INTO session (id, user_id, expires_at)
     SELECT '${hashed}', u.id, now() + interval '2 hours'

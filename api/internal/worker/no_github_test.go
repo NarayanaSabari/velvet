@@ -1,6 +1,7 @@
 package worker_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,4 +16,12 @@ func TestReconcileWithoutGitHubAppIsANoOp(t *testing.T) {
 	f := testutil.NewFixture(t)
 	w := worker.New(f.Store, nil)
 	require.NoError(t, w.Reconcile(t.Context()))
+}
+
+func TestRunStopsCleanlyWhenCancelled(t *testing.T) {
+	f := testutil.NewFixture(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	require.NoError(t, worker.New(f.Store, nil).Run(ctx))
 }

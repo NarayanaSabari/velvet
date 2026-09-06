@@ -56,6 +56,26 @@ describe('ActivityRow', () => {
     render(<ActivityRow activity={row({ actor: null, verb: 'commented' })} />)
     expect(screen.getByText(/someone/i)).toBeInTheDocument()
   })
+
+  it('names membership administration changes', () => {
+    const { rerender } = render(
+      <ActivityRow activity={row({
+        verb: 'invited_member',
+        target_type: 'membership',
+        metadata: { github_login: 'octocat', role: 'member' },
+      })} />,
+    )
+    expect(screen.getByText(/invited @octocat as member/i)).toBeInTheDocument()
+
+    rerender(
+      <ActivityRow activity={row({
+        verb: 'changed_member_role',
+        target_type: 'membership',
+        metadata: { github_login: 'octocat', from: 'member', to: 'admin' },
+      })} />,
+    )
+    expect(screen.getByText(/changed @octocat from member to admin/i)).toBeInTheDocument()
+  })
 })
 
 describe('ActivityRow targets', () => {

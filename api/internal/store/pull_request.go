@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -433,8 +434,19 @@ func (s *Store) LinkRepo(ctx context.Context, in LinkRepoInput) (Repo, error) {
 				-- this the repo keeps the dead one and every token mint fails.
 				installation_id = EXCLUDED.installation_id,
 				workspace_id = EXCLUDED.workspace_id
+			WHERE repo.workspace_id = EXCLUDED.workspace_id
 			RETURNING `+repoCols,
 			in.WorkspaceID, in.InstallationID, in.GitHubID, in.Owner, in.Name, in.DefaultBranch))
+		if errors.Is(err, ErrNotFound) {
+			// The global GitHub id already belongs to another workspace. Never
+			// let knowing that id move a repository, along with its evidence.
+			var owner uuid.UUID
+			if lookupErr := tx.QueryRow(ctx,
+				`SELECT workspace_id FROM repo WHERE github_id = $1`, in.GitHubID).
+				Scan(&owner); lookupErr == nil && owner != in.WorkspaceID {
+				return ErrForeignReference
+			}
+		}
 		return err
 	})
 	return out, err

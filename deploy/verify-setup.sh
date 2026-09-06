@@ -99,7 +99,6 @@ openssl genrsa -out "$workdir/app.pem" 2048 2>/dev/null
   echo "POSTGRES_PASSWORD=setupcheck-local"
   echo "POSTGRES_DB=worklog"
   echo "DATABASE_URL=postgres://worklog:setupcheck-local@postgres:5432/worklog?sslmode=disable"
-  echo "SESSION_SECRET=setupcheck-session-secret-at-least-32-chars"
   echo "GITHUB_CLIENT_ID=Iv1.setupCheckClient"
   echo "GITHUB_CLIENT_SECRET=setupcheck-oauth-secret"
   echo "GITHUB_APP_ID=424242"

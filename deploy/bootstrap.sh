@@ -4,7 +4,7 @@
 #
 # This is a chicken-and-egg step: sign-in is invite-gated, so the very first
 # member cannot be invited through the app by anyone. Everyone after them can
-# be invited with ./invite.sh.
+# be invited from the Administration page or with ./invite.sh.
 #
 # Usage:
 #   ./bootstrap.sh <github-login> [workspace-name] [workspace-slug] [issue-prefix]
@@ -42,9 +42,9 @@ ON CONFLICT (slug) DO NOTHING;
 -- The invite is claimed the first time this login signs in through OAuth, so
 -- no user row has to exist yet.
 INSERT INTO membership (workspace_id, invited_login, role)
-SELECT w.id, '${login}', 'admin'
+SELECT w.id, lower('${login}'), 'admin'
 FROM workspace w WHERE w.slug = '${slug}'
-ON CONFLICT (workspace_id, invited_login) DO UPDATE SET role = 'admin';
+ON CONFLICT (workspace_id, lower(invited_login)) DO UPDATE SET role = 'admin';
 SQL
 
 base="${BASE_URL:-$(grep -E '^BASE_URL=' "$env_file" | cut -d= -f2- || true)}"
@@ -53,7 +53,7 @@ cat <<EOF
 Workspace '${name}' created, and ${login} invited as an admin.
 
 Sign in at ${base:-your BASE_URL} and the invite is claimed automatically.
-Invite the rest of the team with:
+Invite the rest of the team from the Administration page, or with:
 
     ./invite.sh <github-login> [admin|member|viewer]
 EOF

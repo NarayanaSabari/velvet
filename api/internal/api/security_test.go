@@ -55,6 +55,27 @@ func TestSecurityViewerCannotCreateSprint(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 }
 
+// Sprint lifecycle changes the reporting boundary for the whole workspace,
+// so an ordinary member may not create, activate, or close one.
+func TestSecurityMemberCannotManageSprintLifecycle(t *testing.T) {
+	f := testutil.NewFixture(t)
+	ctx := t.Context()
+
+	member, err := f.Store.UpsertUserByGitHub(ctx, store.GitHubIdentity{ID: 4343, Login: "member"})
+	require.NoError(t, err)
+	_, err = f.Pool.Exec(ctx,
+		`INSERT INTO membership (workspace_id, user_id, invited_login, role)
+		 VALUES ($1, $2, 'member', 'member')`, f.WorkspaceID, member.ID)
+	require.NoError(t, err)
+	tok, err := f.Store.CreateSession(ctx, member.ID, time.Hour)
+	require.NoError(t, err)
+	f.Token = tok
+
+	created := f.Do(http.MethodPost, "/api/v1/w/lab/sprints", map[string]any{
+		"name": "Nope", "starts_on": "2026-09-01", "ends_on": "2026-09-30"})
+	require.Equal(t, http.StatusForbidden, created.Code, created.Body.String())
+}
+
 // A forged or random session token must never authenticate.
 func TestSecurityForgedSessionTokenIsRejected(t *testing.T) {
 	f := testutil.NewFixture(t)

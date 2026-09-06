@@ -27,7 +27,6 @@ POSTGRES_USER=worklog
 POSTGRES_PASSWORD=e2e-local-only
 POSTGRES_DB=worklog
 DATABASE_URL=postgres://worklog:e2e-local-only@postgres:5432/worklog?sslmode=disable
-SESSION_SECRET=e2e-session-secret-at-least-32-characters-long
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 GITHUB_APP_ID=

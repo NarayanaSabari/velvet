@@ -60,6 +60,25 @@ func TestMilestonesAreOrderedByPosition(t *testing.T) {
 	require.Less(t, list.Milestones[1].Position, list.Milestones[2].Position)
 }
 
+func TestListAllWorkspaceMilestonesForIssueFiling(t *testing.T) {
+	f := testutil.NewFixture(t)
+	sprint := newSprint(t, f)
+	for _, name := range []string{"Ship auth", "Ship billing"} {
+		rec := f.Do(http.MethodPost,
+			"/api/v1/w/lab/sprints/"+sprint.ID.String()+"/milestones",
+			map[string]any{"name": name})
+		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	}
+
+	rec := f.Do(http.MethodGet, "/api/v1/w/lab/milestones", nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var list struct {
+		Milestones []store.Milestone `json:"milestones"`
+	}
+	f.DecodeInto(rec, &list)
+	require.Len(t, list.Milestones, 2)
+}
+
 func TestCompletingAMilestoneRecordsActivity(t *testing.T) {
 	f := testutil.NewFixture(t)
 	sprint := newSprint(t, f)
@@ -92,4 +111,35 @@ func TestMilestoneRejectsUnknownStatus(t *testing.T) {
 	rec = f.Do(http.MethodPatch, "/api/v1/w/lab/milestones/"+m.ID.String(),
 		map[string]any{"status": "almost"})
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestMilestoneTargetDateCanBeCleared(t *testing.T) {
+	f := testutil.NewFixture(t)
+	sprint := newSprint(t, f)
+	created := f.Do(http.MethodPost,
+		"/api/v1/w/lab/sprints/"+sprint.ID.String()+"/milestones",
+		map[string]any{"name": "Ship auth", "target_date": "2026-09-30"})
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	var milestone store.Milestone
+	f.DecodeInto(created, &milestone)
+	require.NotNil(t, milestone.TargetDate)
+
+	updated := f.Do(http.MethodPatch, "/api/v1/w/lab/milestones/"+milestone.ID.String(),
+		map[string]any{"target_date": ""})
+	require.Equal(t, http.StatusOK, updated.Code, updated.Body.String())
+	f.DecodeInto(updated, &milestone)
+	require.Nil(t, milestone.TargetDate)
+}
+
+func TestMilestoneRejectsOwnerFromAnotherWorkspace(t *testing.T) {
+	f := testutil.NewFixture(t)
+	sprint := newSprint(t, f)
+	foreign, err := f.Store.UpsertUserByGitHub(t.Context(),
+		store.GitHubIdentity{ID: 9998, Login: "foreign-owner"})
+	require.NoError(t, err)
+
+	rec := f.Do(http.MethodPost,
+		"/api/v1/w/lab/sprints/"+sprint.ID.String()+"/milestones",
+		map[string]any{"name": "Secret owner", "owner_id": foreign.ID.String()})
+	require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
 }

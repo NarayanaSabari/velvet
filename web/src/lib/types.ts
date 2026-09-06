@@ -31,6 +31,14 @@ export interface Membership {
   role: Role
 }
 
+export interface WorkspaceMembership {
+  id: string
+  workspace_id: string
+  invited_login: string
+  role: Role
+  user: User | null
+}
+
 export interface SessionPayload {
   user: User
   memberships: Membership[]
@@ -147,6 +155,17 @@ export interface PullRequest {
   closed_at?: string | null
   gh_created_at?: string | null
   gh_updated_at?: string | null
+}
+
+export interface Repo {
+  id: string
+  workspace_id: string
+  installation_id: number
+  github_id: number
+  owner: string
+  name: string
+  default_branch: string
+  synced_at: string | null
 }
 
 export interface Review {

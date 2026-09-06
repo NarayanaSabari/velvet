@@ -51,17 +51,19 @@ Browser ──> Caddy ──> web (static SPA build)
                  └──> api (Go HTTP)
 GitHub  ──> Caddy ──> api /webhooks/github
 
-api ──> Postgres, Redis
-worker <── Redis, ──> Postgres, ──> GitHub REST
+api ──> Postgres
+worker <── Postgres job queue, ──> GitHub REST
 ```
 
-Five containers: `caddy`, `api`, `worker`, `postgres`, `redis`.
+Compose runs four long-lived containers: `caddy`, `api`, `worker`, and `postgres`.
+The `migrate` and `web` services are one-shot setup containers that apply the schema and copy the built SPA into Caddy's shared volume.
 Caddy terminates TLS with Let's Encrypt, serves the built SPA, and proxies `/api` and `/webhooks`.
+Postgres owns both domain data and the durable background-job queue.
 
-### One binary, two entrypoints
+### One binary, three subcommands
 
-`ticket serve` runs the HTTP API; `ticket worker` runs the queue consumer.
-The same code and the same models back both, so the two can never drift apart, but they scale and fail independently.
+`ticket migrate` applies schema migrations, `ticket serve` runs the HTTP API, and `ticket worker` runs the queue consumer.
+The same code and models back the API and worker, so they cannot drift apart, but the two long-running processes scale and fail independently.
 
 The webhook handler verifies the HMAC signature, writes the raw payload to `github_events`, enqueues a job, and returns 200 in single-digit milliseconds.
 All real work happens in the worker, where a slow GitHub call cannot cause GitHub to mark the endpoint unhealthy.
@@ -70,9 +72,11 @@ Deliveries are deduplicated on delivery ID, so GitHub's retries are safe.
 ### API
 
 REST over JSON under `/api/v1`, cursor-paginated lists.
-A generated OpenAPI spec produces the TypeScript client for the SPA, which recovers most of the shared-types benefit of a single-language stack.
+The SPA uses a small handwritten fetch wrapper and TypeScript interfaces that preserve the API's snake_case JSON directly.
+Keeping the boundary thin avoids a mapping layer; API contract changes must update the Go response and its matching TypeScript interface together.
 
-Sessions live in an HttpOnly, SameSite=Lax cookie; the SPA never holds a token.
+Sessions use cryptographically random opaque bearer tokens in an HttpOnly, SameSite=Lax cookie; the SPA never reads the token.
+Postgres stores only each token's SHA-256 hash, so a database leak does not expose replayable credentials and no cookie-signing secret is required.
 
 Realtime updates use SSE at `/api/v1/stream`, not WebSockets: updates are server-to-client only, and SSE traverses proxies with far less trouble.
 
@@ -261,7 +265,7 @@ The SPA uses Vitest for units and a small Playwright suite over the paths that m
 
 ## 11. Delivery
 
-`docker compose up` on a VPS, with `caddy`, `api`, `worker`, `postgres`, and `redis`.
+`docker compose up` on a VPS runs `caddy`, `api`, `worker`, and `postgres`, plus one-shot `migrate` and `web` setup services.
 
 Migrations are versioned and applied on boot in a single-writer step.
 

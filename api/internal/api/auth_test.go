@@ -17,8 +17,7 @@ import (
 
 func TestMeRequiresASession(t *testing.T) {
 	pool := testutil.NewPostgres(t)
-	cfg := &config.Config{BaseURL: "http://localhost:8080",
-		SessionSecret: "0123456789abcdef0123456789abcdef"}
+	cfg := &config.Config{BaseURL: "http://localhost:8080"}
 	h := api.NewServer(pool, cfg).Handler()
 
 	rec := httptest.NewRecorder()
@@ -44,8 +43,7 @@ func TestMeReturnsUserAndMemberships(t *testing.T) {
 	token, err := st.CreateSession(ctx, u.ID, time.Hour)
 	require.NoError(t, err)
 
-	cfg := &config.Config{BaseURL: "http://localhost:8080",
-		SessionSecret: "0123456789abcdef0123456789abcdef"}
+	cfg := &config.Config{BaseURL: "http://localhost:8080"}
 	h := api.NewServer(pool, cfg).Handler()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
@@ -56,4 +54,19 @@ func TestMeReturnsUserAndMemberships(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), `"role":"admin"`)
 	require.Contains(t, rec.Body.String(), `"github_login":"sabari"`)
+}
+
+func TestLogoutWithoutASessionStillClearsTheCookie(t *testing.T) {
+	pool := testutil.NewPostgres(t)
+	cfg := &config.Config{BaseURL: "http://localhost:8080"}
+	h := api.NewServer(pool, cfg).Handler()
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	cookies := rec.Result().Cookies()
+	require.Len(t, cookies, 1)
+	require.Equal(t, auth.CookieName, cookies[0].Name)
+	require.Less(t, cookies[0].MaxAge, 0)
 }

@@ -31,12 +31,6 @@ func (s *Server) Handler() http.Handler {
 		WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	// Exercised only by TestPanicBecomesInternalError; harmless in production
-	// and worth keeping so the recovery path stays covered.
-	mux.HandleFunc("GET /api/v1/panic-test", func(http.ResponseWriter, *http.Request) {
-		panic("deliberate panic")
-	})
-
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusNotFound, "not_found", "no such endpoint")
 	})
@@ -46,6 +40,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /webhooks/github", s.handleGitHubWebhook)
 
 	s.registerAuthRoutes(mux)
+	s.registerMembershipRoutes(mux)
 	s.registerSprintRoutes(mux)
 	s.registerMilestoneRoutes(mux)
 	s.registerIssueRoutes(mux)

@@ -113,6 +113,20 @@ export function ActivityRow({ activity }: { activity: Activity }) {
     case 'closed_sprint':
       body = <span>closed sprint {str(metadata, 'name')}</span>
       break
+    case 'invited_member':
+      body = (
+        <span>
+          {`invited @${str(metadata, 'github_login') ?? 'unknown'} as ${str(metadata, 'role') ?? 'member'}`}
+        </span>
+      )
+      break
+    case 'changed_member_role':
+      body = (
+        <span>
+          {`changed @${str(metadata, 'github_login') ?? 'unknown'} from ${str(metadata, 'from') ?? 'unknown'} to ${str(metadata, 'to') ?? 'unknown'}`}
+        </span>
+      )
+      break
     default:
       // Unknown verb: say what happened in the most generic honest terms.
       body = (

@@ -49,8 +49,10 @@ e2e/     Playwright suite, run against the real Compose stack
 deploy/  Compose file, Caddyfile, backup script
 ```
 
-Five containers: `caddy`, `api`, `worker`, `postgres`, `redis`.
+Compose runs four long-lived containers: `caddy`, `api`, `worker`, and `postgres`.
+The `migrate` and `web` services are one-shot setup containers that apply the schema and copy the built SPA into Caddy's shared volume.
 Caddy terminates TLS, serves the built SPA, and proxies `/api` and `/webhooks`, so the browser sees a single origin and the session cookie needs no cross-site handling.
+Postgres stores both domain data and the durable background-job queue.
 
 The binary has three subcommands:
 
@@ -83,9 +85,8 @@ Set `SITE_ADDRESS=http://localhost` for local work, where there is nothing to ce
 ```bash
 # API
 cd api
-DATABASE_URL=postgres://... SESSION_SECRET=$(openssl rand -hex 32) \
-  go run ./cmd/ticket migrate
-DATABASE_URL=postgres://... SESSION_SECRET=... go run ./cmd/ticket serve
+DATABASE_URL=postgres://... go run ./cmd/ticket migrate
+DATABASE_URL=postgres://... go run ./cmd/ticket serve
 
 # SPA, proxying /api to localhost:8080
 cd web && npm install && npm run dev
@@ -119,10 +120,9 @@ SESSION_TOKEN=<your ticket_session cookie> GITHUB_TOKEN=<a token that can read t
   ./deploy/connect-repo.sh your-org/your-repo your-workspace-slug
 ```
 
-The script resolves the numeric repository id and the App installation id for you, because GitHub scatters them across three different pages.
+Workspace admins can also connect a repository from the Administration page.
+The script remains useful because it resolves the numeric repository id and the App installation id for you, which GitHub scatters across three different pages.
 The worker backfills the last 90 days of pull requests on its next reconcile pass, which runs at startup and hourly after that, so the views are not empty on day one.
-
-There is no admin screen for this yet: repository connection and member invites are scripts against the API and the database.
 
 When it is all wired up, check it:
 
@@ -187,6 +187,9 @@ request reaches its issue through reconciliation with zero deliveries made.
 
 Members sign in with GitHub OAuth; there are no passwords, because every member already has a GitHub account and a second credential store is a liability without a benefit.
 
+Each session is a cryptographically random opaque bearer token stored in an HttpOnly, SameSite=Lax cookie.
+Only the token's SHA-256 hash is stored in Postgres, so there is no cookie-signing secret to configure and a database leak does not expose replayable session tokens.
+
 1. Organisation settings, Developer settings, OAuth Apps, New OAuth App.
 2. Authorization callback URL `https://YOUR_HOST/api/v1/auth/github/callback`.
 3. Put the client ID and secret in `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
@@ -203,7 +206,8 @@ cd deploy
 ./bootstrap.sh <your-github-login> "Your Team" your-slug ENG
 ```
 
-Everyone after them is an ordinary invite:
+Everyone after them can be invited and have their role changed from the workspace Administration page.
+The deployment script remains available for operators:
 
 ```
 ./invite.sh <github-login> member
@@ -219,7 +223,6 @@ An invite works before the person has ever signed in, so the whole team can be s
 | `SITE_ADDRESS` | yes | Hostname Caddy serves and certifies |
 | `BASE_URL` | yes | Origin the API builds absolute links and OAuth callbacks from |
 | `DATABASE_URL` | yes | Postgres connection string |
-| `SESSION_SECRET` | yes | Session cookie signing key, at least 32 characters |
 | `POSTGRES_USER` | yes | Postgres superuser for the container |
 | `POSTGRES_PASSWORD` | yes | Its password |
 | `POSTGRES_DB` | no | Database name, default `worklog` |

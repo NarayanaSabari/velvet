@@ -8,7 +8,6 @@ import (
 type Config struct {
 	DatabaseURL        string
 	Port               string
-	SessionSecret      string
 	GitHubClientID     string
 	GitHubClientSecret string
 	// The GitHub App settings are optional at load time, so the API still
@@ -27,7 +26,6 @@ func Load() (*Config, error) {
 	c := &Config{
 		DatabaseURL:         os.Getenv("DATABASE_URL"),
 		Port:                envOr("PORT", "8080"),
-		SessionSecret:       os.Getenv("SESSION_SECRET"),
 		GitHubClientID:      os.Getenv("GITHUB_CLIENT_ID"),
 		GitHubClientSecret:  os.Getenv("GITHUB_CLIENT_SECRET"),
 		GitHubWebhookSecret: os.Getenv("GITHUB_WEBHOOK_SECRET"),
@@ -38,9 +36,6 @@ func Load() (*Config, error) {
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
-	}
-	if len(c.SessionSecret) < 32 {
-		return nil, fmt.Errorf("SESSION_SECRET must be at least 32 characters")
 	}
 	return c, nil
 }

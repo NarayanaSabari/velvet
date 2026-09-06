@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,6 +29,9 @@ var (
 	// ErrForbidden reports an action the caller is not entitled to take on a
 	// record they can otherwise see, such as editing someone else's comment.
 	ErrForbidden = errors.New("forbidden")
+	// ErrLastAdmin prevents a workspace from losing the only person who can
+	// manage its access and repository connections.
+	ErrLastAdmin = errors.New("workspace must have at least one admin")
 )
 
 type Store struct {
@@ -35,6 +39,19 @@ type Store struct {
 }
 
 func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+
+func checkWorkspaceMember(ctx context.Context, tx pgx.Tx, workspaceID, userID uuid.UUID) error {
+	var exists bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM membership WHERE workspace_id = $1 AND user_id = $2)`,
+		workspaceID, userID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrNotFound
+	}
+	return nil
+}
 
 func (s *Store) Pool() *pgxpool.Pool { return s.pool }
 

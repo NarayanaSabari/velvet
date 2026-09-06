@@ -24,10 +24,9 @@ export function useSession(slug?: string): Session {
   })
 
   const memberships = query.data?.memberships ?? []
-  const workspace =
-    (slug ? memberships.find((m) => m.workspace_slug === slug) : undefined) ??
-    memberships[0] ??
-    null
+  const workspace = slug
+    ? memberships.find((m) => m.workspace_slug === slug) ?? null
+    : memberships[0] ?? null
   const error = query.error instanceof ApiError ? query.error : null
 
   return {
