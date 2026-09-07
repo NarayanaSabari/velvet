@@ -8,3 +8,6 @@
 /web/dist/
 /deploy/backups/
 .DS_Store
+
+# Written by deploy/remote-deploy.sh on the production host.
+deploy/.deployed-tag

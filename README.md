@@ -105,7 +105,8 @@ App permissions survive any one person leaving the team, whereas a personal acce
 1. Organisation settings, Developer settings, GitHub Apps, New GitHub App.
 2. Webhook URL `https://YOUR_HOST/webhooks/github`, and set a webhook secret.
 3. Repository permissions: Contents read-only, Metadata read-only, Pull requests read-only.
-4. Subscribe to events: Pull request, Pull request review, Push, Installation, Installation repositories.
+4. Subscribe to events: Pull request, Pull request review, Push.
+   The installation events the worker also handles are not in this list because every GitHub App receives them automatically.
 5. Generate a private key and download the PEM.
 6. Install the App on the organisation and choose which repositories map to the workspace.
 
@@ -286,7 +287,25 @@ Check a restore periodically against a scratch database: an untested backup is a
 
 ## Upgrading
 
-Deployment is a pull and a restart:
+Every push to `main` deploys itself, once the Go, web, and end-to-end jobs are green.
+The `images` job in `.github/workflows/ci.yml` builds both images for x86 and pushes them to GitHub Container Registry tagged with the commit, and the `deploy` job then connects to the host over SSH and runs `deploy/remote-deploy.sh` for that tag.
+The host never builds: it pulls the images and restarts what changed, and the job fails unless the API answers over the public URL afterwards.
+A pull that fails leaves the previous containers running.
+
+To roll back, open Actions, choose CI, click Run workflow, and pick the commit you want back.
+That rebuilds and redeploys exactly that tree.
+
+The host side is one restricted SSH key.
+Its `authorized_keys` entry forces a single command that accepts a commit sha, checks it out, and runs the deploy script, so the key can do nothing else:
+
+```
+command="/home/ubuntu/worklog-deploy-entry.sh",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty ssh-ed25519 AAAA...
+```
+
+The repository holds three secrets: `DEPLOY_SSH_KEY`, the private half of that key; `DEPLOY_HOST`; and `DEPLOY_KNOWN_HOSTS`, the host's public key from `ssh-keyscan`, so the job refuses to talk to an impostor.
+The registry credential is the job's own short-lived token, passed to the host on stdin, so nothing that can pull the private images is stored on the host.
+
+A host that can build for itself can still upgrade by hand:
 
 ```bash
 cd deploy

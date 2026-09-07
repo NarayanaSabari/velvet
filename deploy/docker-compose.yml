@@ -1,5 +1,12 @@
 name: worklog
 
+# Each buildable service also names its image in the registry. `up --build`
+# still builds locally and tags the result with that name, so development and
+# the end-to-end suite are unchanged; a production host runs `pull` instead
+# and never needs to compile anything. IMAGE_TAG pins a deploy to one commit.
+x-api-image: &api-image ${IMAGE_REPO:-ghcr.io/narayanasabari/velvet-otter-lab}/api:${IMAGE_TAG:-latest}
+x-web-image: &web-image ${IMAGE_REPO:-ghcr.io/narayanasabari/velvet-otter-lab}/web:${IMAGE_TAG:-latest}
+
 services:
   postgres:
     image: postgres:18-alpine
@@ -13,7 +20,11 @@ services:
       # leaves the volume empty and the container never becomes healthy.
       - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      # -h localhost forces TCP. The image's first-boot init runs a temporary
+      # server that listens only on the unix socket; without -h that server
+      # passes the check, migrate connects during the restart that follows,
+      # and fails with "the database system is starting up".
+      test: ["CMD-SHELL", "pg_isready -h localhost -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -24,6 +35,7 @@ services:
   # Letting api and worker each migrate on boot would race two writers against
   # the same DDL.
   migrate:
+    image: *api-image
     build:
       context: ..
       dockerfile: Dockerfile.api
@@ -36,6 +48,7 @@ services:
     restart: "no"
 
   api:
+    image: *api-image
     build:
       context: ..
       dockerfile: Dockerfile.api
@@ -56,6 +69,7 @@ services:
     restart: unless-stopped
 
   worker:
+    image: *api-image
     build:
       context: ..
       dockerfile: Dockerfile.api
@@ -77,6 +91,7 @@ services:
   # Build-only service: it copies the SPA build into the shared volume Caddy
   # serves from, then exits 0.
   web:
+    image: *web-image
     build:
       context: ..
       dockerfile: web/Dockerfile
