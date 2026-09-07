@@ -49,7 +49,7 @@ Record the dump path, size, creation time, and remote object location when confi
 
 Merge the foundation pull request only after explicit deployment approval.
 The push to `main` runs the Go, web, and end-to-end suites, builds commit-tagged API and web images, and invokes `deploy/remote-deploy.sh` on the host.
-The deploy script pulls all images before changing containers, then Compose runs the one-shot `migrate` service before starting the API and worker.
+The deploy script pulls `migrate`, `api`, and `worker` from the API image plus the separate `web` image before changing containers, then Compose runs the one-shot `migrate` service before starting the API and worker.
 The deploy is successful only after the public health endpoint responds.
 
 Record the deployed main commit and the exact image tag written to `/srv/worklog/deploy/.deployed-tag`.
@@ -165,6 +165,7 @@ COMMIT;
 Run the reviewed transaction through `psql -X -v ON_ERROR_STOP=1` and retain its output.
 Resolve unclaimed memberships only from a separately reviewed list of exact membership UUIDs and intended user UUIDs or exact obsolete membership UUIDs.
 Take another backup after all approved corrections are complete.
+This is an intermediate safety copy, not the contract rollback backup, because legacy writers remain active until the later maintenance gate.
 
 ## Between releases
 
@@ -182,7 +183,7 @@ Do not use the foundation image if it contains the earlier unconditional mail-va
 
 Obtain separate approval for the feature merge and production deployment.
 Confirm the feature image includes `0006_email_identity.sql`, its populated-`0005` upgrade tests, and application code compatible with the contracted schema.
-Record the foundation image tag and the fresh post-backfill backup path.
+Record the foundation image tag and the latest post-backfill backup path.
 
 The current `deploy/remote-deploy.sh` does not stop the old API and worker before running migrations.
 The operator must establish the maintenance window and stop both legacy writers before approving the merge to `main`:
@@ -211,7 +212,21 @@ All four result sets must be empty.
 Because both legacy writers are stopped, that result remains stable until the migration runs.
 If any query returns a row, do not apply `0006`, do not merge, and either resolve it under a newly approved data-change list or restart the foundation release and reschedule the maintenance window.
 
-### 3. Approve the contract deployment
+### 3. Create and verify the contract rollback backup
+
+After both legacy writers are stopped and all four second-preflight result sets are empty, create a fresh backup immediately before the contract merge:
+
+```bash
+cd /srv/worklog
+./deploy/backup.sh
+```
+
+Confirm the newly reported dump is non-empty and that `pg_restore --list` can read it.
+Record its exact path, size, creation time, and remote object location when configured, and designate this exact dump as the contract rollback backup.
+Do not restart the old API or worker or perform any other production write between this backup and the contract migration.
+If the merge or deployment is delayed, repeat the second preflight and create and verify a new contract rollback backup.
+
+### 4. Approve the contract deployment
 
 Only after the second preflight is empty, approve and merge the feature pull request.
 The push to `main` runs CI, builds the images, and invokes `remote-deploy.sh`.
@@ -237,5 +252,5 @@ Only when `0006` did not commit may the operator redeploy the recorded foundatio
 
 If `0006` is present in `schema_migration`, do not run the old API or worker against the contracted schema.
 A successful contract migration cannot be rolled back by selecting the old application tag.
-Rollback requires a new maintenance window, stopping application writers, restoring the reviewed pre-contract backup, and only then redeploying the recorded foundation image.
+Rollback requires a new maintenance window, stopping application writers, restoring the designated contract rollback backup captured after the empty second preflight, and only then redeploying the recorded foundation image.
 `pg_restore --clean --if-exists` drops and recreates database objects, so confirm the exact dump and target before approving that destructive restore.
