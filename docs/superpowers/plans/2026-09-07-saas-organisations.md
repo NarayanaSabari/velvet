@@ -1131,7 +1131,7 @@ func (s *Server) handleMagic(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-In `auth.go` remove `handleLogin` and its `GET /api/v1/auth/github/login` registration, and remove the GitHub callback's session creation for now by deleting `handleCallback` and its registration (Task 9 brings the callback back as the link callback). Keep `handleLogout` and `handleMe`. Delete the `/not-invited` redirect with it.
+In `auth.go` remove `handleLogin` and its `GET /api/v1/auth/github/login` registration, and remove the GitHub callback's session creation for now by deleting `handleCallback` and its registration (Task 10 brings the callback back as the link callback). Keep `handleLogout` and `handleMe`. Delete the `/not-invited` redirect with it.
 
 `cmd/ticket/main.go`, in the `serve` branch:
 
