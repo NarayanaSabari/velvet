@@ -32,6 +32,13 @@ var (
 	// ErrLastAdmin prevents a workspace from losing the only person who can
 	// manage its access and repository connections.
 	ErrLastAdmin = errors.New("workspace must have at least one admin")
+	// ErrRateLimited reports too many login-token requests from one address or
+	// source address during the current window.
+	ErrRateLimited = errors.New("rate limited")
+	// ErrInvalidEmail reports a login address that is not exactly one mailbox.
+	ErrInvalidEmail = errors.New("invalid email")
+	// ErrInvalidIP reports an address that cannot be canonically represented.
+	ErrInvalidIP = errors.New("invalid IP address")
 )
 
 type Store struct {

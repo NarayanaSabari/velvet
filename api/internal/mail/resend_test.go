@@ -3,9 +3,11 @@ package mail
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -40,4 +42,33 @@ func TestResendReportsFailure(t *testing.T) {
 	err := m.Send(context.Background(), Message{To: "a@x"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "422")
+	require.NotContains(t, err.Error(), "bad from")
+}
+
+// This catches a default client without a timeout, which can block a login
+// request indefinitely when the provider stops responding.
+func TestResendDefaultClientTimesOut(t *testing.T) {
+	testResendTimeout(t, nil)
+}
+
+// This catches a supplied unbounded client bypassing the delivery deadline.
+func TestResendSuppliedClientTimesOut(t *testing.T) {
+	testResendTimeout(t, &http.Client{})
+}
+
+func testResendTimeout(t *testing.T, httpClient *http.Client) {
+	t.Helper()
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	defer srv.Close()
+
+	m := NewResend("k", "f", httpClient, srv.URL)
+	started := time.Now()
+	err := m.Send(context.Background(), Message{To: "a@x"})
+	close(release)
+	require.Error(t, err)
+	require.Less(t, time.Since(started), 3*time.Second)
+	require.True(t, errors.Is(err, context.DeadlineExceeded))
 }

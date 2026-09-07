@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 const resendBaseURL = "https://api.resend.com"
+
+const resendTimeout = 2 * time.Second
 
 type Resend struct {
 	apiKey  string
@@ -22,7 +24,7 @@ type Resend struct {
 // NewResend sends through Resend's REST API. baseURL is overridable for tests.
 func NewResend(apiKey, from string, httpClient *http.Client, baseURL string) *Resend {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{Timeout: resendTimeout}
 	}
 	if baseURL == "" {
 		baseURL = resendBaseURL
@@ -31,6 +33,9 @@ func NewResend(apiKey, from string, httpClient *http.Client, baseURL string) *Re
 }
 
 func (r *Resend) Send(ctx context.Context, m Message) error {
+	ctx, cancel := context.WithTimeout(ctx, resendTimeout)
+	defer cancel()
+
 	body, err := json.Marshal(map[string]any{
 		"from":    r.from,
 		"to":      []string{m.To},
@@ -53,8 +58,7 @@ func (r *Resend) Send(ctx context.Context, m Message) error {
 	}
 	defer res.Body.Close()
 	if res.StatusCode >= 300 {
-		msg, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
-		return fmt.Errorf("resend: status %d: %s", res.StatusCode, strings.TrimSpace(string(msg)))
+		return fmt.Errorf("resend: status %d", res.StatusCode)
 	}
 	return nil
 }
