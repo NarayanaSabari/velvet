@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Deploys any ref by hand: the way to roll back is to dispatch this on the
+  # commit you want back, which rebuilds and redeploys exactly that tree.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   api:
@@ -108,3 +115,87 @@ jobs:
           name: playwright-report
           path: e2e/playwright-report/
           retention-days: 7
+
+  # Everything below runs only for a push to main or a manual dispatch, never
+  # for a pull request: a PR must not be able to publish images or reach the
+  # production host.
+  images:
+    name: Build images
+    runs-on: ubuntu-latest
+    needs: [api, web]
+    if: github.event_name != 'pull_request'
+    env:
+      IMAGE_REPO: ghcr.io/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The production host is x86; the images are built for it here so the
+      # host itself never has to compile anything. Every build is tagged with
+      # its commit so a deploy is reproducible and a rollback is just an
+      # older tag; `latest` only moves on main.
+      - name: Build and push api
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.api
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_REPO }}/api:sha-${{ github.sha }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/api:latest', env.IMAGE_REPO) || '' }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      - name: Build and push web
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: web/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_REPO }}/web:sha-${{ github.sha }}
+            ${{ github.ref == 'refs/heads/main' && format('{0}/web:latest', env.IMAGE_REPO) || '' }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: [e2e, images]
+    if: github.event_name != 'pull_request'
+    # One deploy at a time. Two overlapping pushes would otherwise race to
+    # restart the same containers.
+    concurrency:
+      group: production
+      cancel-in-progress: false
+    steps:
+      - name: Prepare SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      # The host key is restricted to one command, which checks out this
+      # commit and runs deploy/remote-deploy.sh. The registry token goes over
+      # stdin so the host can pull the private images without a stored
+      # credential; it expires with this job.
+      - name: Deploy ${{ github.sha }}
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'ubuntu' }}
+        run: |
+          printf '%s' "${{ secrets.GITHUB_TOKEN }}" | \
+            ssh -i ~/.ssh/deploy -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" "${{ github.sha }}"
