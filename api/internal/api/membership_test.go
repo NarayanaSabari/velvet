@@ -115,8 +115,10 @@ func TestViewerCanListSignedInWorkspaceMembers(t *testing.T) {
 	}
 	f.DecodeInto(rec, &body)
 	require.Len(t, body.Members, 2)
-	require.Equal(t, "octocat", body.Members[0].GitHubLogin)
-	require.Equal(t, "sabari", body.Members[1].GitHubLogin)
+	require.NotNil(t, body.Members[0].GitHubLogin)
+	require.NotNil(t, body.Members[1].GitHubLogin)
+	require.Equal(t, "octocat", *body.Members[0].GitHubLogin)
+	require.Equal(t, "sabari", *body.Members[1].GitHubLogin)
 	require.NotContains(t, rec.Body.String(), "pending-user")
 }
 

@@ -11,7 +11,8 @@ import (
 // flips reads differently from one made of written updates.
 type PersonActivityRow struct {
 	UserID      *uuid.UUID     `json:"user_id"`
-	GitHubLogin string         `json:"github_login"`
+	Email       string         `json:"email"`
+	GitHubLogin *string        `json:"github_login"`
 	Name        string         `json:"name"`
 	Verbs       map[string]int `json:"verbs"`
 	Total       int            `json:"total"`
@@ -42,7 +43,9 @@ type StaleIssueRow struct {
 	Key           string    `json:"key"`
 	Title         string    `json:"title"`
 	Status        string    `json:"status"`
-	AssigneeLogin string    `json:"assignee_login"`
+	AssigneeEmail string    `json:"assignee_email"`
+	AssigneeLogin *string   `json:"assignee_login"`
+	AssigneeName  string    `json:"assignee_name"`
 	MilestoneName string    `json:"milestone_name"`
 	LastSignalAt  string    `json:"last_signal_at"`
 	DaysSilent    int       `json:"days_silent"`
@@ -60,15 +63,14 @@ func (s *Store) PersonActivity(ctx context.Context, workspaceID uuid.UUID, from,
 	}
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT a.actor_id,
-		       COALESCE(u.github_login, ''), COALESCE(u.name, ''),
+		SELECT a.actor_id, COALESCE(u.email, ''), u.github_login, COALESCE(u.name, ''),
 		       a.verb, count(*)
 		FROM activity a
 		LEFT JOIN app_user u ON u.id = a.actor_id
 		WHERE a.workspace_id = $1
 		  AND ($2::date IS NULL OR a.created_at >= $2::date)
 		  AND ($3::date IS NULL OR a.created_at < $3::date + interval '1 day')
-		GROUP BY a.actor_id, u.github_login, u.name, a.verb`,
+		GROUP BY a.actor_id, u.email, u.github_login, u.name, a.verb`,
 		workspaceID, fromPtr, toPtr)
 	if err != nil {
 		return nil, err
@@ -81,9 +83,10 @@ func (s *Store) PersonActivity(ctx context.Context, workspaceID uuid.UUID, from,
 	order := []*PersonActivityRow{}
 	for rows.Next() {
 		var actorID *uuid.UUID
-		var login, name, verb string
+		var email, name, verb string
+		var login *string
 		var count int
-		if err := rows.Scan(&actorID, &login, &name, &verb, &count); err != nil {
+		if err := rows.Scan(&actorID, &email, &login, &name, &verb, &count); err != nil {
 			return nil, err
 		}
 		key := "system"
@@ -93,7 +96,7 @@ func (s *Store) PersonActivity(ctx context.Context, workspaceID uuid.UUID, from,
 		row, ok := byActor[key]
 		if !ok {
 			row = &PersonActivityRow{
-				UserID: actorID, GitHubLogin: login, Name: name,
+				UserID: actorID, Email: email, GitHubLogin: login, Name: name,
 				Verbs: map[string]int{},
 			}
 			byActor[key] = row
@@ -205,7 +208,7 @@ func (s *Store) StaleIssues(ctx context.Context, workspaceID uuid.UUID, days int
 			  AND i.status NOT IN ('done', 'cancelled')
 		)
 		SELECT i.id, i.key, i.title, i.status::text,
-		       COALESCE(u.github_login, ''), COALESCE(m.name, ''),
+		       COALESCE(u.email, ''), u.github_login, COALESCE(u.name, ''), COALESCE(m.name, ''),
 		       to_char(g.last_signal_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
 		       EXTRACT(day FROM now() - g.last_signal_at)::int
 		FROM issue i
@@ -224,7 +227,8 @@ func (s *Store) StaleIssues(ctx context.Context, workspaceID uuid.UUID, days int
 	for rows.Next() {
 		var r StaleIssueRow
 		if err := rows.Scan(&r.ID, &r.Key, &r.Title, &r.Status,
-			&r.AssigneeLogin, &r.MilestoneName, &r.LastSignalAt, &r.DaysSilent); err != nil {
+			&r.AssigneeEmail, &r.AssigneeLogin, &r.AssigneeName, &r.MilestoneName,
+			&r.LastSignalAt, &r.DaysSilent); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

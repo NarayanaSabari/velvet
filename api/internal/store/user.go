@@ -16,8 +16,9 @@ import (
 
 type User struct {
 	ID          uuid.UUID `json:"id"`
-	GitHubID    int64     `json:"github_id"`
-	GitHubLogin string    `json:"github_login"`
+	Email       string    `json:"email"`
+	GitHubID    *int64    `json:"github_id"`
+	GitHubLogin *string   `json:"github_login"`
 	Name        string    `json:"name"`
 	AvatarURL   string    `json:"avatar_url"`
 }
@@ -27,6 +28,15 @@ type GitHubIdentity struct {
 	Login     string
 	Name      string
 	AvatarURL string
+}
+
+type scanner interface {
+	Scan(...any) error
+}
+
+func scanUser(row scanner, user *User) error {
+	return mapErr(row.Scan(&user.ID, &user.Email, &user.GitHubID, &user.GitHubLogin,
+		&user.Name, &user.AvatarURL))
 }
 
 type Membership struct {
@@ -48,25 +58,22 @@ type WorkspaceMembership struct {
 }
 
 const workspaceMembershipCols = `m.id, m.workspace_id, m.invited_login, m.role::text,
-	u.id, u.github_id, u.github_login, u.name, u.avatar_url`
+	u.id, u.email, u.github_id, u.github_login, u.name, u.avatar_url`
 
 func scanWorkspaceMembership(row pgx.Row) (WorkspaceMembership, error) {
 	var m WorkspaceMembership
 	var userID *uuid.UUID
+	var email, login, name, avatar *string
 	var githubID *int64
-	var login, name, avatar *string
 	err := row.Scan(&m.ID, &m.WorkspaceID, &m.InvitedLogin, &m.Role,
-		&userID, &githubID, &login, &name, &avatar)
+		&userID, &email, &githubID, &login, &name, &avatar)
 	if err != nil {
 		return m, mapErr(err)
 	}
 	if userID != nil {
-		m.User = &User{ID: *userID}
-		if githubID != nil {
-			m.User.GitHubID = *githubID
-		}
-		if login != nil {
-			m.User.GitHubLogin = *login
+		m.User = &User{ID: *userID, GitHubID: githubID, GitHubLogin: login}
+		if email != nil {
+			m.User.Email = *email
 		}
 		if name != nil {
 			m.User.Name = *name
@@ -104,10 +111,10 @@ func (s *Store) ListWorkspaceMemberships(ctx context.Context, workspaceID uuid.U
 // selectors. Pending invites are absent because they do not identify a user.
 func (s *Store) ListWorkspaceMembers(ctx context.Context, workspaceID uuid.UUID) ([]User, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT u.id, u.github_id, u.github_login, u.name, u.avatar_url
+		SELECT u.id, COALESCE(u.email, ''), u.github_id, u.github_login, u.name, u.avatar_url
 		FROM membership m JOIN app_user u ON u.id = m.user_id
 		WHERE m.workspace_id = $1
-		ORDER BY lower(u.github_login)`, workspaceID)
+		ORDER BY lower(COALESCE(u.github_login, u.email))`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -116,8 +123,7 @@ func (s *Store) ListWorkspaceMembers(ctx context.Context, workspaceID uuid.UUID)
 	out := []User{}
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.ID, &user.GitHubID, &user.GitHubLogin,
-			&user.Name, &user.AvatarURL); err != nil {
+		if err := scanUser(rows, &user); err != nil {
 			return nil, err
 		}
 		out = append(out, user)
@@ -240,9 +246,23 @@ func (s *Store) UpsertUserByGitHub(ctx context.Context, gh GitHubIdentity) (User
 		    name         = EXCLUDED.name,
 		    avatar_url   = EXCLUDED.avatar_url,
 		    updated_at   = now()
-		RETURNING id, github_id, github_login, name, avatar_url`,
+		RETURNING id, COALESCE(email, ''), github_id, github_login, name, avatar_url`,
 		gh.ID, gh.Login, gh.Name, gh.AvatarURL).
-		Scan(&u.ID, &u.GitHubID, &u.GitHubLogin, &u.Name, &u.AvatarURL)
+		Scan(&u.ID, &u.Email, &u.GitHubID, &u.GitHubLogin, &u.Name, &u.AvatarURL)
+	return u, mapErr(err)
+}
+
+// UpsertUserByEmail finds or creates the normalized email identity. The
+// expression conflict target matches the database's case-insensitive index.
+func (s *Store) UpsertUserByEmail(ctx context.Context, email string) (User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	var u User
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO app_user (email)
+		VALUES ($1)
+		ON CONFLICT (lower(email)) DO UPDATE SET email = EXCLUDED.email
+		RETURNING id, email, github_id, github_login, name, avatar_url`, email).
+		Scan(&u.ID, &u.Email, &u.GitHubID, &u.GitHubLogin, &u.Name, &u.AvatarURL)
 	return u, mapErr(err)
 }
 
@@ -316,10 +336,10 @@ func (s *Store) CreateSession(ctx context.Context, userID uuid.UUID, ttl time.Du
 func (s *Store) UserBySessionToken(ctx context.Context, token string) (User, error) {
 	var u User
 	err := s.pool.QueryRow(ctx, `
-		SELECT u.id, u.github_id, u.github_login, u.name, u.avatar_url
+		SELECT u.id, COALESCE(u.email, ''), u.github_id, u.github_login, u.name, u.avatar_url
 		FROM session s JOIN app_user u ON u.id = s.user_id
 		WHERE s.id = $1 AND s.expires_at > now()`, HashToken(token)).
-		Scan(&u.ID, &u.GitHubID, &u.GitHubLogin, &u.Name, &u.AvatarURL)
+		Scan(&u.ID, &u.Email, &u.GitHubID, &u.GitHubLogin, &u.Name, &u.AvatarURL)
 	return u, mapErr(err)
 }
 

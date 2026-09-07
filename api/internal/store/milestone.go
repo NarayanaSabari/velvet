@@ -135,7 +135,7 @@ func (s *Store) ListMilestonesForSprint(ctx context.Context, workspaceID, sprint
 		       COALESCE(counts.by_status, '{}'::jsonb),
 		       lc.id, lc.body,
 		       to_char(lc.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
-		       lc.author_id, lc.github_id, lc.github_login, lc.author_name, lc.avatar_url
+		       lc.author_id, lc.author_email, lc.github_id, lc.github_login, lc.author_name, lc.avatar_url
 		FROM milestone m
 		LEFT JOIN LATERAL (
 		    SELECT jsonb_object_agg(status, n) AS by_status
@@ -143,7 +143,7 @@ func (s *Store) ListMilestonesForSprint(ctx context.Context, workspaceID, sprint
 		          FROM issue WHERE milestone_id = m.id GROUP BY status) s
 		) counts ON true
 		LEFT JOIN LATERAL (
-		    SELECT c.id, c.body, c.created_at, c.author_id,
+		    SELECT c.id, c.body, c.created_at, c.author_id, u.email AS author_email,
 		           u.github_id, u.github_login, u.name AS author_name, u.avatar_url
 		    FROM comment c JOIN app_user u ON u.id = c.author_id
 		    WHERE c.target_type = 'milestone' AND c.target_id = m.id AND c.deleted_at IS NULL
@@ -164,11 +164,11 @@ func (s *Store) ListMilestonesForSprint(ctx context.Context, workspaceID, sprint
 		var body, createdAt *string
 		var authorID *uuid.UUID
 		var githubID *int64
-		var githubLogin, authorName, avatarURL *string
+		var authorEmail, githubLogin, authorName, avatarURL *string
 		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.SprintID, &m.Name, &m.Description,
 			&m.OwnerID, &m.TargetDate, &m.Status, &m.Position, &m.CreatedAt, &m.UpdatedAt,
 			&counts, &commentID, &body, &createdAt,
-			&authorID, &githubID, &githubLogin, &authorName, &avatarURL); err != nil {
+			&authorID, &authorEmail, &githubID, &githubLogin, &authorName, &avatarURL); err != nil {
 			return nil, err
 		}
 		if counts == nil {
@@ -187,12 +187,9 @@ func (s *Store) ListMilestonesForSprint(ctx context.Context, workspaceID, sprint
 				c.CreatedAt = *createdAt
 			}
 			if authorID != nil {
-				c.Author = User{ID: *authorID}
-				if githubID != nil {
-					c.Author.GitHubID = *githubID
-				}
-				if githubLogin != nil {
-					c.Author.GitHubLogin = *githubLogin
+				c.Author = User{ID: *authorID, GitHubID: githubID, GitHubLogin: githubLogin}
+				if authorEmail != nil {
+					c.Author.Email = *authorEmail
 				}
 				if authorName != nil {
 					c.Author.Name = *authorName

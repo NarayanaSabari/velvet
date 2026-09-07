@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 
 import { api } from '../../lib/api'
 import type { Comment, Issue, Milestone, MilestoneStatus, User } from '../../lib/types'
+import { userLabel } from '../../lib/userLabel'
 import { Markdown } from '../../ui/Markdown'
 import { CommentComposer } from '../comments/CommentComposer'
 import { CommentThread } from '../comments/CommentThread'
@@ -101,7 +102,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
             <MilestoneEditForm
               milestone={milestone.data}
               members={(members.data?.members ?? []).map((member) => ({
-                id: member.id, label: member.github_login,
+                id: member.id, label: userLabel(member),
               }))}
               onSubmit={(input) => editMilestone.mutateAsync(input)}
             />

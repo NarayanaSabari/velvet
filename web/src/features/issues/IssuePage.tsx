@@ -23,6 +23,7 @@ import { StatusSelect } from './StatusSelect'
 import { IssueLabels } from './IssueLabels'
 import { IssueMetadata, ReadOnlyIssueMetadata } from './IssueMetadata'
 import { useSession } from '../auth/useSession'
+import { userLabel } from '../../lib/userLabel'
 import { IssueEditForm, IssueForm, type IssueInput } from '../work/CoreForms'
 import { Button } from '../../ui/Button'
 import { NavLink } from '../../app/nav'
@@ -60,7 +61,7 @@ export function IssueTimeline({ entries, onReply }: {
               {entry.kind === 'comment' ? (
                 <>
                   <span className="text-ink">
-                    {entry.author?.github_login ?? 'Someone'}
+                    {userLabel(entry.author)}
                   </span>
                   <div className="mt-0.5 flex gap-2">
                     <Avatar user={entry.author} />
@@ -253,7 +254,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
 
   const data = issue.data
   const memberChoices = (members.data?.members ?? []).map((member) => ({
-    id: member.id, label: member.github_login,
+    id: member.id, label: userLabel(member),
   }))
   const milestoneChoices = (milestones.data?.milestones ?? []).map((milestone) => ({
     id: milestone.id, label: milestone.name,

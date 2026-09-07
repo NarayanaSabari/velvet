@@ -6,6 +6,7 @@ import { EmptyState } from '../../ui/EmptyState'
 import { ActivityRow } from '../activity/ActivityRow'
 import { useActivity, type ActivityFilters } from '../activity/useActivity'
 import { useSession } from '../auth/useSession'
+import { userLabel } from '../../lib/userLabel'
 
 const VERBS = [
   'commented',
@@ -51,7 +52,7 @@ export function TeamFeed({ slug }: { slug: string }) {
           >
             <option value="">Everyone</option>
             {session.user ? (
-              <option value={session.user.id}>{session.user.github_login}</option>
+              <option value={session.user.id}>{userLabel(session.user)}</option>
             ) : null}
           </select>
         </label>

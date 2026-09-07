@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSession } from '../auth/useSession'
 import { api } from '../../lib/api'
 import type { Repo, Role, WorkspaceMembership } from '../../lib/types'
+import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 
@@ -165,7 +166,7 @@ function MembershipPanel({
               <div className="min-w-0 flex-1">
                 <div className="truncate">@{membership.invited_login}</div>
                 <div className="text-xs text-grey-500">
-                  {membership.user ? membership.user.name || 'Signed in' : 'Invite pending'}
+                  {membership.user ? userLabel(membership.user) : 'Invite pending'}
                 </div>
               </div>
               <label>

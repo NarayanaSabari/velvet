@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import type { Activity, IssueStatus } from '../../lib/types'
+import { userLabel } from '../../lib/userLabel'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
 import { Avatar } from '../../ui/Avatar'
 import { RelativeTime } from '../../ui/RelativeTime'
@@ -55,7 +56,7 @@ function Target({
  */
 export function ActivityRow({ activity }: { activity: Activity }) {
   const { actor, metadata, verb } = activity
-  const who = actor?.name || actor?.github_login || 'Someone'
+  const who = userLabel(actor)
 
   let body: ReactNode
   switch (verb) {

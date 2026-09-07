@@ -75,9 +75,11 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not record the account")
 		return
 	}
-	if _, err := s.store.BindMembership(r.Context(), user.ID, user.GitHubLogin); err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal", "could not bind membership")
-		return
+	if user.GitHubLogin != nil {
+		if _, err := s.store.BindMembership(r.Context(), user.ID, *user.GitHubLogin); err != nil {
+			WriteError(w, http.StatusInternalServerError, "internal", "could not bind membership")
+			return
+		}
 	}
 	memberships, err := s.store.MembershipsForUser(r.Context(), user.ID)
 	if err != nil {

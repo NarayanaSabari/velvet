@@ -24,7 +24,34 @@ func TestUpsertUserIsIdempotent(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, u1.ID, u2.ID, "the same GitHub id must map to one user")
-	require.Equal(t, "sabari-renamed", u2.GitHubLogin, "a renamed login must be picked up")
+	require.NotNil(t, u2.GitHubLogin)
+	require.Equal(t, "sabari-renamed", *u2.GitHubLogin, "a renamed login must be picked up")
+}
+
+func TestUpsertUserByEmailNormalizesAndPreservesLinkedIdentity(t *testing.T) {
+	pool := testutil.NewPostgres(t)
+	st := store.New(pool)
+	ctx := context.Background()
+
+	first, err := st.UpsertUserByEmail(ctx, " Member@Example.com ")
+	require.NoError(t, err)
+	require.Equal(t, "member@example.com", first.Email)
+	require.Nil(t, first.GitHubID)
+	require.Nil(t, first.GitHubLogin)
+
+	_, err = pool.Exec(ctx, `
+		UPDATE app_user SET github_id = 42, github_login = 'member-gh', name = 'Member'
+		WHERE id = $1`, first.ID)
+	require.NoError(t, err)
+
+	second, err := st.UpsertUserByEmail(ctx, "MEMBER@example.COM")
+	require.NoError(t, err)
+	require.Equal(t, first.ID, second.ID)
+	require.Equal(t, "member@example.com", second.Email)
+	require.NotNil(t, second.GitHubID)
+	require.NotNil(t, second.GitHubLogin)
+	require.Equal(t, int64(42), *second.GitHubID)
+	require.Equal(t, "member-gh", *second.GitHubLogin)
 }
 
 func TestBindMembershipClaimsInviteCaseInsensitively(t *testing.T) {
@@ -42,7 +69,8 @@ func TestBindMembershipClaimsInviteCaseInsensitively(t *testing.T) {
 	u, err := st.UpsertUserByGitHub(ctx, store.GitHubIdentity{ID: 7, Login: "sabari"})
 	require.NoError(t, err)
 
-	bound, err := st.BindMembership(ctx, u.ID, u.GitHubLogin)
+	require.NotNil(t, u.GitHubLogin)
+	bound, err := st.BindMembership(ctx, u.ID, *u.GitHubLogin)
 	require.NoError(t, err)
 	require.Equal(t, 1, bound)
 

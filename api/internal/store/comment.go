@@ -49,14 +49,14 @@ const commentCols = `c.id, c.workspace_id, c.target_type::text, c.target_id, c.p
 	to_char(c.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
 	to_char(c.edited_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
 	to_char(c.deleted_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
-	u.id, u.github_id, u.github_login, u.name, u.avatar_url`
+	u.id, COALESCE(u.email, ''), u.github_id, u.github_login, u.name, u.avatar_url`
 
 // scanCommentRow reads commentCols, plus any extra destinations a caller has
 // appended to the same select.
 func scanCommentRow(row pgx.Row, c *Comment, extra ...any) error {
 	dst := []any{&c.ID, &c.WorkspaceID, &c.TargetType, &c.TargetID, &c.ParentID,
-		&c.Body, &c.CreatedAt, &c.EditedAt, &c.DeletedAt,
-		&c.Author.ID, &c.Author.GitHubID, &c.Author.GitHubLogin,
+		&c.Body, &c.CreatedAt, &c.EditedAt, &c.DeletedAt, &c.Author.ID,
+		&c.Author.Email, &c.Author.GitHubID, &c.Author.GitHubLogin,
 		&c.Author.Name, &c.Author.AvatarURL}
 	return mapCommentErr(row.Scan(append(dst, extra...)...))
 }

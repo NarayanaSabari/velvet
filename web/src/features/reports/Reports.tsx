@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
+import { userLabel } from '../../lib/userLabel'
 import type {
   MilestoneCompletionRow,
   PersonActivityRow,
@@ -55,8 +56,8 @@ export function PersonActivityTable({ rows }: { rows: PersonActivityRow[] }) {
   return (
     <Table head={['Person', 'Comments', 'Status changes', 'Issues created', 'Total']}>
       {rows.map((row) => (
-        <tr key={row.user_id ?? row.github_login}>
-          <td className="py-1 pr-4">{row.github_login || 'System'}</td>
+        <tr key={row.user_id ?? row.github_login ?? 'system'}>
+          <td className="py-1 pr-4">{row.user_id ? userLabel(row) : 'System'}</td>
           <td className="py-1 pr-4 tabular-nums">{row.verbs.commented ?? 0}</td>
           <td className="py-1 pr-4 tabular-nums">{row.verbs.changed_status ?? 0}</td>
           <td className="py-1 pr-4 tabular-nums">{row.verbs.created_issue ?? 0}</td>
@@ -115,7 +116,11 @@ export function StaleTable({ rows, slug }: { rows: StaleIssueRow[]; slug?: strin
           </td>
           <td className="min-w-0 py-1 pr-4">{row.title ?? ''}</td>
           <td className="py-1 pr-4 whitespace-nowrap">{STATUS_LABELS[row.status]}</td>
-          <td className="py-1 pr-4 whitespace-nowrap">{row.assignee_login || 'Unassigned'}</td>
+          <td className="py-1 pr-4 whitespace-nowrap">
+            {row.assignee_email || row.assignee_login || row.assignee_name ? userLabel({
+              name: row.assignee_name, email: row.assignee_email, github_login: row.assignee_login,
+            }) : 'Unassigned'}
+          </td>
           {/* Words first, amber second: the count reads without the colour. */}
           <td className="py-1 pr-4 whitespace-nowrap text-stale">
             {row.days_silent} days

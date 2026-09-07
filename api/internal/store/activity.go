@@ -140,7 +140,7 @@ func (s *Store) ListActivity(ctx context.Context, workspaceID uuid.UUID, f Activ
 	rows, err := s.pool.Query(ctx, `
 		SELECT a.id, a.workspace_id, a.verb, a.target_type, a.target_id, a.metadata,
 		       to_char(a.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
-		       u.id, u.github_id, u.github_login, u.name, u.avatar_url
+		       u.id, u.email, u.github_id, u.github_login, u.name, u.avatar_url
 		FROM activity a
 		LEFT JOIN app_user u ON u.id = a.actor_id
 		WHERE a.workspace_id = $1
@@ -162,21 +162,18 @@ func (s *Store) ListActivity(ctx context.Context, workspaceID uuid.UUID, f Activ
 		var a Activity
 		var actorID *uuid.UUID
 		var githubID *int64
-		var login, name, avatar *string
+		var email, login, name, avatar *string
 		if err := rows.Scan(&a.ID, &a.WorkspaceID, &a.Verb, &a.TargetType, &a.TargetID,
 			&a.Metadata, &a.CreatedAt,
-			&actorID, &githubID, &login, &name, &avatar); err != nil {
+			&actorID, &email, &githubID, &login, &name, &avatar); err != nil {
 			return nil, "", err
 		}
 		// The actor is nullable because a departed user's history stays in the
 		// feed even after their account is removed.
 		if actorID != nil {
-			u := User{ID: *actorID}
-			if githubID != nil {
-				u.GitHubID = *githubID
-			}
-			if login != nil {
-				u.GitHubLogin = *login
+			u := User{ID: *actorID, GitHubID: githubID, GitHubLogin: login}
+			if email != nil {
+				u.Email = *email
 			}
 			if name != nil {
 				u.Name = *name

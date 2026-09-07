@@ -5,6 +5,7 @@ import { SignIn } from '../features/auth/SignIn'
 import { NotInvited } from '../features/auth/NotInvited'
 import { SignOutButton } from '../features/auth/SignOutButton'
 import { Avatar } from '../ui/Avatar'
+import { userLabel } from '../lib/userLabel'
 import { NavLink } from './nav'
 
 const NAV = [
@@ -88,7 +89,7 @@ export function Shell({ slug, children }: { slug?: string; children: ReactNode }
         <div className="mt-3 flex items-center gap-3 border-t border-grey-200 pt-3 text-sm sm:mt-6 sm:block">
           <span className="flex items-center gap-2">
             <Avatar user={user} />
-            <span className="truncate text-grey-700">{user?.github_login}</span>
+            <span className="truncate text-grey-700">{userLabel(user)}</span>
           </span>
           <SignOutButton />
         </div>

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
 import type { Mention } from '../../lib/types'
+import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { Markdown } from '../../ui/Markdown'
@@ -44,7 +45,7 @@ export function Mentions({ slug }: { slug: string }) {
             <li key={comment.id} className="py-2 text-sm">
               <div className="flex items-baseline gap-2">
                 <span className={readAt ? 'text-grey-500' : 'font-medium'}>
-                  {comment.author.github_login}
+                  {userLabel(comment.author)}
                 </span>
                 <RelativeTime iso={comment.created_at} />
                 {!readAt ? <span className="text-xs text-stale">Unread</span> : null}

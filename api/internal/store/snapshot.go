@@ -75,14 +75,19 @@ func captureSnapshot(ctx context.Context, tx pgx.Tx, workspaceID, sprintID uuid.
 		        ) counts
 		    ), '{}'::jsonb),
 		    COALESCE((
-		        SELECT jsonb_object_agg(login, n) FROM (
-		            SELECT COALESCE(u.github_login, 'system') AS login, count(*) AS n
-		            FROM activity a
-		            LEFT JOIN app_user u ON u.id = a.actor_id
+		    SELECT jsonb_object_agg(identity, n) FROM (
+		        SELECT CASE
+		            WHEN a.actor_id IS NULL THEN 'system'
+		            WHEN u.github_login IS NOT NULL THEN u.github_login
+		            WHEN u.email IS NOT NULL THEN u.email
+		            ELSE 'user:' || a.actor_id::text
+		        END AS identity, count(*) AS n
+		        FROM activity a
+		        LEFT JOIN app_user u ON u.id = a.actor_id
 		            WHERE a.workspace_id = $1
 		              AND a.created_at >= (SELECT starts_on FROM sprint WHERE id = $2)
 		              AND a.created_at < (SELECT ends_on FROM sprint WHERE id = $2) + interval '1 day'
-		            GROUP BY COALESCE(u.github_login, 'system')
+		        GROUP BY identity
 		        ) totals
 		    ), '{}'::jsonb)
 		ON CONFLICT (sprint_id) DO NOTHING`, workspaceID, sprintID)

@@ -17,8 +17,9 @@ export type Role = 'admin' | 'member' | 'viewer'
 
 export interface User {
   id: string
-  github_id?: number
-  github_login: string
+  email?: string
+  github_id?: number | null
+  github_login: string | null
   name: string
   avatar_url: string
 }
@@ -195,7 +196,8 @@ export interface Evidence {
 
 export interface PersonActivityRow {
   user_id: string | null
-  github_login: string
+  email: string
+  github_login: string | null
   name: string
   verbs: Record<string, number>
   total: number
@@ -222,7 +224,9 @@ export interface StaleIssueRow {
   key: string
   title?: string
   status: IssueStatus
-  assignee_login: string
+  assignee_email?: string
+  assignee_login: string | null
+  assignee_name?: string
   milestone_name?: string
   last_signal_at?: string
   days_silent: number

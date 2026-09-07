@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 
 import type { Comment } from '../../lib/types'
+import { userLabel } from '../../lib/userLabel'
 import { Avatar } from '../../ui/Avatar'
 import { Markdown } from '../../ui/Markdown'
 import { RelativeTime } from '../../ui/RelativeTime'
@@ -13,7 +14,7 @@ function CommentBody({ comment }: { comment: Comment }) {
       <Avatar user={comment.author} size="md" />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="text-ink">{comment.author?.github_login ?? 'Someone'}</span>
+          <span className="text-ink">{userLabel(comment.author)}</span>
           <RelativeTime iso={comment.created_at} />
           {comment.edited_at ? <span className="text-xs text-grey-500">edited</span> : null}
         </div>
