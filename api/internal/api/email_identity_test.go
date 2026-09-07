@@ -24,8 +24,8 @@ func TestEmailOnlyIdentitySurvivesEveryUserProjection(t *testing.T) {
 	require.NoError(t, f.Pool.QueryRow(ctx,
 		`INSERT INTO app_user (email) VALUES ('member@example.com') RETURNING id`).Scan(&emailUserID))
 	_, err := f.Pool.Exec(ctx, `
-		INSERT INTO membership (workspace_id, user_id, invited_login, role)
-		VALUES ($1, $2, 'email-only-member', 'member')`, f.WorkspaceID, emailUserID)
+		INSERT INTO membership (workspace_id, user_id, role)
+		VALUES ($1, $2, 'member')`, f.WorkspaceID, emailUserID)
 	require.NoError(t, err)
 	_, err = f.Pool.Exec(ctx, `UPDATE app_user SET name = 'Member' WHERE id = $1`, emailUserID)
 	require.NoError(t, err)

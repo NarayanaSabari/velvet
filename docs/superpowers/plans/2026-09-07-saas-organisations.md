@@ -216,6 +216,8 @@ ALTER TABLE membership ADD UNIQUE (workspace_id, user_id);
   Convert legacy route tests to assert removal alongside the schema cutover.
   Tasks 4 and 5 are not separate deployment milestones; email sign-in must be complete before releasing the contract.
   Move fixtures to explicitly populated email accounts and real user memberships.
+- [ ] Preserve rate-limit counters when invitations cascade away: change the login-token invite foreign key to `ON DELETE SET NULL`, and invalidate associated tokens before invite deletion.
+  Test that deleting an organisation retains its recent issuance rows, prevents token use, and does not reset either issuance limit.
 - [ ] Add remaining contract schema used by Tasks 7-9: repository `disconnected_at`; installation `deleted_at`, `repos_synced_at`, sanitized `sync_error`, and `sync_generation bigint NOT NULL DEFAULT 0`; setup phase/session/claim/completion fields; authorization-state table with purpose, session hash, user, optional setup reference, verifier, expiry, claim and completion fields.
   Add foreign keys to the existing session/user/setup rows.
   Authorization-state tokens and session references use hashes.

@@ -2,12 +2,9 @@ package api
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"errors"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/auth"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
@@ -15,7 +12,6 @@ import (
 
 const userKey ctxKey = "user"
 const workspaceKey ctxKey = "workspace"
-const oauthStateCookie = "ticket_oauth_state"
 
 func CurrentUser(ctx context.Context) (store.User, bool) {
 	u, ok := ctx.Value(userKey).(store.User)
@@ -28,78 +24,10 @@ func CurrentWorkspace(ctx context.Context) (store.Membership, bool) {
 }
 
 func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/auth/github/login", s.handleLogin)
-	mux.HandleFunc("GET /api/v1/auth/github/callback", s.handleCallback)
 	// Logout is deliberately idempotent. It must clear a stale browser cookie
 	// even when the backing session has expired or was already removed.
 	mux.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)
 	mux.Handle("GET /api/v1/me", s.RequireAuth(http.HandlerFunc(s.handleMe)))
-}
-
-func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	raw := make([]byte, 24)
-	if _, err := rand.Read(raw); err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal", "could not start sign-in")
-		return
-	}
-	state := base64.RawURLEncoding.EncodeToString(raw)
-	http.SetCookie(w, &http.Cookie{
-		Name: oauthStateCookie, Value: state, Path: "/",
-		HttpOnly: true, Secure: s.secureCookies(), SameSite: http.SameSiteLaxMode,
-		Expires: time.Now().Add(10 * time.Minute),
-	})
-	cfg := auth.OAuthConfig(s.cfg.GitHubClientID, s.cfg.GitHubClientSecret, s.cfg.BaseURL)
-	http.Redirect(w, r, cfg.AuthCodeURL(state), http.StatusFound)
-}
-
-func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(oauthStateCookie)
-	if err != nil || cookie.Value == "" || cookie.Value != r.URL.Query().Get("state") {
-		WriteError(w, http.StatusBadRequest, "invalid_state", "sign-in state did not match")
-		return
-	}
-	cfg := auth.OAuthConfig(s.cfg.GitHubClientID, s.cfg.GitHubClientSecret, s.cfg.BaseURL)
-	tok, err := cfg.Exchange(r.Context(), r.URL.Query().Get("code"))
-	if err != nil {
-		WriteError(w, http.StatusBadRequest, "exchange_failed", "could not complete sign-in")
-		return
-	}
-	identity, err := auth.FetchIdentity(r.Context(), cfg, tok)
-	if err != nil {
-		WriteError(w, http.StatusBadGateway, "github_unavailable", "could not reach GitHub")
-		return
-	}
-
-	user, err := s.store.UpsertUserByGitHub(r.Context(), identity)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal", "could not record the account")
-		return
-	}
-	if user.GitHubLogin != nil {
-		if _, err := s.store.BindMembership(r.Context(), user.ID, *user.GitHubLogin); err != nil {
-			WriteError(w, http.StatusInternalServerError, "internal", "could not bind membership")
-			return
-		}
-	}
-	memberships, err := s.store.MembershipsForUser(r.Context(), user.ID)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal", "could not read membership")
-		return
-	}
-	// An uninvited GitHub account gets no session at all: discovering the URL
-	// must not be enough to obtain an account.
-	if len(memberships) == 0 {
-		http.Redirect(w, r, "/not-invited", http.StatusFound)
-		return
-	}
-
-	token, err := s.store.CreateSession(r.Context(), user.ID, auth.SessionTTL)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal", "could not create a session")
-		return
-	}
-	auth.SetSessionCookie(w, token, s.secureCookies())
-	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {

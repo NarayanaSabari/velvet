@@ -44,6 +44,18 @@ type Fixture struct {
 	Token       string
 }
 
+// CreateLinkedUser creates an email account with optional GitHub profile data.
+// Tests never use GitHub identity to claim membership or establish a session.
+func CreateLinkedUser(t *testing.T, st *store.Store, gh store.GitHubIdentity) (store.User, error) {
+	t.Helper()
+	user, err := st.UpsertUserByEmail(t.Context(), gh.Login+"@example.com")
+	if err != nil {
+		return user, err
+	}
+	err = st.Pool().QueryRow(t.Context(), `UPDATE app_user SET github_id=$1,github_login=$2,name=$3,avatar_url=$4 WHERE id=$5 RETURNING id,email,github_id,github_login,name,avatar_url`, gh.ID, gh.Login, gh.Name, gh.AvatarURL, user.ID).Scan(&user.ID, &user.Email, &user.GitHubID, &user.GitHubLogin, &user.Name, &user.AvatarURL)
+	return user, err
+}
+
 // NewFixture gives a test a migrated database, one workspace, one signed-in
 // admin, and a ready HTTP handler.
 func NewFixture(t *testing.T) *Fixture {
@@ -65,13 +77,13 @@ func NewFixtureWithWebhookSecret(t *testing.T, secret string) *Fixture {
 		`INSERT INTO workspace (name, slug, issue_prefix) VALUES ('Lab', 'lab', 'ENG')
 		 RETURNING id`).Scan(&wsID))
 
-	user, err := st.UpsertUserByGitHub(ctx, store.GitHubIdentity{
+	user, err := CreateLinkedUser(t, st, store.GitHubIdentity{
 		ID: 1001, Login: "sabari", Name: "Sabari"})
 	require.NoError(t, err)
 
 	_, err = pool.Exec(ctx,
-		`INSERT INTO membership (workspace_id, user_id, invited_login, role)
-		 VALUES ($1, $2, 'sabari', 'admin')`, wsID, user.ID)
+		`INSERT INTO membership (workspace_id, user_id, role)
+		 VALUES ($1, $2, 'admin')`, wsID, user.ID)
 	require.NoError(t, err)
 
 	token, err := st.CreateSession(ctx, user.ID, time.Hour)

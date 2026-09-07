@@ -134,8 +134,7 @@ func TestMilestoneTargetDateCanBeCleared(t *testing.T) {
 func TestMilestoneRejectsOwnerFromAnotherWorkspace(t *testing.T) {
 	f := testutil.NewFixture(t)
 	sprint := newSprint(t, f)
-	foreign, err := f.Store.UpsertUserByGitHub(t.Context(),
-		store.GitHubIdentity{ID: 9998, Login: "foreign-owner"})
+	foreign, err := testutil.CreateLinkedUser(t, f.Store, store.GitHubIdentity{ID: 9998, Login: "foreign-owner"})
 	require.NoError(t, err)
 
 	rec := f.Do(http.MethodPost,

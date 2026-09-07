@@ -13,7 +13,7 @@ import (
 func TestDeleteExpiredSessionsPreservesLiveSessions(t *testing.T) {
 	st := store.New(testutil.NewPostgres(t))
 	ctx := t.Context()
-	u, err := st.UpsertUserByGitHub(ctx, store.GitHubIdentity{ID: 91, Login: "session-cleanup"})
+	u, err := testutil.CreateLinkedUser(t, st, store.GitHubIdentity{ID: 91, Login: "session-cleanup"})
 	require.NoError(t, err)
 
 	live, err := st.CreateSession(ctx, u.ID, time.Hour)

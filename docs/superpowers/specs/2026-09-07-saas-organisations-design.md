@@ -199,6 +199,7 @@ After `0005` is deployed, the operator sets the existing production user's email
 
 - `app_user.email` becomes `NOT NULL` after asserting that every user was backfilled.
 - `membership.user_id` becomes `NOT NULL` after asserting that every membership has a user; `invited_login` and its unique index are dropped; `(workspace_id, user_id)` becomes unique.
+- Deleting an invite invalidates its login tokens but retains their issuance rows for rate limiting; `login_token.invite_id` becomes `ON DELETE SET NULL` with invalidation before deletion.
 - `repo` gains `disconnected_at timestamptz NULL` so losing GitHub access does not delete historical evidence.
 - `github_installation` gains nullable `deleted_at`, `repos_synced_at`, and `ownership_verified_at` timestamps, sanitized `sync_error`, `sync_generation bigint NOT NULL DEFAULT 0`, and a unique partial index on `workspace_id` where it is not null.
   Generation checks prevent stale sync jobs from applying results after lifecycle or binding changes.
@@ -254,6 +255,7 @@ Copy uses "organisation" everywhere the interface said "workspace".
 - Issuance takes transaction-scoped Postgres advisory locks before counting and inserting, so concurrent requests cannot exceed either limit and the limits hold across processes and restarts.
 - Rate-limited sign-in requests still return the same 202 response and send no mail.
 - Invite-driven login-token issuance uses the same limits; trusted proxy configuration determines the client IP, never an unchecked forwarded header.
+- Deleting invitations or organisations cannot erase recent issuance counters or turn an invitation token into an ordinary sign-in token.
 - Browser mutations require a same-origin JSON request; confirmation pages never submit automatically and remove fragments after successful acceptance.
 - The magic endpoint relies on a 256-bit single-use token and accepts only POST; it is not separately rate limited.
 - Slugs are validated server-side against `^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$` and the exact reserved list: `admin`, `api`, `auth`, `check-email`, `expired`, `invite`, `invites`, `me`, `new`, `orgs`, `settings`, `signin`, `signout`, `w`, and `webhooks`.

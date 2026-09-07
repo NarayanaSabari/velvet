@@ -33,11 +33,11 @@ func TestMeReturnsUserAndMemberships(t *testing.T) {
 	var wsID string
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO workspace (name, slug) VALUES ('Lab', 'lab') RETURNING id`).Scan(&wsID))
-	u, err := st.UpsertUserByGitHub(ctx, store.GitHubIdentity{ID: 1, Login: "sabari"})
+	u, err := testutil.CreateLinkedUser(t, st, store.GitHubIdentity{ID: 1, Login: "sabari"})
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx,
-		`INSERT INTO membership (workspace_id, user_id, invited_login, role)
-		 VALUES ($1, $2, 'sabari', 'admin')`, wsID, u.ID)
+		`INSERT INTO membership (workspace_id, user_id, role)
+		 VALUES ($1, $2, 'admin')`, wsID, u.ID)
 	require.NoError(t, err)
 
 	token, err := st.CreateSession(ctx, u.ID, time.Hour)
