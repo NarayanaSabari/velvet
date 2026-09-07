@@ -105,7 +105,8 @@ App permissions survive any one person leaving the team, whereas a personal acce
 1. Organisation settings, Developer settings, GitHub Apps, New GitHub App.
 2. Webhook URL `https://YOUR_HOST/webhooks/github`, and set a webhook secret.
 3. Repository permissions: Contents read-only, Metadata read-only, Pull requests read-only.
-4. Subscribe to events: Pull request, Pull request review, Push, Installation, Installation repositories.
+4. Subscribe to events: Pull request, Pull request review, Push.
+   The installation events the worker also handles are not in this list because every GitHub App receives them automatically.
 5. Generate a private key and download the PEM.
 6. Install the App on the organisation and choose which repositories map to the workspace.
 
