@@ -146,24 +146,89 @@ func createLoginTokenInvite(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	return inviteID
 }
 
-// This catches a boundary comparison that treats a token created exactly
-// fifteen minutes ago as still rate-limitable.
-func TestIssueLoginTokenExcludesRequestsAtExpiryWindowBoundary(t *testing.T) {
-	pool := testutil.NewPostgres(t)
-	st := store.New(pool)
-	ctx := t.Context()
+// This catches either rate-limit query including rows created exactly at the
+// cutoff or excluding rows created a microsecond inside it.
+func TestIssueLoginTokenRateLimitCutoffBoundaries(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		limit    string
+		inside   bool
+		wantErr  error
+		fixtureN int
+	}{
+		{name: "email equal cutoff excluded", limit: "email", fixtureN: 5},
+		{name: "IP equal cutoff excluded", limit: "IP", fixtureN: 20},
+		{name: "email inside cutoff included", limit: "email", inside: true, wantErr: store.ErrRateLimited, fixtureN: 5},
+		{name: "IP inside cutoff included", limit: "IP", inside: true, wantErr: store.ErrRateLimited, fixtureN: 20},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			pool := testutil.NewPostgres(t)
+			st := store.New(pool)
+			assertLoginTokenCutoff(t, pool, st, test.limit, test.fixtureN, test.inside, test.wantErr)
+		})
+	}
+}
 
-	_, err := pool.Exec(ctx, `
-		INSERT INTO login_token (email, token_hash, request_ip, created_at, expires_at)
-		VALUES ('member@example.com', 'expired-window-token', '127.0.0.1',
-			now() - interval '15 minutes', now())`)
+func assertLoginTokenCutoff(t *testing.T, pool *pgxpool.Pool, st *store.Store, limit string, fixtureN int, inside bool, wantErr error) {
+	t.Helper()
+	ctx := t.Context()
+	const email = "member@example.com"
+	const ip = "127.0.0.1"
+
+	lockConn, err := pool.Acquire(ctx)
 	require.NoError(t, err)
-	for range 5 {
-		_, err := st.IssueLoginToken(ctx, "member@example.com", "127.0.0.2", nil)
+	defer lockConn.Release()
+	lockTx, err := lockConn.Begin(ctx)
+	require.NoError(t, err)
+	defer lockTx.Rollback(ctx)
+	_, err = lockTx.Exec(ctx, `
+		SELECT pg_advisory_xact_lock(hashtextextended('login-email:' || $1, 0))`, email)
+	require.NoError(t, err)
+
+	issued := make(chan error, 1)
+	go func() {
+		_, err := st.IssueLoginToken(ctx, email, ip, nil)
+		issued <- err
+	}()
+
+	xactStart := waitingLoginTokenXactStart(t, pool)
+	createdAt := xactStart.Add(-15 * time.Minute)
+	if inside {
+		createdAt = createdAt.Add(time.Microsecond)
+	}
+	for i := range fixtureN {
+		fixtureEmail := fmt.Sprintf("fixture-%d@example.com", i)
+		fixtureIP := fmt.Sprintf("127.0.1.%d", i+1)
+		if limit == "email" {
+			fixtureEmail = email
+		} else {
+			fixtureIP = ip
+		}
+		_, err := pool.Exec(ctx, `
+			INSERT INTO login_token (email, token_hash, request_ip, created_at, expires_at)
+			VALUES ($1, $2, $3, $4::timestamptz, $4::timestamptz + interval '15 minutes')`,
+			fixtureEmail, fmt.Sprintf("cutoff-%s-%t-%d", limit, inside, i), fixtureIP, createdAt)
 		require.NoError(t, err)
 	}
-	_, err = st.IssueLoginToken(ctx, "member@example.com", "127.0.0.3", nil)
-	require.ErrorIs(t, err, store.ErrRateLimited)
+
+	require.NoError(t, lockTx.Commit(ctx))
+	require.ErrorIs(t, <-issued, wantErr)
+}
+
+func waitingLoginTokenXactStart(t *testing.T, pool *pgxpool.Pool) time.Time {
+	t.Helper()
+	var xactStart time.Time
+	require.Eventually(t, func() bool {
+		return pool.QueryRow(t.Context(), `
+			SELECT xact_start
+			FROM pg_stat_activity
+			WHERE datname = current_database()
+			  AND wait_event_type = 'Lock'
+			  AND wait_event = 'advisory'
+			  AND query LIKE '%pg_advisory_xact_lock%'
+			  AND pid <> pg_backend_pid()`).Scan(&xactStart) == nil
+	}, time.Second, 10*time.Millisecond)
+	return xactStart
 }
 
 func issueConcurrently(n int, issue func(int) error) []error {
