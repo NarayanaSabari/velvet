@@ -50,3 +50,27 @@ func TestSubIssueNestingIsRejected(t *testing.T) {
 	_, err = newIssue("ENG-3", &child)
 	require.Error(t, err, "a grandchild must be rejected by the depth guard")
 }
+
+func TestMigrateOrganisationsSchema(t *testing.T) {
+	pool := testutil.NewPostgres(t)
+	ctx := context.Background()
+
+	var n int
+	require.NoError(t, pool.QueryRow(ctx, `
+		SELECT count(*) FROM information_schema.tables
+		WHERE table_name IN ('login_token', 'invite', 'github_setup_state')`).Scan(&n))
+	require.Equal(t, 3, n, "new tables exist")
+
+	var nullable string
+	require.NoError(t, pool.QueryRow(ctx, `
+		SELECT is_nullable FROM information_schema.columns
+		WHERE table_name = 'app_user' AND column_name = 'github_id'`).Scan(&nullable))
+	require.Equal(t, "YES", nullable, "github_id is nullable")
+
+	// A user without GitHub is now valid.
+	_, err := pool.Exec(ctx, `INSERT INTO app_user (email) VALUES ('a@example.com')`)
+	require.NoError(t, err)
+	// Email is unique case-insensitively.
+	_, err = pool.Exec(ctx, `INSERT INTO app_user (email) VALUES ('A@Example.com')`)
+	require.Error(t, err)
+}
