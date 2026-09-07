@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -20,6 +21,12 @@ type Config struct {
 	// being verified without a real organisation.
 	GitHubAPIURL string
 	BaseURL      string
+	// Mail is required in production so sign-in cannot silently fall back to
+	// logging links; locally the log mailer is the point.
+	ResendAPIKey string
+	MailFrom     string
+	// The App's URL slug, used to send admins to its installation page.
+	GitHubAppSlug string
 }
 
 func Load() (*Config, error) {
@@ -34,8 +41,14 @@ func Load() (*Config, error) {
 		GitHubAPIURL:        os.Getenv("GITHUB_API_URL"),
 		BaseURL:             envOr("BASE_URL", "http://localhost:8080"),
 	}
+	c.ResendAPIKey = os.Getenv("RESEND_API_KEY")
+	c.MailFrom = os.Getenv("MAIL_FROM")
+	c.GitHubAppSlug = os.Getenv("GITHUB_APP_SLUG")
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
+	}
+	if strings.HasPrefix(c.BaseURL, "https://") && (c.ResendAPIKey == "" || c.MailFrom == "") {
+		return nil, fmt.Errorf("RESEND_API_KEY and MAIL_FROM are required when BASE_URL is https")
 	}
 	return c, nil
 }
