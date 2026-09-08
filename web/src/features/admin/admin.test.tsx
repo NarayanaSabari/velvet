@@ -99,6 +99,33 @@ function adminFetch() {
 beforeEach(() => vi.unstubAllGlobals())
 
 describe('Admin', () => {
+  it('explains how to disconnect in GitHub without locally removing the installation', async () => {
+    const fetch = adminFetch()
+    vi.stubGlobal('fetch', fetch)
+    renderAdmin()
+    await userEvent.click(await screen.findByText('Disconnect GitHub'))
+    expect(screen.getByText(/To disconnect, uninstall the App in the GitHub account/)).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Open GitHub App settings' })).toHaveAttribute('href', 'https://github.com/settings/installations')
+    expect(screen.getByRole('link', { name: 'Organisation uninstall instructions' })).toHaveAttribute('href', 'https://docs.github.com/en/apps/using-github-apps/reviewing-and-modifying-installed-github-apps')
+    expect(fetch.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true)
+  })
+
+  it('labels retained disconnected repositories instead of claiming they are synced', async () => {
+    const fallback = adminFetch()
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+      if (input === '/api/v1/w/lab/repos') return response({ repos: [{
+        id: 'r1', workspace_id: 'w1', installation_id: 99, github_id: 555,
+        owner: 'acme', name: 'widgets', default_branch: 'main',
+        synced_at: '2026-09-07T10:00:00Z', disconnected_at: '2026-09-08T10:00:00Z',
+      }] })
+      return fallback(input, init)
+    }))
+    renderAdmin()
+    expect(await screen.findByText('Disconnected')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'acme/widgets' })).toBeInTheDocument()
+    expect(screen.queryByText('Synced')).not.toBeInTheDocument()
+  })
+
   it('lists memberships and connected repositories', async () => {
     vi.stubGlobal('fetch', adminFetch())
     renderAdmin()

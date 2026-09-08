@@ -1,0 +1,38 @@
+services:
+  github:
+    image: node:24-alpine
+    command: ["node", "/stub/github-stub.mjs"]
+    volumes:
+      - ../e2e/github-stub.mjs:/stub/github-stub.mjs:ro
+    ports:
+      - "127.0.0.1:${E2E_PROVIDER_PORT:-18599}:18599"
+    environment:
+      BASE_URL: ${BASE_URL}
+    networks:
+      default:
+      # Docker cannot publish ports from an internal-only network.
+      proxy:
+  api:
+    environment:
+      RESEND_API_KEY: ""
+      MAIL_FROM: ""
+      GITHUB_AUTHORIZATION_URL: http://localhost:${E2E_PROVIDER_PORT:-18599}/authorize
+      GITHUB_INSTALLATION_URL: http://localhost:${E2E_PROVIDER_PORT:-18599}/install
+      GITHUB_TOKEN_URL: http://github:18599/token
+      GITHUB_API_URL: http://github:18599
+    depends_on:
+      github:
+        condition: service_started
+  worker:
+    environment:
+      GITHUB_API_URL: http://github:18599
+    depends_on:
+      github:
+        condition: service_started
+  caddy:
+    ports: !override
+      - "127.0.0.1:${HTTP_PORT}:${CADDY_HTTP_PORT}"
+      - "127.0.0.1:${HTTPS_PORT}:${CADDY_HTTPS_PORT}"
+networks:
+  default:
+    internal: true

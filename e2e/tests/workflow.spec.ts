@@ -14,7 +14,7 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 
   const api = await playwright.request.newContext({ baseURL })
   const token = seededSessionToken()
-  const headers = { Cookie: `ticket_session=${token}` }
+  const headers = { Cookie: `ticket_session=${token}`, Origin: baseURL!, 'Content-Type': 'application/json' }
 
   const sprint = await api
     .post('/api/v1/w/lab/sprints', {

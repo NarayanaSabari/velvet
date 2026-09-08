@@ -5,33 +5,28 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const envFile = resolve(here, '..', '.env.generated')
-const deployDir = resolve(here, '..', '..', 'deploy')
-const project = process.env.E2E_PROJECT ?? 'worklog-e2e'
+export function compose(args: string[]): string {
+  return execFileSync('bash', [resolve(here, '..', 'stack-common.sh'), ...args], {
+    encoding: 'utf8',
+  }).trim()
+}
 
 export const WEBHOOK_SECRET = 'e2e-webhook-secret'
 
 /** Runs SQL inside the stack's Postgres and returns stdout. */
 export function sql(statement: string): string {
-  return execFileSync(
-    'docker',
-    [
-      'compose', '--env-file', envFile, '-p', project,
-      'exec', '-T', 'postgres',
-      'psql', '-U', 'worklog', '-d', 'worklog', '-tA', '-v', 'ON_ERROR_STOP=1', '-c', statement,
-    ],
-    { cwd: deployDir, encoding: 'utf8' },
-  ).trim()
+  return compose([
+    'exec', '-T', 'postgres',
+    'psql', '-U', 'worklog', '-d', 'worklog', '-tA', '-v', 'ON_ERROR_STOP=1', '-c', statement,
+  ])
 }
 
 /**
  * Seeds a workspace, a member, and a live session, then returns the raw token.
  *
- * Auth is seeded rather than driven through GitHub's OAuth screen on purpose:
- * clicking through github.com would test GitHub's login page, not this
- * application, and would need real credentials in CI. The session cookie is
- * the same one the OAuth callback issues, so everything downstream of sign-in
- * is exercised for real.
+ * Evidence and workflow specs start with a valid email identity and session.
+ * onboarding.spec.ts separately exercises email signup and GitHub ownership
+ * authorization through the local provider, without seeded sessions or repos.
  */
 export function seedWorkspace(token: string, slug = 'lab'): void {
   const hashed = createHash('sha256').update(token).digest('hex')
@@ -40,15 +35,15 @@ export function seedWorkspace(token: string, slug = 'lab'): void {
     VALUES ('Lab', '${slug}', 'ENG')
     ON CONFLICT (slug) DO NOTHING;
 
-    INSERT INTO app_user (github_id, github_login, name)
-    VALUES (1, 'sabari', 'Sabari')
+    INSERT INTO app_user (email, github_id, github_login, name)
+    VALUES ('sabari@example.test', 1, 'sabari', 'Sabari')
     ON CONFLICT (github_id) DO NOTHING;
 
-    INSERT INTO membership (workspace_id, user_id, invited_login, role)
-    SELECT w.id, u.id, 'sabari', 'admin'
+    INSERT INTO membership (workspace_id, user_id, role)
+    SELECT w.id, u.id, 'admin'
     FROM workspace w, app_user u
     WHERE w.slug = '${slug}' AND u.github_id = 1
-    ON CONFLICT (workspace_id, lower(invited_login)) DO NOTHING;
+    ON CONFLICT (workspace_id, user_id) DO NOTHING;
 
     INSERT INTO session (id, user_id, expires_at)
     SELECT '${hashed}', u.id, now() + interval '2 hours'
@@ -69,8 +64,10 @@ export function seedRepo(githubId = 555, slug = 'lab'): void {
   // installation can survive, and the conflict then skipped the insert that
   // would have recreated the repo, leaving deliveries unattributable.
   sql(`
-    INSERT INTO github_installation (id, account_login) VALUES (99, 'acme')
-    ON CONFLICT (id) DO UPDATE SET account_login = EXCLUDED.account_login;
+    INSERT INTO github_installation (id, account_login, workspace_id, ownership_verified_at)
+    SELECT 99, 'acme', id, now() FROM workspace WHERE slug = '${slug}'
+    ON CONFLICT (id) DO UPDATE SET account_login = EXCLUDED.account_login,
+      workspace_id = EXCLUDED.workspace_id, ownership_verified_at = now(), deleted_at = NULL, suspended_at = NULL;
 
     INSERT INTO repo (workspace_id, installation_id, github_id, owner, name)
     SELECT w.id, 99, ${githubId}, 'acme', 'widgets' FROM workspace w WHERE w.slug = '${slug}'
@@ -100,7 +97,7 @@ export function resetWorkspaceData(): void {
   seededSessionToken()
 
   sql(`
-    TRUNCATE pr_link, pr_review, commit_ref, pull_request, repo, github_installation,
+    TRUNCATE login_token, pr_link, pr_review, commit_ref, pull_request, repo, github_installation,
              github_event, job, comment_mention, comment, issue_label, label,
              sprint_snapshot, milestone, sprint, issue, activity
     RESTART IDENTITY CASCADE;
@@ -121,7 +118,7 @@ export const test = base.extend<{ signedIn: Page }>({
     const token = seededSessionToken()
     const context = await playwright.request.newContext({
       baseURL,
-      extraHTTPHeaders: { Cookie: `ticket_session=${token}` },
+      extraHTTPHeaders: { Cookie: `ticket_session=${token}`, Origin: baseURL!, 'Content-Type': 'application/json' },
     })
     await use(context)
     await context.dispose()

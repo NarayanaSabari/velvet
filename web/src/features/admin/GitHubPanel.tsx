@@ -66,6 +66,13 @@ export function GitHubPanel({
             {retry.isPending ? 'Requesting sync…' : 'Retry sync'}
           </Button>
         ) : null}
+        {connection.data?.installation ? <details className="mt-3">
+          <summary className="cursor-pointer underline">Disconnect GitHub</summary>
+          <p className="mt-2">To disconnect, uninstall the App in the GitHub account where it is installed. Your existing work evidence remains available.</p>
+          <a className="mt-2 block underline" href="https://github.com/settings/installations" target="_blank" rel="noreferrer">Open GitHub App settings</a>
+          <p className="mt-2 text-grey-500">For an organisation installation, open that organisation’s settings as an owner.</p>
+          <a className="underline" href="https://docs.github.com/en/apps/using-github-apps/reviewing-and-modifying-installed-github-apps" target="_blank" rel="noreferrer">Organisation uninstall instructions</a>
+        </details> : null}
       </div>
 
       {message ? <p className="mb-2 text-sm text-blocked" role="alert">{message}</p> : null}
@@ -88,7 +95,7 @@ export function GitHubPanel({
               </a>
               <span className="text-grey-500">{repo.default_branch}</span>
               <span className="text-grey-500">
-                {repo.synced_at ? 'Synced' : 'Awaiting first sync'}
+                {repo.disconnected_at ? 'Disconnected' : repo.synced_at ? 'Synced' : 'Awaiting first sync'}
               </span>
             </li>
           ))}

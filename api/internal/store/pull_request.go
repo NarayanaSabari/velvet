@@ -95,6 +95,7 @@ type Repo struct {
 	Name           string     `json:"name"`
 	DefaultBranch  string     `json:"default_branch"`
 	SyncedAt       *time.Time `json:"synced_at"`
+	DisconnectedAt *time.Time `json:"disconnected_at"`
 	SyncGeneration int64      `json:"-"`
 }
 
@@ -383,12 +384,12 @@ func (s *Store) EvidenceForIssue(ctx context.Context, workspaceID, issueID uuid.
 }
 
 const repoCols = `id, workspace_id, installation_id, github_id, owner, name,
-	default_branch, synced_at`
+	default_branch, synced_at, disconnected_at`
 
 func scanRepo(row pgx.Row) (Repo, error) {
 	var r Repo
 	err := row.Scan(&r.ID, &r.WorkspaceID, &r.InstallationID, &r.GitHubID,
-		&r.Owner, &r.Name, &r.DefaultBranch, &r.SyncedAt)
+		&r.Owner, &r.Name, &r.DefaultBranch, &r.SyncedAt, &r.DisconnectedAt)
 	return r, mapErr(err)
 }
 

@@ -39,6 +39,7 @@ async function waitForWorkerReady(timeoutMs = 60_000): Promise<void> {
 }
 
 const PR_OPENED = JSON.stringify({
+  installation: { id: 99 },
   action: 'opened',
   number: 42,
   pull_request: {

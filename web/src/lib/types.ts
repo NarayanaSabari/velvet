@@ -177,6 +177,7 @@ export interface Repo {
   name: string
   default_branch: string
   synced_at: string | null
+  disconnected_at: string | null
 }
 
 export interface Review {

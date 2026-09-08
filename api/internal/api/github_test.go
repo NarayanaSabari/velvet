@@ -3,6 +3,7 @@ package api_test
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,35 @@ func TestEvidenceEndpointReturnsAttachedPRs(t *testing.T) {
 	f.DecodeInto(rec, &ev)
 	require.Len(t, ev.PullRequests, 1)
 	require.Equal(t, 42, ev.PullRequests[0].Number)
+}
+
+func TestRepositoryListRetainsDisconnectedHistory(t *testing.T) {
+	f := testutil.NewFixture(t)
+	pr := testutil.InsertPullRequest(t, f, 42, "Retained evidence", "open")
+	read := func() map[string]any {
+		t.Helper()
+		rec := f.Do(http.MethodGet, "/api/v1/w/lab/repos", nil)
+		require.Equal(t, http.StatusOK, rec.Code)
+		var body struct {
+			Repos []map[string]any `json:"repos"`
+		}
+		f.DecodeInto(rec, &body)
+		require.Len(t, body.Repos, 1)
+		return body.Repos[0]
+	}
+	connected := read()
+	require.Contains(t, connected, "disconnected_at")
+	require.Nil(t, connected["disconnected_at"])
+	_, err := f.Pool.Exec(t.Context(), `UPDATE repo SET disconnected_at='2026-09-08T10:00:00Z',synced_at='2026-09-07T10:00:00Z' WHERE id=$1`, pr.RepoID)
+	require.NoError(t, err)
+	disconnected := read()
+	require.Equal(t, connected["id"], disconnected["id"])
+	at, err := time.Parse(time.RFC3339, disconnected["disconnected_at"].(string))
+	require.NoError(t, err)
+	require.Equal(t, time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC), at.UTC())
+	var retained int
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM pull_request WHERE id=$1`, pr.ID).Scan(&retained))
+	require.Equal(t, 1, retained)
 }
 
 func TestManualAttachRecordsActivityAndIsIdempotent(t *testing.T) {

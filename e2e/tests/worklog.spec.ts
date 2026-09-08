@@ -15,25 +15,23 @@ test.beforeAll(() => {
   resetWorkspaceData()
 })
 
-test('an unauthenticated visitor is offered sign-in, not an account', async ({ browser }) => {
+test('an unauthenticated visitor can request an email sign-in link', async ({ browser }) => {
   // A fresh context on purpose: this is the only spec that must NOT be signed
   // in, and the shared fixture always is.
   const context = await browser.newContext()
   const page = await context.newPage()
   await page.goto('/')
 
-  const signIn = page.getByRole('link', { name: /sign in with github/i })
-  await expect(signIn).toBeVisible()
-  // OAuth needs a real navigation, so this must be an anchor to the API.
-  await expect(signIn).toHaveAttribute('href', /\/api\/v1\/auth\/github\/login$/)
+  await expect(page.getByLabel('Email', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Send sign-in link' })).toBeVisible()
   await context.close()
 })
 
-test('an uninvited visitor sees the reason instead of another sign-in prompt', async ({ browser }) => {
+test('a legacy not-invited link offers email sign-in', async ({ browser }) => {
   const context = await browser.newContext()
   const page = await context.newPage()
   await page.goto('/not-invited')
-  await expect(page.getByRole('heading', { name: 'Not invited' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Send sign-in link' })).toBeVisible()
   await expect(page.getByRole('link', { name: /sign in with github/i })).toHaveCount(0)
   await context.close()
 })
@@ -49,7 +47,7 @@ test('sign out ends the server session and returns to sign in', async ({ browser
   await page.goto('/w/lab')
   await page.getByRole('button', { name: 'Sign out' }).click()
   await expect(page).toHaveURL(/\/signin$/)
-  await expect(page.getByRole('link', { name: /sign in with github/i })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Send sign-in link' })).toBeVisible()
 
   const verifier = await playwright.request.newContext({
     baseURL,
