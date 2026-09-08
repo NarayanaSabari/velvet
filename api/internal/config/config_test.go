@@ -56,8 +56,6 @@ func TestLoadAllowsNoMailLocally(t *testing.T) {
 
 func TestLoadGitHubAppUserCredentialsAndEndpoints(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://x")
-	t.Setenv("GITHUB_CLIENT_ID", "old-oauth-client")
-	t.Setenv("GITHUB_CLIENT_SECRET", "old-oauth-secret")
 	t.Setenv("GITHUB_APP_CLIENT_ID", "app-client")
 	t.Setenv("GITHUB_APP_CLIENT_SECRET", "app-secret")
 	t.Setenv("GITHUB_AUTHORIZATION_URL", "http://localhost:18499/authorize")

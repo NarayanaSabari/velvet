@@ -13,13 +13,15 @@ test('ordinary Compose deployment forwards the App slug without a custom install
     env: { HOME: process.env.HOME, PATH: process.env.PATH,
       DATABASE_URL: 'postgres://test', POSTGRES_USER: 'test', POSTGRES_PASSWORD: 'test',
       BASE_URL: 'http://localhost', SITE_ADDRESS: 'http://localhost', GITHUB_APP_SLUG: 'worklog-test-app',
-      GITHUB_CLIENT_ID: '', GITHUB_CLIENT_SECRET: '', GITHUB_WEBHOOK_SECRET: '', GITHUB_APP_ID: '', GITHUB_APP_PRIVATE_KEY: '' },
+      GITHUB_WEBHOOK_SECRET: '', GITHUB_APP_ID: '', GITHUB_APP_PRIVATE_KEY: '' },
     encoding: 'utf8',
   })
   assert.equal(result.status, 0, result.stderr)
   const api = JSON.parse(result.stdout).services.api.environment
   assert.equal(api.GITHUB_APP_SLUG, 'worklog-test-app')
   assert.equal(api.GITHUB_INSTALLATION_URL, '')
+  assert.equal(Object.hasOwn(api, 'GITHUB_CLIENT_ID'), false)
+  assert.equal(Object.hasOwn(api, 'GITHUB_CLIENT_SECRET'), false)
 })
 
 for (const script of ['verify-setup.sh', 'verify-localhost.sh']) {

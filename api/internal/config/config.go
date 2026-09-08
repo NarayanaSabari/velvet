@@ -11,8 +11,6 @@ import (
 type Config struct {
 	DatabaseURL            string
 	Port                   string
-	GitHubClientID         string
-	GitHubClientSecret     string
 	GitHubAppClientID      string
 	GitHubAppClientSecret  string
 	GitHubAuthorizationURL string
@@ -41,8 +39,6 @@ func Load() (*Config, error) {
 	c := &Config{
 		DatabaseURL:            os.Getenv("DATABASE_URL"),
 		Port:                   envOr("PORT", "8080"),
-		GitHubClientID:         os.Getenv("GITHUB_CLIENT_ID"),
-		GitHubClientSecret:     os.Getenv("GITHUB_CLIENT_SECRET"),
 		GitHubAppClientID:      os.Getenv("GITHUB_APP_CLIENT_ID"),
 		GitHubAppClientSecret:  os.Getenv("GITHUB_APP_CLIENT_SECRET"),
 		GitHubAuthorizationURL: os.Getenv("GITHUB_AUTHORIZATION_URL"),

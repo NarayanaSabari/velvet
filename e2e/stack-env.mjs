@@ -12,7 +12,6 @@ const values = {
   IMAGE_REPO: 'worklog-e2e-organisations', IMAGE_TAG: 'test',
   POSTGRES_USER: 'worklog', POSTGRES_PASSWORD: 'e2e-local-only', POSTGRES_DB: 'worklog',
   DATABASE_URL: 'postgres://worklog:e2e-local-only@postgres:5432/worklog?sslmode=disable',
-  GITHUB_CLIENT_ID: '', GITHUB_CLIENT_SECRET: '',
   GITHUB_APP_CLIENT_ID: 'local-github-client', GITHUB_APP_CLIENT_SECRET: 'local-github-secret',
   GITHUB_APP_ID: '12345', GITHUB_APP_PRIVATE_KEY: privateKey,
   GITHUB_AUTHORIZATION_URL: `http://localhost:${providerPort}/authorize`,
