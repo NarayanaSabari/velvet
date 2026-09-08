@@ -35,14 +35,24 @@ export interface Membership {
 export interface WorkspaceMembership {
   id: string
   workspace_id: string
-  invited_login: string
   role: Role
-  user: User | null
+  user: User
 }
 
 export interface SessionPayload {
   user: User
   memberships: Membership[]
+  last_workspace: Membership | null
+}
+
+export interface Invitation {
+  id: string
+  workspace_id: string
+  workspace_slug: string
+  workspace_name: string
+  email: string
+  role: Role
+  expires_at: string
 }
 
 export interface Label {

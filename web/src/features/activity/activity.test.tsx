@@ -21,6 +21,14 @@ function row(overrides: Partial<Activity>): Activity {
 }
 
 describe('ActivityRow', () => {
+  it('labels email invitations without a GitHub prefix', () => {
+    render(<ActivityRow activity={row({ verb: 'invited_member', metadata: { email: 'person@example.com', role: 'viewer' } })} />)
+    expect(screen.getByText('invited person@example.com as viewer')).toBeInTheDocument()
+  })
+  it('labels role changes using the current email metadata', () => {
+    render(<ActivityRow activity={row({ verb: 'changed_member_role', metadata: { email: 'person@example.com', from: 'member', to: 'viewer' } })} />)
+    expect(screen.getByText('changed person@example.com from member to viewer')).toBeInTheDocument()
+  })
   it('describes a comment with its excerpt', () => {
     render(<ActivityRow activity={row({
       verb: 'commented',

@@ -16,6 +16,12 @@ function num(metadata: Record<string, unknown>, key: string): number | null {
   return typeof value === 'number' ? value : null
 }
 
+function memberLabel(metadata: Record<string, unknown>): string {
+  const email = str(metadata, 'email')
+  const login = str(metadata, 'github_login')
+  return email ? userLabel({ email }) : login ? `@${login}` : 'someone'
+}
+
 /** Status metadata comes from the API as free text, so it is labelled only
  *  when it names a status this build knows about. */
 function statusLabel(raw: string | null): string | null {
@@ -117,14 +123,14 @@ export function ActivityRow({ activity }: { activity: Activity }) {
     case 'invited_member':
       body = (
         <span>
-          {`invited @${str(metadata, 'github_login') ?? 'unknown'} as ${str(metadata, 'role') ?? 'member'}`}
+          {`invited ${memberLabel(metadata)} as ${str(metadata, 'role') ?? 'member'}`}
         </span>
       )
       break
     case 'changed_member_role':
       body = (
         <span>
-          {`changed @${str(metadata, 'github_login') ?? 'unknown'} from ${str(metadata, 'from') ?? 'unknown'} to ${str(metadata, 'to') ?? 'unknown'}`}
+          {`changed ${memberLabel(metadata)} from ${str(metadata, 'from') ?? 'unknown'} to ${str(metadata, 'to') ?? 'unknown'}`}
         </span>
       )
       break

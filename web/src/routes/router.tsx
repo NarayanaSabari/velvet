@@ -1,15 +1,21 @@
 import {
-  createRootRoute,
+  createRootRouteWithContext,
   createRoute,
   createRouter,
   redirect,
   type RouterHistory,
 } from '@tanstack/react-router'
 
-import { api } from '../lib/api'
-import type { SessionPayload } from '../lib/types'
+import type { QueryClient } from '@tanstack/react-query'
+import { queryClient } from '../lib/query'
 import { SignIn } from '../features/auth/SignIn'
-import { NotInvited } from '../features/auth/NotInvited'
+import { ConfirmSignIn } from '../features/auth/ConfirmSignIn'
+import { CheckEmail } from '../features/auth/CheckEmail'
+import { Expired } from '../features/auth/Expired'
+import { Invite } from '../features/auth/Invite'
+import { landingWorkspace, sessionQueryOptions } from '../features/auth/useSession'
+import { NewOrganisation } from '../features/orgs/NewOrganisation'
+import { ProfileRoute } from '../features/profile/Profile'
 import { Placeholder, RootLayout } from './root'
 import { Dashboard } from '../features/dashboard/Dashboard'
 import { TeamFeed } from '../features/feed/TeamFeed'
@@ -22,19 +28,20 @@ import { Reports } from '../features/reports/Reports'
 import { Admin } from '../features/admin/Admin'
 import { Mentions } from '../features/mentions/Mentions'
 
-const rootRoute = createRootRoute({ component: RootLayout })
+const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: RootLayout })
 
 // `/` cannot know the workspace slug on its own, so it asks the session which
 // workspace the caller actually belongs to before redirecting.
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  beforeLoad: async () => {
-    const session = await api.get<SessionPayload>('/me').catch(() => null)
-    const first = session?.memberships[0]
+  beforeLoad: async ({ context }) => {
+    const session = await context.queryClient.fetchQuery({ ...sessionQueryOptions(context.queryClient), staleTime: 0 })
+    if (!session) throw redirect({ href: '/signin' })
+    const workspace = landingWorkspace(session)
     // `href` rather than a typed `to`: the route tree is still being built
     // here, so its literal paths are not yet known to the type checker.
-    if (first) throw redirect({ href: `/w/${first.workspace_slug}` })
+    throw redirect({ href: workspace ? `/w/${workspace.workspace_slug}` : '/orgs/new' })
   },
   component: () => <Placeholder title="Work log" />,
 })
@@ -148,15 +155,40 @@ const routes = [
   }),
   createRoute({
     getParentRoute: () => rootRoute,
-    path: '/not-invited',
-    component: () => <NotInvited />,
+    path: '/signin/confirm',
+    component: ConfirmSignIn,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/check-email',
+    component: CheckEmail,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/expired',
+    component: Expired,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/invite',
+    component: Invite,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/orgs/new',
+    component: NewOrganisation,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/w/$slug/settings/profile',
+    component: ProfileRoute,
   }),
 ]
 
 const routeTree = rootRoute.addChildren(routes)
 
-export function createAppRouter(history?: RouterHistory) {
-  return createRouter({ routeTree, history })
+export function createAppRouter(history?: RouterHistory, client = queryClient) {
+  return createRouter({ routeTree, history, context: { queryClient: client } })
 }
 
 export const router = createAppRouter()

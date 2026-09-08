@@ -14,11 +14,11 @@ function RouterNavLink({ to, children, className }: NavLinkProps) {
 export function RootLayout() {
   const params = useParams({ strict: false }) as { slug?: string }
   const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const isPublicAuthRoute = pathname === '/signin' || pathname === '/not-invited'
+  const outsideShell = ['/', '/signin', '/signin/confirm', '/check-email', '/expired', '/invite', '/orgs/new'].includes(pathname)
 
   return (
     <NavLinkProvider value={RouterNavLink}>
-      {isPublicAuthRoute ? (
+      {outsideShell ? (
         <Outlet />
       ) : (
         <Shell slug={params.slug}>

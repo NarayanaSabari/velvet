@@ -28,7 +28,7 @@ describe('Shell', () => {
     } as Response))
 
     renderShell()
-    expect(await screen.findByRole('link', { name: /sign in with github/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Send sign-in link' })).toBeInTheDocument()
   })
 
   it('renders the workspace and content once signed in', async () => {
@@ -69,6 +69,9 @@ describe('Shell', () => {
     renderShell('lab')
     await screen.findByText('Lab')
     expect(screen.queryByRole('link', { name: 'Administration' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'New organisation' })).toHaveAttribute('href', '/orgs/new')
+    expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/w/lab/settings/profile')
+    expect(screen.getByRole('button', { name: 'Leave organisation' })).toBeInTheDocument()
   })
 
   it('signs out with POST, clears the cached session, and navigates to sign-in', async () => {
@@ -81,6 +84,7 @@ describe('Shell', () => {
     const navigate = vi.fn()
     const client = new QueryClient()
     client.setQueryData(['session'], { user: { id: 'u1' } })
+    client.setQueryData(['feed', 'lab'], ['private'])
 
     render(
       <QueryClientProvider client={client}>
@@ -95,6 +99,7 @@ describe('Shell', () => {
       expect.objectContaining({ method: 'POST' }),
     )
     expect(client.getQueryData(['session'])).toBeUndefined()
+    expect(client.getQueryData(['feed', 'lab'])).toBeUndefined()
   })
 
   it('reports a failed sign-out without discarding the cached session', async () => {
@@ -126,7 +131,7 @@ describe('Shell', () => {
     } as Response))
 
     renderShell('missing')
-    expect(await screen.findByText('Workspace not found')).toBeInTheDocument()
+    expect(await screen.findByText('Organisation not found')).toBeInTheDocument()
     expect(screen.queryByText('content')).toBeNull()
   })
 })

@@ -23,7 +23,8 @@ function renderAdmin() {
 }
 
 const adminSession = {
-  user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
+  user: { id: 'u1', email: 'sabari@example.com', github_id: 1, github_login: 'sabari', name: 'Sabari', avatar_url: '' },
+  last_workspace: null,
   memberships: [
     {
       id: 'm1',
@@ -40,27 +41,36 @@ const workspaceMembers = {
     {
       id: 'm1',
       workspace_id: 'w1',
-      invited_login: 'sabari',
       role: 'admin',
       user: adminSession.user,
     },
     {
       id: 'm2',
       workspace_id: 'w1',
-      invited_login: 'octocat',
       role: 'member',
-      user: null,
+      user: { id: 'u2', email: 'octocat@example.com', name: '', github_login: null, avatar_url: '' },
     },
   ],
 }
 
 function adminFetch() {
+  let members = workspaceMembers.memberships.map((member) => ({ ...member }))
+  let invites = [{ id: 'i1', workspace_id: 'w1', workspace_name: 'Lab', workspace_slug: 'lab', email: 'pending@example.com', role: 'viewer', expires_at: '2026-09-15T00:00:00Z' }]
   return vi.fn().mockImplementation((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
     if (url === '/api/v1/me') return response(adminSession)
+    if (url === '/api/v1/w/lab/invites' && init?.method === 'GET') return response({ invites })
+    if (url === '/api/v1/w/lab/invites' && init?.method === 'POST') {
+      const invite = { ...invites[0], ...JSON.parse(String(init.body)), id: 'i2' }
+      invites = [...invites, invite]
+      return response(invite, 201)
+    }
+    if (url === '/api/v1/w/lab/invites/i1/resend' && init?.method === 'POST') return response(invites[0])
+    if (url === '/api/v1/w/lab/invites/i1' && init?.method === 'DELETE') { invites = []; return response(null, 204) }
+    if (url === '/api/v1/w/lab/memberships/m2' && init?.method === 'DELETE') { members = members.filter((member) => member.id !== 'm2'); return response(null, 204) }
     if (url === '/api/v1/w/lab/github') return response({ installation: { id: 99, account_login: 'acme' }, status: 'error', error: 'verification_required' })
     if (url === '/api/v1/w/lab/memberships' && (!init?.method || init.method === 'GET')) {
-      return response(workspaceMembers)
+      return response({ memberships: members })
     }
     if (url === '/api/v1/w/lab/repos' && (!init?.method || init.method === 'GET')) {
       return response({
@@ -78,14 +88,9 @@ function adminFetch() {
         ],
       })
     }
-    if (url === '/api/v1/w/lab/memberships' && init?.method === 'POST') {
-      return response(workspaceMembers.memberships[1], 201)
-    }
     if (url === '/api/v1/w/lab/memberships/m2' && init?.method === 'PATCH') {
-      return response({ ...workspaceMembers.memberships[1], role: 'viewer' })
-    }
-    if (url === '/api/v1/w/lab/repos' && init?.method === 'POST') {
-      return response({}, 201)
+      members = members.map((member) => member.id === 'm2' ? { ...member, role: 'viewer' } : member)
+      return response(members[1])
     }
     throw new Error(`unexpected request: ${init?.method ?? 'GET'} ${url}`)
   })
@@ -99,41 +104,116 @@ describe('Admin', () => {
     renderAdmin()
 
     expect(await screen.findByRole('heading', { name: 'Administration' })).toBeInTheDocument()
-    expect(await screen.findByText('@octocat')).toBeInTheDocument()
-    expect(screen.getByText('Invite pending')).toBeInTheDocument()
+    expect(await screen.findByText('octocat@example.com')).toBeInTheDocument()
+    expect(await screen.findByText('pending@example.com')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'acme/widgets' })).toHaveAttribute(
       'href',
       'https://github.com/acme/widgets',
     )
   })
 
-  it('invites a GitHub login and changes a role', async () => {
+  it('invites by email and changes a member role', async () => {
     const fetch = adminFetch()
     vi.stubGlobal('fetch', fetch)
     const user = userEvent.setup()
     renderAdmin()
 
-    await user.type(await screen.findByLabelText('GitHub login'), 'new-user')
+    await user.type(await screen.findByLabelText('Invite email'), 'new-user@example.com')
     await user.selectOptions(screen.getByLabelText('Invite role'), 'viewer')
     await user.click(screen.getByRole('button', { name: 'Send invite' }))
 
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
-        '/api/v1/w/lab/memberships',
+        '/api/v1/w/lab/invites',
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ github_login: 'new-user', role: 'viewer' }),
+          body: JSON.stringify({ email: 'new-user@example.com', role: 'viewer' }),
         }),
       ),
     )
 
-    await user.selectOptions(screen.getByLabelText('Role for octocat'), 'viewer')
+    await user.selectOptions(screen.getByLabelText('Role for octocat@example.com'), 'viewer')
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         '/api/v1/w/lab/memberships/m2',
         expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ role: 'viewer' }) }),
       ),
     )
+    await waitFor(() => expect(screen.getByLabelText('Role for octocat@example.com')).toHaveValue('viewer'))
+    expect(await screen.findByText('new-user@example.com')).toBeInTheDocument()
+  })
+
+  it('resends and revokes pending invitations through their dedicated endpoints', async () => {
+    const fetchMock = adminFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    renderAdmin()
+    await userEvent.click(await screen.findByRole('button', { name: 'Resend invitation to pending@example.com' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/invites/i1/resend', expect.objectContaining({ method: 'POST' })))
+    await userEvent.click(screen.getByRole('button', { name: 'Revoke invitation to pending@example.com' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/invites/i1', expect.objectContaining({ method: 'DELETE' })))
+    await waitFor(() => expect(screen.queryByText('pending@example.com')).not.toBeInTheDocument())
+  })
+
+  it.each(['Resend', 'Revoke'])('clears a failed invite error when starting a successful %s', async (action) => {
+    const fallback = adminFetch()
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+      if (input === '/api/v1/w/lab/invites' && init?.method === 'POST') {
+        return response({ error: { code: 'internal', message: 'Could not send invitation' } }, 500)
+      }
+      return fallback(input, init)
+    }))
+    renderAdmin()
+    await userEvent.type(await screen.findByLabelText('Invite email'), 'new-user@example.com')
+    await userEvent.click(screen.getByRole('button', { name: 'Send invite' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not send invitation')
+
+    await userEvent.click(screen.getByRole('button', { name: `${action} invitation to pending@example.com` }))
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+    if (action === 'Revoke') {
+      expect(await screen.findByText('No pending invitations.')).toBeInTheDocument()
+    } else {
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Resend invitation to pending@example.com' })).toBeEnabled())
+    }
+  })
+
+  it.each(['Resend', 'Revoke'])('clears a failed %s error when sending a new invitation', async (action) => {
+    const fallback = adminFetch()
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+      if (input === `/api/v1/w/lab/invites/i1${action === 'Resend' ? '/resend' : ''}` && init?.method === (action === 'Resend' ? 'POST' : 'DELETE')) {
+        return response({ error: { code: 'internal', message: 'Could not update invitation' } }, 500)
+      }
+      return fallback(input, init)
+    }))
+    renderAdmin()
+    await userEvent.click(await screen.findByRole('button', { name: `${action} invitation to pending@example.com` }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not update invitation')
+
+    await userEvent.type(screen.getByLabelText('Invite email'), 'new-user@example.com')
+    await userEvent.click(screen.getByRole('button', { name: 'Send invite' }))
+    expect(await screen.findByText('new-user@example.com')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('removes a member after confirmation', async () => {
+    const fetchMock = adminFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    renderAdmin()
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove octocat@example.com' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm removal' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/memberships/m2', expect.objectContaining({ method: 'DELETE' })))
+    await waitFor(() => expect(screen.queryByLabelText('Role for octocat@example.com')).not.toBeInTheDocument())
+  })
+
+  it('preserves the role and displays the server last-admin refusal', async () => {
+    const fallback = adminFetch()
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+      if (input.endsWith('/memberships/m1') && init?.method === 'PATCH') return response({ error: { code: 'last_admin', message: 'the organisation must retain at least one admin' } }, 409)
+      return fallback(input, init)
+    }))
+    renderAdmin()
+    await userEvent.selectOptions(await screen.findByLabelText('Role for Sabari'), 'viewer')
+    expect(await screen.findByRole('alert')).toHaveTextContent('must retain at least one admin')
+    expect(screen.getByLabelText('Role for Sabari')).toHaveValue('admin')
   })
 
   it('offers ownership verification without manual repository identifiers', async () => {
@@ -214,11 +294,11 @@ describe('Admin', () => {
     expect(await screen.findByRole('link', { name: 'acme/newly-synced' }, { timeout: 4000 })).toBeInTheDocument()
   })
 
-  it('does not load admin resources for a non-admin', async () => {
+  it.each(['member', 'viewer'])('does not load admin resources for a %s', async (role) => {
     const fetch = vi.fn().mockImplementation(() =>
       response({
         ...adminSession,
-        memberships: [{ ...adminSession.memberships[0], role: 'member' }],
+        memberships: [{ ...adminSession.memberships[0], role }],
       }),
     )
     vi.stubGlobal('fetch', fetch)
