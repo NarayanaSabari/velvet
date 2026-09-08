@@ -144,9 +144,15 @@ func TestMembershipMutationsValidateInput(t *testing.T) {
 
 func TestLegacyGitHubSessionAndInvitationRoutesAreRemoved(t *testing.T) {
 	f := testutil.NewFixture(t)
-	for _, path := range []string{"/api/v1/auth/github/login", "/api/v1/auth/github/callback?code=unused&state=unused"} {
-		rec := f.Do(http.MethodGet, path, nil)
-		require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+	for _, tc := range []struct {
+		path   string
+		status int
+	}{
+		{"/api/v1/auth/github/login", http.StatusNotFound},
+		{"/api/v1/auth/github/callback?code=unused&state=unused", http.StatusGone},
+	} {
+		rec := f.Do(http.MethodGet, tc.path, nil)
+		require.Equal(t, tc.status, rec.Code, rec.Body.String())
 		require.Empty(t, rec.Result().Cookies())
 	}
 	rec := f.Do(http.MethodPost, "/api/v1/w/lab/memberships", map[string]any{"github_login": "octocat", "role": "admin"})

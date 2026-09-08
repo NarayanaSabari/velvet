@@ -1,29 +1,37 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/config"
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/github"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/mail"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 )
 
 type Server struct {
-	pool   *pgxpool.Pool
-	cfg    *config.Config
-	store  *store.Store
-	broker *Broker
-	mailer mail.Mailer
+	pool                       *pgxpool.Pool
+	cfg                        *config.Config
+	store                      *store.Store
+	broker                     *Broker
+	mailer                     mail.Mailer
+	githubUser                 *github.UserClient
+	completeGitHubInstallation func(context.Context, store.GitHubAuthorization, github.VerifiedInstallation) error
 }
 
 type Dependencies struct {
-	Mailer mail.Mailer
+	Mailer     mail.Mailer
+	GitHubUser *github.UserClient
+	// CompleteGitHubInstallation must bind, enqueue, and complete both states
+	// in one transaction, using the store's workspace/admin and state locks.
+	CompleteGitHubInstallation func(context.Context, store.GitHubAuthorization, github.VerifiedInstallation) error
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config, deps Dependencies) *Server {
-	return &Server{pool: pool, cfg: cfg, store: store.New(pool), broker: NewBroker(), mailer: deps.Mailer}
+	return &Server{pool: pool, cfg: cfg, store: store.New(pool), broker: NewBroker(), mailer: deps.Mailer, githubUser: deps.GitHubUser, completeGitHubInstallation: deps.CompleteGitHubInstallation}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -56,6 +64,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerCommentRoutes(mux)
 	s.registerActivityRoutes(mux)
 	s.registerGitHubRoutes(mux)
+	s.registerGitHubAuthorizationRoutes(mux)
 	s.registerReportRoutes(mux)
 
 	return RequestID(Logging(Recover(s.browserMutations(mux))))

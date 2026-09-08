@@ -53,3 +53,19 @@ func TestLoadAllowsNoMailLocally(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, cfg.ResendAPIKey)
 }
+
+func TestLoadGitHubAppUserCredentialsAndEndpoints(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://x")
+	t.Setenv("GITHUB_CLIENT_ID", "old-oauth-client")
+	t.Setenv("GITHUB_CLIENT_SECRET", "old-oauth-secret")
+	t.Setenv("GITHUB_APP_CLIENT_ID", "app-client")
+	t.Setenv("GITHUB_APP_CLIENT_SECRET", "app-secret")
+	t.Setenv("GITHUB_AUTHORIZATION_URL", "http://localhost:18499/authorize")
+	t.Setenv("GITHUB_TOKEN_URL", "http://host.docker.internal:18499/token")
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "app-client", cfg.GitHubAppClientID)
+	require.Equal(t, "app-secret", cfg.GitHubAppClientSecret)
+	require.Equal(t, "http://localhost:18499/authorize", cfg.GitHubAuthorizationURL)
+	require.Equal(t, "http://host.docker.internal:18499/token", cfg.GitHubTokenURL)
+}

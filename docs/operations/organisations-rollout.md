@@ -179,6 +179,22 @@ Do not use the foundation image if it contains the earlier unconditional mail-va
 
 ## Release 2: feature and contract
 
+### GitHub App authorization settings
+
+Configure the GitHub App's callback URL as `BASE_URL/api/v1/auth/github/callback` and its setup URL as `BASE_URL/api/v1/github/setup`.
+Disable **Request user authorization (OAuth) during installation** and **Redirect on update**.
+Velvet starts user authorization explicitly after claiming the setup state, so automatic authorization must not bypass that state and PKCE flow.
+Make these App settings changes only as part of the separately approved operator rollout.
+
+Set `GITHUB_APP_CLIENT_ID` and `GITHUB_APP_CLIENT_SECRET` from the GitHub App's user authorization credentials.
+These are separate from the App id and private key used by installation workers, and from any legacy OAuth App credentials.
+User access and refresh tokens are never retained after authorization.
+Local verification may override `GITHUB_AUTHORIZATION_URL`, `GITHUB_TOKEN_URL`, and `GITHUB_API_URL` with a disposable HTTP stub; production defaults are GitHub's public authorization, token, and REST endpoints.
+The browser must be able to reach the authorization URL, while the API process must be able to reach the token and REST URLs.
+
+The installation authorization routes require an installation completer that atomically binds the installation, enqueues synchronization, and completes both callback states.
+An intermediate build without that completer returns unavailable before starting installation authorization and is not a deployable feature release.
+
 ### 1. Prepare the maintenance gate
 
 Obtain separate approval for the feature merge and production deployment.

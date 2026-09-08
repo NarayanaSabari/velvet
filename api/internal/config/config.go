@@ -9,10 +9,14 @@ import (
 )
 
 type Config struct {
-	DatabaseURL        string
-	Port               string
-	GitHubClientID     string
-	GitHubClientSecret string
+	DatabaseURL            string
+	Port                   string
+	GitHubClientID         string
+	GitHubClientSecret     string
+	GitHubAppClientID      string
+	GitHubAppClientSecret  string
+	GitHubAuthorizationURL string
+	GitHubTokenURL         string
 	// The GitHub App settings are optional at load time, so the API still
 	// boots before anyone has installed the App.
 	GitHubWebhookSecret string
@@ -34,15 +38,19 @@ type Config struct {
 
 func Load() (*Config, error) {
 	c := &Config{
-		DatabaseURL:         os.Getenv("DATABASE_URL"),
-		Port:                envOr("PORT", "8080"),
-		GitHubClientID:      os.Getenv("GITHUB_CLIENT_ID"),
-		GitHubClientSecret:  os.Getenv("GITHUB_CLIENT_SECRET"),
-		GitHubWebhookSecret: os.Getenv("GITHUB_WEBHOOK_SECRET"),
-		GitHubAppID:         os.Getenv("GITHUB_APP_ID"),
-		GitHubAppPrivateKey: os.Getenv("GITHUB_APP_PRIVATE_KEY"),
-		GitHubAPIURL:        os.Getenv("GITHUB_API_URL"),
-		BaseURL:             envOr("BASE_URL", "http://localhost:8080"),
+		DatabaseURL:            os.Getenv("DATABASE_URL"),
+		Port:                   envOr("PORT", "8080"),
+		GitHubClientID:         os.Getenv("GITHUB_CLIENT_ID"),
+		GitHubClientSecret:     os.Getenv("GITHUB_CLIENT_SECRET"),
+		GitHubAppClientID:      os.Getenv("GITHUB_APP_CLIENT_ID"),
+		GitHubAppClientSecret:  os.Getenv("GITHUB_APP_CLIENT_SECRET"),
+		GitHubAuthorizationURL: os.Getenv("GITHUB_AUTHORIZATION_URL"),
+		GitHubTokenURL:         os.Getenv("GITHUB_TOKEN_URL"),
+		GitHubWebhookSecret:    os.Getenv("GITHUB_WEBHOOK_SECRET"),
+		GitHubAppID:            os.Getenv("GITHUB_APP_ID"),
+		GitHubAppPrivateKey:    os.Getenv("GITHUB_APP_PRIVATE_KEY"),
+		GitHubAPIURL:           os.Getenv("GITHUB_API_URL"),
+		BaseURL:                envOr("BASE_URL", "http://localhost:8080"),
 	}
 	c.ResendAPIKey = os.Getenv("RESEND_API_KEY")
 	c.MailFrom = os.Getenv("MAIL_FROM")

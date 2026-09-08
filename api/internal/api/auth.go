@@ -49,6 +49,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	user, _ := CurrentUser(r.Context())
 	memberships, err := s.store.MembershipsForUser(r.Context(), user.ID)
 	if err != nil {

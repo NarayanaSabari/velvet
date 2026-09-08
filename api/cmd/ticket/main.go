@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -53,13 +54,24 @@ func run(ctx context.Context, args []string) error {
 	case "migrate":
 		return db.Migrate(ctx, pool)
 	case "serve":
+		var githubUser *github.UserClient
+		if cfg.GitHubAppClientID != "" || cfg.GitHubAppClientSecret != "" {
+			githubUser, err = github.NewUserClient(github.UserClientConfig{
+				ClientID: cfg.GitHubAppClientID, ClientSecret: cfg.GitHubAppClientSecret,
+				AuthorizationURL: cfg.GitHubAuthorizationURL, TokenURL: cfg.GitHubTokenURL,
+				APIURL: cfg.GitHubAPIURL, RedirectURL: strings.TrimRight(cfg.BaseURL, "/") + "/api/v1/auth/github/callback",
+			})
+			if err != nil {
+				return err
+			}
+		}
 		var mailer mail.Mailer = mail.NewLogMailer(slog.Default())
 		if cfg.ResendAPIKey != "" && cfg.MailFrom != "" {
 			mailer = mail.NewResend(cfg.ResendAPIKey, cfg.MailFrom, nil, "")
 		}
 		srv := &http.Server{
 			Addr:              ":" + cfg.Port,
-			Handler:           api.NewServer(pool, cfg, api.Dependencies{Mailer: mailer}).Handler(),
+			Handler:           api.NewServer(pool, cfg, api.Dependencies{Mailer: mailer, GitHubUser: githubUser}).Handler(),
 			ReadHeaderTimeout: 10 * time.Second,
 		}
 		listener, err := net.Listen("tcp", srv.Addr)
