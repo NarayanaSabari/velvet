@@ -3,10 +3,12 @@ package auth
 import (
 	"net/http"
 	"time"
+
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 )
 
 const CookieName = "ticket_session"
-const SessionTTL = 30 * 24 * time.Hour
+const SessionTTL = store.SessionTTL
 
 func SetSessionCookie(w http.ResponseWriter, token string, secure bool) {
 	http.SetCookie(w, &http.Cookie{

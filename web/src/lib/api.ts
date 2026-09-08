@@ -17,7 +17,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     method,
     // The session lives in an HttpOnly cookie; the SPA never holds a token.
     credentials: 'same-origin',
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+    headers: method === 'GET' ? {} : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
 

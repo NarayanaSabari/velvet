@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -26,7 +28,8 @@ type Config struct {
 	ResendAPIKey string
 	MailFrom     string
 	// The App's URL slug, used to send admins to its installation page.
-	GitHubAppSlug string
+	GitHubAppSlug     string
+	TrustedProxyCIDRs []netip.Prefix
 }
 
 func Load() (*Config, error) {
@@ -47,10 +50,31 @@ func Load() (*Config, error) {
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
-	if strings.HasPrefix(c.BaseURL, "https://") && (c.ResendAPIKey == "" || c.MailFrom == "") {
-		return nil, fmt.Errorf("RESEND_API_KEY and MAIL_FROM are required when BASE_URL is https")
+	for _, value := range strings.Split(os.Getenv("TRUSTED_PROXY_CIDRS"), ",") {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil || prefix.Bits() == 0 || prefix.Addr().Is4In6() {
+			return nil, fmt.Errorf("TRUSTED_PROXY_CIDRS must contain explicit IPv4 or IPv6 CIDRs")
+		}
+		c.TrustedProxyCIDRs = append(c.TrustedProxyCIDRs, prefix.Masked())
 	}
 	return c, nil
+}
+
+// ValidateServe enforces settings needed only by the HTTP server. Workers and
+// migrations never require mail secrets, even with a production BASE_URL.
+func (c *Config) ValidateServe() error {
+	base, err := url.Parse(c.BaseURL)
+	if err != nil || base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") || base.User != nil || base.RawQuery != "" || base.Fragment != "" || (base.Path != "" && base.Path != "/") {
+		return fmt.Errorf("BASE_URL must be an http or https origin")
+	}
+	if base.Scheme == "https" && (strings.TrimSpace(c.ResendAPIKey) == "" || strings.TrimSpace(c.MailFrom) == "") {
+		return fmt.Errorf("RESEND_API_KEY and MAIL_FROM are required when BASE_URL is https")
+	}
+	return nil
 }
 
 func envOr(key, fallback string) string {

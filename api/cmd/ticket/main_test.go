@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,4 +35,27 @@ func TestServeStopsCleanlyWhenCancelled(t *testing.T) {
 	cancel()
 
 	require.NoError(t, <-done)
+}
+
+func TestHTTPSMigrateAndWorkerDoNotRequireMail(t *testing.T) {
+	pool := testutil.NewPostgres(t)
+	t.Setenv("DATABASE_URL", pool.Config().ConnString())
+	t.Setenv("BASE_URL", "https://velvet.example.com")
+	t.Setenv("RESEND_API_KEY", "")
+	t.Setenv("MAIL_FROM", "")
+	t.Setenv("GITHUB_APP_ID", "")
+	t.Setenv("GITHUB_APP_PRIVATE_KEY", "")
+	require.NoError(t, run(t.Context(), []string{"migrate"}))
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	require.NoError(t, run(ctx, []string{"worker"}))
+}
+
+func TestHTTPSServeRequiresMailBeforeOpeningDatabase(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://unreachable.invalid/db")
+	t.Setenv("BASE_URL", "https://velvet.example.com")
+	t.Setenv("RESEND_API_KEY", "")
+	t.Setenv("MAIL_FROM", "")
+	err := run(t.Context(), []string{"serve"})
+	require.ErrorContains(t, err, "RESEND_API_KEY")
 }

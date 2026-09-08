@@ -54,9 +54,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	default:
 	}
 
-	if _, err := w.store.DeleteExpiredSessions(ctx); err != nil {
-		slog.Error("delete expired sessions", "err", err)
-	}
+	w.cleanupAuthentication(ctx)
 
 	// Reconcile once at start, which is also what backfills a freshly
 	// onboarded repository without waiting an hour for the first tick.
@@ -73,9 +71,7 @@ func (w *Worker) Run(ctx context.Context) error {
 				slog.Error("reconcile", "err", err)
 			}
 		case <-sessionTicker.C:
-			if _, err := w.store.DeleteExpiredSessions(ctx); err != nil {
-				slog.Error("delete expired sessions", "err", err)
-			}
+			w.cleanupAuthentication(ctx)
 		default:
 		}
 
@@ -90,6 +86,15 @@ func (w *Worker) Run(ctx context.Context) error {
 			case <-time.After(idlePause):
 			}
 		}
+	}
+}
+
+func (w *Worker) cleanupAuthentication(ctx context.Context) {
+	if _, err := w.store.DeleteExpiredSessions(ctx); err != nil {
+		slog.Error("delete expired sessions", "err", err)
+	}
+	if err := w.store.CleanupExpiredAuthentication(ctx); err != nil {
+		slog.Error("delete expired authentication records", "err", err)
 	}
 }
 

@@ -24,6 +24,12 @@ func CurrentWorkspace(ctx context.Context) (store.Membership, bool) {
 }
 
 func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/v1/auth/email", s.handleEmail)
+	mux.HandleFunc("POST /api/v1/auth/magic", s.handleMagic)
+	mux.HandleFunc("GET /api/v1/auth/magic", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Allow", "POST")
+		WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "POST is required")
+	})
 	// Logout is deliberately idempotent. It must clear a stale browser cookie
 	// even when the backing session has expired or was already removed.
 	mux.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)

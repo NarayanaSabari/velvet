@@ -94,7 +94,7 @@ func NewFixtureWithWebhookSecret(t *testing.T, secret string) *Fixture {
 
 	return &Fixture{
 		T: t, Pool: pool, Store: st,
-		Handler:     api.NewServer(pool, cfg).Handler(),
+		Handler:     api.NewServer(pool, cfg, api.Dependencies{}).Handler(),
 		WorkspaceID: wsID, Slug: "lab", User: user, Token: token,
 	}
 }
@@ -108,6 +108,7 @@ func (f *Fixture) Do(method, path string, body any) *httptest.ResponseRecorder {
 	}
 	req := httptest.NewRequest(method, path, &buf)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://localhost:8080")
 	req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: f.Token})
 	rec := httptest.NewRecorder()
 	f.Handler.ServeHTTP(rec, req)

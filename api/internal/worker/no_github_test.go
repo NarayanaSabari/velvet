@@ -3,6 +3,7 @@ package worker_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -24,4 +25,21 @@ func TestRunStopsCleanlyWhenCancelled(t *testing.T) {
 	cancel()
 
 	require.NoError(t, worker.New(f.Store, nil).Run(ctx))
+}
+
+func TestRunCleansExpiredAuthenticationAtStartup(t *testing.T) {
+	f := testutil.NewFixture(t)
+	_, err := f.Pool.Exec(t.Context(), `INSERT INTO login_token(email,token_hash,request_ip,created_at,expires_at) VALUES ('old@example.com','old-token','127.0.0.1',now()-interval '1 hour',now()-interval '30 minutes')`)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- worker.New(f.Store, nil).Run(ctx) }()
+	require.Eventually(t, func() bool {
+		var n int
+		err := f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM login_token`).Scan(&n)
+		return err == nil && n == 0
+	}, time.Second, 10*time.Millisecond)
+	cancel()
+	require.NoError(t, <-done)
 }

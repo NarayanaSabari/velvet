@@ -6,6 +6,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/config"
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/mail"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 )
 
@@ -14,10 +15,15 @@ type Server struct {
 	cfg    *config.Config
 	store  *store.Store
 	broker *Broker
+	mailer mail.Mailer
 }
 
-func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
-	return &Server{pool: pool, cfg: cfg, store: store.New(pool), broker: NewBroker()}
+type Dependencies struct {
+	Mailer mail.Mailer
+}
+
+func NewServer(pool *pgxpool.Pool, cfg *config.Config, deps Dependencies) *Server {
+	return &Server{pool: pool, cfg: cfg, store: store.New(pool), broker: NewBroker(), mailer: deps.Mailer}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -50,5 +56,5 @@ func (s *Server) Handler() http.Handler {
 	s.registerGitHubRoutes(mux)
 	s.registerReportRoutes(mux)
 
-	return RequestID(Logging(Recover(mux)))
+	return RequestID(Logging(Recover(s.browserMutations(mux))))
 }
