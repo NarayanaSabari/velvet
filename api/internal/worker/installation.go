@@ -30,12 +30,45 @@ func (w *Worker) handleInstallation(ctx context.Context, payload []byte) error {
 	if ev.Installation.ID == 0 {
 		return nil
 	}
-	suspended := ev.Action == "suspend"
-	if err := w.store.UpsertInstallation(ctx, ev.Installation.ID,
-		ev.Installation.Account.Login, suspended); err != nil {
+	job, check, err := w.store.InstallationEvent(ctx, ev.Installation.ID, ev.Installation.Account.Login, ev.Action)
+	if err != nil {
 		return err
 	}
-	return w.store.RequestInstallationSyncForEvent(ctx, ev.Installation.ID)
+	if !check {
+		return nil
+	}
+	return w.syncInstallationState(ctx, job)
+}
+
+func (w *Worker) syncInstallationState(ctx context.Context, job store.InstallationSync) error {
+	current, err := w.store.InstallationStateCurrent(ctx, job)
+	if err != nil {
+		return errors.New("installation state sync failed")
+	}
+	if !current {
+		return nil
+	}
+	fail := func() error {
+		if err := w.store.FailInstallationSync(ctx, job, "sync_failed"); err != nil {
+			return errors.New("could not record installation sync failure")
+		}
+		return errors.New("installation state sync failed")
+	}
+	if w.gh == nil {
+		return fail()
+	}
+	suspended, err := w.gh.InstallationSuspended(ctx, job.InstallationID)
+	if err != nil {
+		return fail()
+	}
+	err = w.store.ApplyInstallationState(ctx, job, suspended)
+	if errors.Is(err, store.ErrStaleInstallationSync) {
+		return nil
+	}
+	if err != nil {
+		return fail()
+	}
+	return nil
 }
 
 func (w *Worker) syncInstallationRepos(ctx context.Context, job store.InstallationSync) error {

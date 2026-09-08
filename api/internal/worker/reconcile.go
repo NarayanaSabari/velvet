@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/github"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
 // backfillWindow is how far back a never-synced repository is read. It doubles
@@ -25,8 +25,9 @@ func (w *Worker) Reconcile(ctx context.Context) error {
 	if w.gh == nil {
 		return nil
 	}
+	var failures []error
 	if err := w.store.ScheduleInstallationSyncs(ctx); err != nil {
-		return err
+		failures = append(failures, err)
 	}
 
 	repos, err := w.store.ReposDueForSync(ctx, reconcileInterval)
@@ -34,20 +35,28 @@ func (w *Worker) Reconcile(ctx context.Context) error {
 		return err
 	}
 
+	failedInstallations := map[int64]bool{}
 	for _, repo := range repos {
+		if failedInstallations[repo.InstallationID] {
+			continue
+		}
 		if err := w.reconcileRepo(ctx, repo); err != nil {
-			// A rate limit stops the whole pass: every later repo shares the
-			// same installation budget, so continuing would only burn retries.
-			if errors.Is(err, github.ErrRateLimited) {
-				return err
-			}
-			return fmt.Errorf("reconcile %s/%s: %w", repo.Owner, repo.Name, err)
+			failedInstallations[repo.InstallationID] = true
+			failures = append(failures, fmt.Errorf("reconcile %s/%s: %w", repo.Owner, repo.Name, err))
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 func (w *Worker) reconcileRepo(ctx context.Context, repo store.Repo) error {
+	current, err := w.store.ActiveRepo(ctx, repo.GitHubID, repo.InstallationID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	repo = current
 	since := time.Now().Add(-backfillWindow)
 	if repo.SyncedAt != nil {
 		since = *repo.SyncedAt
@@ -55,7 +64,8 @@ func (w *Worker) reconcileRepo(ctx context.Context, repo store.Repo) error {
 
 	prs, err := w.gh.ListPullRequests(ctx, repo.InstallationID, repo.Owner, repo.Name, since)
 	if err != nil {
-		return err
+		// Provider bodies never enter queue errors or logs.
+		return errors.New("pull request sync failed")
 	}
 	for _, pr := range prs {
 		if err := w.syncPullRequest(ctx, repo, pr); err != nil {
@@ -65,5 +75,8 @@ func (w *Worker) reconcileRepo(ctx context.Context, repo store.Repo) error {
 
 	// Stamped only after the repo finishes. Stamping after a failed fetch
 	// would move the window past a gap that was never actually read.
-	return w.store.MarkRepoSynced(ctx, repo.ID)
+	return w.store.WithActiveRepo(ctx, repo, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE repo SET synced_at=now() WHERE id=$1`, repo.ID)
+		return err
+	})
 }

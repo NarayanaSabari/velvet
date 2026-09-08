@@ -214,7 +214,8 @@ function RepositoryPanel({
   const connection = useQuery({
     queryKey: ['github', slug],
     queryFn: () => api.get<GitHubConnection>(`/w/${slug}/github`),
-    refetchInterval: (query) => query.state.data?.status === 'syncing' ? 2000 : false,
+    refetchInterval: (query) => query.state.data?.status === 'syncing' ||
+      (query.state.data?.status === 'suspended' && !query.state.data.error) ? 2000 : false,
   })
   const retry = useMutation({
     mutationFn: () => api.post(`/w/${slug}/github/sync`),
@@ -242,7 +243,10 @@ function RepositoryPanel({
       <div className="mb-4 text-sm">
         {status === 'syncing' ? <p role="status">Syncing repositories…</p> : null}
         {status === 'connected' ? <p>Connected to {connection.data?.installation?.account_login}.</p> : null}
-        {status === 'suspended' ? <p>GitHub has suspended this installation. Restore it in GitHub to resume synchronization.</p> : null}
+        {status === 'suspended' ? <p>{connection.data?.error === 'sync_failed'
+          ? 'GitHub access is paused until its installation state can be verified.'
+          : 'GitHub has suspended this installation. Restore it in GitHub to resume synchronization.'}</p> : null}
+        {status === 'suspended' && connection.data?.error === 'sync_failed' ? <p role="alert">Could not check the installation in GitHub. Retry to check its current state.</p> : null}
         {verificationRequired ? <p>Verify ownership in GitHub before discovering repositories.</p> : null}
         {status === 'error' && !verificationRequired ? <p role="alert">{connection.data?.error === 'repository_conflict' ? 'A repository is connected to another organisation.' : 'Repository synchronization failed. Try again.'}</p> : null}
         {status === 'disconnected' || verificationRequired ? (
@@ -250,7 +254,7 @@ function RepositoryPanel({
             {verificationRequired ? 'Verify GitHub ownership' : 'Connect GitHub'}
           </a>
         ) : null}
-        {(status === 'error' && !verificationRequired) || status === 'connected' ? (
+        {(status === 'error' && !verificationRequired) || status === 'connected' || (status === 'suspended' && connection.data?.error === 'sync_failed') ? (
           <Button className="mt-2" onClick={() => retry.mutate()} disabled={retry.isPending}>
             {retry.isPending ? 'Requesting sync…' : 'Retry sync'}
           </Button>

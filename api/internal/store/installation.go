@@ -54,11 +54,15 @@ func (s *Store) BindInstallation(ctx context.Context, a GitHubAuthorization, evi
 			return err
 		}
 		var owner *uuid.UUID
-		err := tx.QueryRow(ctx, `SELECT workspace_id FROM github_installation WHERE id=$1 FOR UPDATE`, evidence.ID).Scan(&owner)
+		var tombstone *time.Time
+		err := tx.QueryRow(ctx, `SELECT workspace_id,deleted_at FROM github_installation WHERE id=$1 FOR UPDATE`, evidence.ID).Scan(&owner, &tombstone)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
 		if owner != nil && *owner != a.WorkspaceID {
+			return ErrInstallationConflict
+		}
+		if tombstone != nil {
 			return ErrInstallationConflict
 		}
 		var existing int64
@@ -78,15 +82,20 @@ func (s *Store) BindInstallation(ctx context.Context, a GitHubAuthorization, evi
 			}
 		}
 		job := InstallationSync{InstallationID: evidence.ID, WorkspaceID: a.WorkspaceID}
+		var suspended *time.Time
 		err = tx.QueryRow(ctx, `INSERT INTO github_installation(id,account_login,workspace_id,ownership_verified_at,sync_generation)
    VALUES ($1,$2,$3,clock_timestamp(),1)
    ON CONFLICT(id) DO UPDATE SET account_login=EXCLUDED.account_login,workspace_id=EXCLUDED.workspace_id,
-    ownership_verified_at=clock_timestamp(),deleted_at=NULL,repos_synced_at=NULL,sync_error=NULL,sync_generation=github_installation.sync_generation+1
-   RETURNING sync_generation`, evidence.ID, evidence.AccountLogin, a.WorkspaceID).Scan(&job.Generation)
+    ownership_verified_at=clock_timestamp(),repos_synced_at=NULL,sync_error=NULL,sync_generation=github_installation.sync_generation+1
+   RETURNING sync_generation,suspended_at`, evidence.ID, evidence.AccountLogin, a.WorkspaceID).Scan(&job.Generation, &suspended)
 		if err != nil {
 			return err
 		}
-		if err := s.EnqueueJob(ctx, tx, "sync_installation_repos", job); err != nil {
+		kind := "sync_installation_repos"
+		if suspended != nil {
+			kind = "sync_installation_state"
+		}
+		if err := s.EnqueueJob(ctx, tx, kind, job); err != nil {
 			return err
 		}
 		return CompleteGitHubInstallationAuthorizationTx(ctx, tx, a)
@@ -119,6 +128,10 @@ func (s *Store) GitHubStatus(ctx context.Context, workspaceID uuid.UUID) (Instal
 		out.Error = &value
 	case i.SuspendedAt != nil:
 		out.Status = "suspended"
+		if syncError != nil {
+			value := safeInstallationError(*syncError)
+			out.Error = &value
+		}
 	case syncError != nil:
 		out.Status = "error"
 		value := safeInstallationError(*syncError)
@@ -143,7 +156,7 @@ func (s *Store) RequestInstallationSync(ctx context.Context, workspaceID, actorI
 		if err := LockWorkspaceAdminTx(ctx, tx, workspaceID, actorID); err != nil {
 			return err
 		}
-		return s.enqueueInstallationSyncTx(ctx, tx, workspaceID, 0)
+		return s.enqueueInstallationSyncTx(ctx, tx, workspaceID, 0, true)
 	})
 }
 
@@ -162,7 +175,7 @@ func (s *Store) RequestInstallationSyncForEvent(ctx context.Context, installatio
 		if err := lockWorkspaceTx(ctx, tx, workspaceID); err != nil {
 			return err
 		}
-		return s.enqueueInstallationSyncTx(ctx, tx, workspaceID, installationID)
+		return s.enqueueInstallationSyncTx(ctx, tx, workspaceID, installationID, false)
 	})
 	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrVerificationRequired) || errors.Is(err, ErrStaleInstallationSync) {
 		return nil
@@ -170,7 +183,7 @@ func (s *Store) RequestInstallationSyncForEvent(ctx context.Context, installatio
 	return err
 }
 
-func (s *Store) enqueueInstallationSyncTx(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, expectedID int64) error {
+func (s *Store) enqueueInstallationSyncTx(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, expectedID int64, retrySuspended bool) error {
 	var id int64
 	var verified, deleted, suspended *time.Time
 	err := tx.QueryRow(ctx, `SELECT id,ownership_verified_at,deleted_at,suspended_at FROM github_installation WHERE workspace_id=$1 FOR UPDATE`, workspaceID).Scan(&id, &verified, &deleted, &suspended)
@@ -183,7 +196,7 @@ func (s *Store) enqueueInstallationSyncTx(ctx context.Context, tx pgx.Tx, worksp
 	if verified == nil {
 		return ErrVerificationRequired
 	}
-	if deleted != nil || suspended != nil {
+	if deleted != nil || (suspended != nil && !retrySuspended) {
 		return ErrStaleInstallationSync
 	}
 	job := InstallationSync{InstallationID: id, WorkspaceID: workspaceID}
@@ -191,11 +204,15 @@ func (s *Store) enqueueInstallationSyncTx(ctx context.Context, tx pgx.Tx, worksp
 	if err != nil {
 		return err
 	}
-	return s.EnqueueJob(ctx, tx, "sync_installation_repos", job)
+	kind := "sync_installation_repos"
+	if suspended != nil {
+		kind = "sync_installation_state"
+	}
+	return s.EnqueueJob(ctx, tx, kind, job)
 }
 
 func (s *Store) ScheduleInstallationSyncs(ctx context.Context) error {
-	rows, err := s.pool.Query(ctx, `SELECT id FROM github_installation WHERE workspace_id IS NOT NULL AND ownership_verified_at IS NOT NULL AND deleted_at IS NULL AND suspended_at IS NULL AND (repos_synced_at IS NULL OR repos_synced_at<now()-interval '1 hour')
+	rows, err := s.pool.Query(ctx, `SELECT id FROM github_installation WHERE workspace_id IS NOT NULL AND ownership_verified_at IS NOT NULL AND deleted_at IS NULL AND suspended_at IS NULL AND sync_error IS NULL AND (repos_synced_at IS NULL OR repos_synced_at<now()-interval '1 hour')
   AND NOT EXISTS (SELECT 1 FROM job WHERE kind='sync_installation_repos' AND NOT dead AND (payload->>'installation_id')::bigint=github_installation.id)`)
 	if err != nil {
 		return err
@@ -214,12 +231,13 @@ func (s *Store) ScheduleInstallationSyncs(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	var failures []error
 	for _, id := range ids {
 		if err := s.RequestInstallationSyncForEvent(ctx, id); err != nil {
-			return err
+			failures = append(failures, err)
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 func (s *Store) InstallationSyncCurrent(ctx context.Context, job InstallationSync) (bool, error) {
@@ -243,7 +261,9 @@ func (s *Store) ApplyInstallationRepos(ctx context.Context, job InstallationSync
 		if err != nil {
 			return err
 		}
+		ids := make([]int64, 0, len(repos))
 		for _, repo := range repos {
+			ids = append(ids, repo.ID)
 			branch := repo.DefaultBranch
 			if branch == "" {
 				branch = "main"
@@ -259,6 +279,9 @@ func (s *Store) ApplyInstallationRepos(ctx context.Context, job InstallationSync
 				return err
 			}
 		}
+		if _, err := tx.Exec(ctx, `UPDATE repo SET disconnected_at=COALESCE(disconnected_at,clock_timestamp()) WHERE workspace_id=$1 AND installation_id=$2 AND NOT (github_id=ANY($3::bigint[]))`, job.WorkspaceID, job.InstallationID, ids); err != nil {
+			return err
+		}
 		_, err = tx.Exec(ctx, `UPDATE github_installation SET repos_synced_at=clock_timestamp(),sync_error=NULL WHERE id=$1`, job.InstallationID)
 		return err
 	})
@@ -266,5 +289,153 @@ func (s *Store) ApplyInstallationRepos(ctx context.Context, job InstallationSync
 
 func (s *Store) FailInstallationSync(ctx context.Context, job InstallationSync, code string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE github_installation SET sync_error=$4 WHERE id=$1 AND workspace_id=$2 AND sync_generation=$3`, job.InstallationID, job.WorkspaceID, job.Generation, safeInstallationError(code))
+	return err
+}
+
+// InstallationEvent serializes lifecycle changes with binding, retry, snapshot
+// application, and evidence writes. A deleted installation ID is terminal.
+// Suspension events return a generation to reconcile against the provider.
+func (s *Store) InstallationEvent(ctx context.Context, id int64, login, action string) (InstallationSync, bool, error) {
+	job := InstallationSync{InstallationID: id}
+	var owner *uuid.UUID
+	err := s.pool.QueryRow(ctx, `SELECT workspace_id FROM github_installation WHERE id=$1`, id).Scan(&owner)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return job, false, err
+	}
+	if owner != nil {
+		job.WorkspaceID = *owner
+	}
+	check := false
+	err = s.InTx(ctx, func(tx pgx.Tx) error {
+		if owner != nil {
+			if err := lockWorkspaceTx(ctx, tx, *owner); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, id); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO github_installation(id,account_login) VALUES($1,$2) ON CONFLICT(id) DO NOTHING`, id, login); err != nil {
+			return err
+		}
+		var currentOwner *uuid.UUID
+		var deleted, suspended, verified *time.Time
+		if err := tx.QueryRow(ctx, `SELECT workspace_id,deleted_at,suspended_at,ownership_verified_at,sync_generation FROM github_installation WHERE id=$1 FOR UPDATE`, id).Scan(&currentOwner, &deleted, &suspended, &verified, &job.Generation); err != nil {
+			return err
+		}
+		if (currentOwner == nil) != (owner == nil) || (owner != nil && *currentOwner != *owner) {
+			return ErrStaleInstallationSync
+		}
+		if deleted != nil {
+			return nil
+		}
+		switch action {
+		case "deleted":
+			if _, err := tx.Exec(ctx, `UPDATE repo SET disconnected_at=COALESCE(disconnected_at,clock_timestamp()) WHERE installation_id=$1`, id); err != nil {
+				return err
+			}
+			_, err := tx.Exec(ctx, `UPDATE github_installation SET deleted_at=clock_timestamp(),workspace_id=NULL,ownership_verified_at=NULL,sync_generation=sync_generation+1,sync_error=NULL WHERE id=$1`, id)
+			return err
+		case "suspend", "unsuspend":
+			check = true
+			// Fence immediately, including while a current-state request retries.
+			return tx.QueryRow(ctx, `UPDATE github_installation SET suspended_at=COALESCE(suspended_at,clock_timestamp()),sync_generation=sync_generation+1 WHERE id=$1 RETURNING sync_generation`, id).Scan(&job.Generation)
+		default:
+			if owner == nil || verified == nil || suspended != nil {
+				return nil
+			}
+			return s.enqueueInstallationSyncTx(ctx, tx, *owner, id, false)
+		}
+	})
+	return job, check, err
+}
+
+// ApplyInstallationState only clears suspension from an authoritative response
+// whose captured generation and binding still match. No REST error deletes data.
+func (s *Store) ApplyInstallationState(ctx context.Context, job InstallationSync, suspended bool) error {
+	return s.InTx(ctx, func(tx pgx.Tx) error {
+		if job.WorkspaceID != uuid.Nil {
+			if err := lockWorkspaceTx(ctx, tx, job.WorkspaceID); err != nil {
+				return err
+			}
+		}
+		var owner *uuid.UUID
+		var generation int64
+		var deleted, verified *time.Time
+		err := tx.QueryRow(ctx, `SELECT workspace_id,sync_generation,deleted_at,ownership_verified_at FROM github_installation WHERE id=$1 FOR UPDATE`, job.InstallationID).Scan(&owner, &generation, &deleted, &verified)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrStaleInstallationSync
+		}
+		if err != nil {
+			return err
+		}
+		currentOwner := uuid.Nil
+		if owner != nil {
+			currentOwner = *owner
+		}
+		if generation != job.Generation || currentOwner != job.WorkspaceID || deleted != nil {
+			return ErrStaleInstallationSync
+		}
+		if _, err := tx.Exec(ctx, `UPDATE github_installation SET suspended_at=CASE WHEN $2 THEN suspended_at ELSE NULL END,sync_error=NULL WHERE id=$1`, job.InstallationID, suspended); err != nil {
+			return err
+		}
+		if !suspended && owner != nil && verified != nil {
+			return s.enqueueInstallationSyncTx(ctx, tx, *owner, job.InstallationID, false)
+		}
+		return nil
+	})
+}
+
+func (s *Store) InstallationStateCurrent(ctx context.Context, job InstallationSync) (bool, error) {
+	var owner *uuid.UUID
+	if job.WorkspaceID != uuid.Nil {
+		owner = &job.WorkspaceID
+	}
+	var current bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM github_installation WHERE id=$1 AND workspace_id IS NOT DISTINCT FROM $2::uuid AND sync_generation=$3 AND deleted_at IS NULL)`, job.InstallationID, owner, job.Generation).Scan(&current)
+	return current, err
+}
+
+// ActiveRepo captures the binding generation before any provider fetch or
+// evidence preparation. Historical reads continue to use RepoByGitHubID.
+func (s *Store) ActiveRepo(ctx context.Context, githubID, installationID int64) (Repo, error) {
+	repo, err := s.RepoByGitHubID(ctx, githubID)
+	if err != nil {
+		return repo, err
+	}
+	if installationID <= 0 || repo.InstallationID != installationID {
+		return Repo{}, ErrNotFound
+	}
+	err = s.pool.QueryRow(ctx, `SELECT i.sync_generation FROM github_installation i JOIN repo r ON r.installation_id=i.id AND r.workspace_id=i.workspace_id WHERE r.id=$1 AND r.disconnected_at IS NULL AND i.ownership_verified_at IS NOT NULL AND i.suspended_at IS NULL AND i.deleted_at IS NULL`, repo.ID).Scan(&repo.SyncGeneration)
+	return repo, mapErr(err)
+}
+
+// WithActiveRepo fences the entire evidence mutation, including links and
+// activity. Workspace-first locks match lifecycle and installation binding.
+func (s *Store) WithActiveRepo(ctx context.Context, repo Repo, write func(pgx.Tx) error) error {
+	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := lockWorkspaceTx(ctx, tx, repo.WorkspaceID); err != nil {
+			return err
+		}
+		var id int64
+		err := tx.QueryRow(ctx, `SELECT id FROM github_installation WHERE id=$1 AND workspace_id=$2 AND sync_generation=$3 AND ownership_verified_at IS NOT NULL AND suspended_at IS NULL AND deleted_at IS NULL FOR UPDATE`, repo.InstallationID, repo.WorkspaceID, repo.SyncGeneration).Scan(&id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrStaleInstallationSync
+		}
+		if err != nil {
+			return err
+		}
+		err = tx.QueryRow(ctx, `SELECT github_id FROM repo WHERE id=$1 AND workspace_id=$2 AND installation_id=$3 AND disconnected_at IS NULL FOR UPDATE`, repo.ID, repo.WorkspaceID, repo.InstallationID).Scan(&id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrStaleInstallationSync
+		}
+		if err != nil {
+			return err
+		}
+		return write(tx)
+	})
+	if errors.Is(err, ErrStaleInstallationSync) {
+		return nil
+	}
 	return err
 }

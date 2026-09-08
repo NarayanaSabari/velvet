@@ -6,12 +6,53 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/github"
 	"github.com/stretchr/testify/require"
 )
+
+func TestInstallationSuspensionRequiresAuthoritativeState(t *testing.T) {
+	key := testKeyPEM(t)
+	for _, tc := range []struct {
+		name, body  string
+		status      int
+		want, error bool
+	}{
+		{"active", `{"id":99,"suspended_at":null}`, 200, false, false},
+		{"suspended", `{"id":99,"suspended_at":"2026-09-08T10:00:00Z"}`, 200, true, false},
+		{"wrong-id", `{"id":100,"suspended_at":null}`, 200, false, true},
+		{"missing-state", `{"id":99}`, 200, false, true},
+		{"invalid-time", `{"id":99,"suspended_at":"no"}`, 200, false, true},
+		{"zero-time", `{"id":99,"suspended_at":"0001-01-01T00:00:00Z"}`, 200, false, true},
+		{"not-found", `{"message":"provider-private-token"}`, 404, false, true},
+		{"rate-limit", `{"message":"provider-private-token"}`, 429, false, true},
+		{"redirect", `{"id":99,"suspended_at":null}`, 307, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, http.MethodGet, r.Method)
+				require.Equal(t, "/app/installations/99", r.URL.Path)
+				require.Len(t, strings.Split(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), "."), 3, "state checks must use an App assertion")
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+			client, err := github.NewClient("123", key, srv.URL)
+			require.NoError(t, err)
+			got, err := client.InstallationSuspended(t.Context(), 99)
+			if tc.error {
+				require.Error(t, err)
+				require.NotContains(t, err.Error(), "provider-private-token")
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.want, got)
+			}
+		})
+	}
+}
 
 // The shared App client must never forward an installation credential to a pagination origin supplied by a response.
 func TestAppPaginationCannotSendTokenToForeignOrigin(t *testing.T) {

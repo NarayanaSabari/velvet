@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // PullRequest is the mirrored state of one GitHub pull request. It is the
@@ -94,6 +95,7 @@ type Repo struct {
 	Name           string     `json:"name"`
 	DefaultBranch  string     `json:"default_branch"`
 	SyncedAt       *time.Time `json:"synced_at"`
+	SyncGeneration int64      `json:"-"`
 }
 
 const prCols = `id, workspace_id, repo_id, number, title, state::text, draft,
@@ -118,7 +120,19 @@ func scanPR(row pgx.Row) (PullRequest, error) {
 // state already stored. GitHub delivers out of order after a retry, and
 // without this guard a late "opened" event would un-merge a merged PR.
 func (s *Store) UpsertPullRequest(ctx context.Context, in UpsertPRInput) (PullRequest, error) {
-	pr, err := scanPR(s.pool.QueryRow(ctx, `
+	return upsertPullRequest(ctx, s.pool, in)
+}
+
+type prQuerier interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func UpsertPullRequestTx(ctx context.Context, tx pgx.Tx, in UpsertPRInput) (PullRequest, error) {
+	return upsertPullRequest(ctx, tx, in)
+}
+
+func upsertPullRequest(ctx context.Context, db prQuerier, in UpsertPRInput) (PullRequest, error) {
+	pr, err := scanPR(db.QueryRow(ctx, `
 		INSERT INTO pull_request (workspace_id, repo_id, number, title, state, draft,
 			author_login, head_ref, body, additions, deletions, html_url,
 			merged_at, closed_at, gh_created_at, gh_updated_at,
@@ -148,7 +162,7 @@ func (s *Store) UpsertPullRequest(ctx context.Context, in UpsertPRInput) (PullRe
 	}
 	// A skipped update returns no row. That is the stale-event case, not a
 	// failure: re-read what is stored and let the caller carry on.
-	return scanPR(s.pool.QueryRow(ctx,
+	return scanPR(db.QueryRow(ctx,
 		`SELECT `+prCols+` FROM pull_request WHERE repo_id = $1 AND number = $2`,
 		in.RepoID, in.Number))
 }
@@ -163,55 +177,61 @@ func (s *Store) UpsertPullRequest(ctx context.Context, in UpsertPRInput) (PullRe
 func (s *Store) LinkPR(ctx context.Context, workspaceID, prID, issueID uuid.UUID, source string, closing bool, actorID *uuid.UUID) (bool, error) {
 	created := false
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, `
+		var err error
+		created, err = LinkPRTx(ctx, tx, workspaceID, prID, issueID, source, closing, actorID)
+		return err
+	})
+	return created, err
+}
+
+func LinkPRTx(ctx context.Context, tx pgx.Tx, workspaceID, prID, issueID uuid.UUID, source string, closing bool, actorID *uuid.UUID) (bool, error) {
+	tag, err := tx.Exec(ctx, `
 			INSERT INTO pr_link (workspace_id, pull_request_id, issue_id, link_source, closing)
 			VALUES ($1, $2, $3, $4::pr_link_source, $5)
 			ON CONFLICT (pull_request_id, issue_id) DO NOTHING`,
-			workspaceID, prID, issueID, source, closing)
-		if err != nil {
-			return mapErr(err)
-		}
-		if tag.RowsAffected() == 0 {
-			return nil
-		}
-		created = true
+		workspaceID, prID, issueID, source, closing)
+	if err != nil {
+		return false, mapErr(err)
+	}
+	if tag.RowsAffected() == 0 {
+		return false, nil
+	}
 
-		var number int
-		var url string
-		if err := tx.QueryRow(ctx,
-			`SELECT number, html_url FROM pull_request WHERE id = $1`, prID).
-			Scan(&number, &url); err != nil {
-			return mapErr(err)
-		}
+	var number int
+	var url string
+	if err := tx.QueryRow(ctx,
+		`SELECT number, html_url FROM pull_request WHERE id = $1`, prID).
+		Scan(&number, &url); err != nil {
+		return false, mapErr(err)
+	}
 
-		// The feed names the issue a PR was attached to. Without the key here
-		// the row read "attached PR #42 to an issue", which tells a reader
-		// nothing they can act on.
-		var key string
-		if err := tx.QueryRow(ctx,
-			`SELECT key FROM issue WHERE id = $1 AND workspace_id = $2`,
-			issueID, workspaceID).Scan(&key); err != nil {
-			return mapErr(err)
-		}
+	// The feed names the issue a PR was attached to. Without the key here
+	// the row read "attached PR #42 to an issue", which tells a reader
+	// nothing they can act on.
+	var key string
+	if err := tx.QueryRow(ctx,
+		`SELECT key FROM issue WHERE id = $1 AND workspace_id = $2`,
+		issueID, workspaceID).Scan(&key); err != nil {
+		return false, mapErr(err)
+	}
 
-		var actor uuid.UUID
-		if actorID != nil {
-			actor = *actorID
-		}
-		return RecordActivity(ctx, tx, ActivityInput{
-			WorkspaceID: workspaceID, ActorID: actor,
-			Verb: VerbAttachedPR, TargetType: "issue", TargetID: issueID,
-			Metadata: map[string]any{
-				"pull_request_id": prID.String(),
-				"number":          number,
-				"html_url":        url,
-				"source":          source,
-				"closing":         closing,
-				"key":             key,
-			},
-		})
+	var actor uuid.UUID
+	if actorID != nil {
+		actor = *actorID
+	}
+	err = RecordActivity(ctx, tx, ActivityInput{
+		WorkspaceID: workspaceID, ActorID: actor,
+		Verb: VerbAttachedPR, TargetType: "issue", TargetID: issueID,
+		Metadata: map[string]any{
+			"pull_request_id": prID.String(),
+			"number":          number,
+			"html_url":        url,
+			"source":          source,
+			"closing":         closing,
+			"key":             key,
+		},
 	})
-	return created, err
+	return err == nil, err
 }
 
 // ManualLink is a human attaching a PR from the issue page. It verifies the PR
@@ -459,7 +479,10 @@ func (s *Store) ReposDueForSync(ctx context.Context, olderThan time.Duration) ([
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+repoCols+`
 		FROM repo
-		WHERE synced_at IS NULL OR synced_at < now() - $1::interval
+		WHERE disconnected_at IS NULL AND EXISTS (
+		 SELECT 1 FROM github_installation i WHERE i.id=repo.installation_id AND i.workspace_id=repo.workspace_id
+		 AND i.ownership_verified_at IS NOT NULL AND i.suspended_at IS NULL AND i.deleted_at IS NULL)
+		 AND (synced_at IS NULL OR synced_at < now() - $1::interval)
 		ORDER BY synced_at NULLS FIRST`, olderThan.String())
 	if err != nil {
 		return nil, err
@@ -475,14 +498,6 @@ func (s *Store) ReposDueForSync(ctx context.Context, olderThan time.Duration) ([
 		out = append(out, r)
 	}
 	return out, rows.Err()
-}
-
-// MarkRepoSynced stamps a successful sync. It is called only after a repo
-// finishes, because stamping after a failure would silently skip the gap the
-// failed run left behind.
-func (s *Store) MarkRepoSynced(ctx context.Context, repoID uuid.UUID) error {
-	_, err := s.pool.Exec(ctx, `UPDATE repo SET synced_at = now() WHERE id = $1`, repoID)
-	return err
 }
 
 // WorkspaceIssuePrefix returns the key prefix used for matching, e.g. ENG.
@@ -514,7 +529,19 @@ type UpsertReviewInput struct {
 // UpsertReview mirrors a review, keyed on GitHub's review id so a redelivery
 // updates rather than duplicates.
 func (s *Store) UpsertReview(ctx context.Context, in UpsertReviewInput) error {
-	_, err := s.pool.Exec(ctx, `
+	return upsertReview(ctx, s.pool, in)
+}
+
+func UpsertReviewTx(ctx context.Context, tx pgx.Tx, in UpsertReviewInput) error {
+	return upsertReview(ctx, tx, in)
+}
+
+type prExecutor interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+func upsertReview(ctx context.Context, db prExecutor, in UpsertReviewInput) error {
+	_, err := db.Exec(ctx, `
 		INSERT INTO pr_review (workspace_id, pull_request_id, github_id,
 			reviewer_login, reviewer_id, state, submitted_at)
 		VALUES ($1, $2, $3, $4,
@@ -545,25 +572,21 @@ type UpsertCommitInput struct {
 // UpsertCommit records a commit once. A replayed push is a no-op, which is
 // what keeps an issue timeline from growing duplicates after an outage.
 func (s *Store) UpsertCommit(ctx context.Context, in UpsertCommitInput) error {
-	_, err := s.pool.Exec(ctx, `
+	return upsertCommit(ctx, s.pool, in)
+}
+
+func UpsertCommitTx(ctx context.Context, tx pgx.Tx, in UpsertCommitInput) error {
+	return upsertCommit(ctx, tx, in)
+}
+
+func upsertCommit(ctx context.Context, db prExecutor, in UpsertCommitInput) error {
+	_, err := db.Exec(ctx, `
 		INSERT INTO commit_ref (sha, workspace_id, repo_id, issue_id, branch,
 			message, author_login, html_url, committed_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (sha) DO NOTHING`,
 		in.SHA, in.WorkspaceID, in.RepoID, in.IssueID, in.Branch,
 		in.Message, in.AuthorLogin, in.HTMLURL, in.CommittedAt)
-	return err
-}
-
-// UpsertInstallation records a GitHub App installation.
-func (s *Store) UpsertInstallation(ctx context.Context, id int64, accountLogin string, suspended bool) error {
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO github_installation (id, account_login, suspended_at)
-		VALUES ($1, $2, CASE WHEN $3 THEN now() END)
-		ON CONFLICT (id) DO UPDATE SET
-			account_login = EXCLUDED.account_login,
-			suspended_at = CASE WHEN $3 THEN now() ELSE NULL END`,
-		id, accountLogin, suspended)
 	return err
 }
 

@@ -174,7 +174,7 @@ func TestInstallationSyncStatusIsSanitized(t *testing.T) {
 		{`UPDATE github_installation SET repos_synced_at=now()`, "connected", ""},
 		{`UPDATE github_installation SET sync_error='provider-secret'`, "error", "sync_failed"},
 		{`UPDATE github_installation SET sync_error='repository_conflict'`, "error", "repository_conflict"},
-		{`UPDATE github_installation SET suspended_at=now()`, "suspended", ""},
+		{`UPDATE github_installation SET suspended_at=now()`, "suspended", "repository_conflict"},
 		{`UPDATE github_installation SET deleted_at=now()`, "disconnected", ""},
 	} {
 		_, err := f.Pool.Exec(ctx, tc.query)
@@ -187,6 +187,60 @@ func TestInstallationSyncStatusIsSanitized(t *testing.T) {
 		} else {
 			require.Equal(t, tc.code, *status.Error)
 		}
+	}
+}
+
+func TestBindInstallationCannotResurrectDeletedID(t *testing.T) {
+	f := testutil.NewFixture(t)
+	ctx := t.Context()
+	_, err := f.Pool.Exec(ctx, `INSERT INTO github_installation(id,account_login,deleted_at) VALUES(99,'acme',now())`)
+	require.NoError(t, err)
+	a := installationClaim(t, f, f.WorkspaceID, 99)
+	require.ErrorIs(t, f.Store.BindInstallation(ctx, a, verifiedInstallation(99)), store.ErrInstallationConflict)
+	var tombstoned bool
+	var writes int
+	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT deleted_at IS NOT NULL AND workspace_id IS NULL FROM github_installation WHERE id=99`).Scan(&tombstoned))
+	require.True(t, tombstoned)
+	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM job)+(SELECT count(*) FROM github_authorization_state WHERE completed_at IS NOT NULL)`).Scan(&writes))
+	require.Zero(t, writes)
+}
+
+// Owner authorization must not strand a previously suspended binding with an
+// immediately stale repository job, when the unsuspend webhook was missed.
+func TestBindInstallationRechecksSuspendedBinding(t *testing.T) {
+	f := testutil.NewFixture(t)
+	ctx := t.Context()
+	_, err := f.Pool.Exec(ctx, `INSERT INTO github_installation(id,account_login,suspended_at) VALUES(99,'acme',now())`)
+	require.NoError(t, err)
+	require.NoError(t, f.Store.BindInstallation(ctx, installationClaim(t, f, f.WorkspaceID, 99), verifiedInstallation(99)))
+	var kind string
+	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT kind FROM job`).Scan(&kind))
+	require.Equal(t, "sync_installation_state", kind)
+	status, err := f.Store.GitHubStatus(ctx, f.WorkspaceID)
+	require.NoError(t, err)
+	require.Equal(t, "suspended", status.Status)
+}
+
+func TestInstallationStateCannotApplyStaleBindingOrGeneration(t *testing.T) {
+	for _, mode := range []string{"generation", "binding", "deleted"} {
+		t.Run(mode, func(t *testing.T) {
+			f := testutil.NewFixture(t)
+			ctx := t.Context()
+			require.NoError(t, f.Store.BindInstallation(ctx, installationClaim(t, f, f.WorkspaceID, 99), verifiedInstallation(99)))
+			job, check, err := f.Store.InstallationEvent(ctx, 99, "acme", "suspend")
+			require.NoError(t, err)
+			require.True(t, check)
+			query := map[string]string{"generation": `UPDATE github_installation SET sync_generation=sync_generation+1`, "binding": `UPDATE github_installation SET workspace_id=NULL`, "deleted": `UPDATE github_installation SET deleted_at=now()`}[mode]
+			_, err = f.Pool.Exec(ctx, query)
+			require.NoError(t, err)
+			require.ErrorIs(t, f.Store.ApplyInstallationState(ctx, job, false), store.ErrStaleInstallationSync)
+			var suspended bool
+			require.NoError(t, f.Pool.QueryRow(ctx, `SELECT suspended_at IS NOT NULL FROM github_installation WHERE id=99`).Scan(&suspended))
+			require.True(t, suspended)
+			var jobs int
+			require.NoError(t, f.Pool.QueryRow(ctx, `SELECT count(*) FROM job`).Scan(&jobs))
+			require.Equal(t, 1, jobs)
+		})
 	}
 }
 

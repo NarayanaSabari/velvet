@@ -174,6 +174,29 @@ describe('Admin', () => {
     expect(screen.queryByText('@email@example.com')).not.toBeInTheDocument()
   })
 
+  it('retries a failed suspension check and observes the restored connection', async () => {
+    const fallback = adminFetch()
+    let requested = false
+    let checks = 0
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+      if (input === '/api/v1/w/lab/github/sync' && init?.method === 'POST') {
+        requested = true
+        return response({ status: 'syncing' }, 202)
+      }
+      if (input === '/api/v1/w/lab/github') return response({
+        installation: { id: 99, account_login: 'acme' },
+        status: requested && ++checks > 1 ? 'connected' : 'suspended',
+        error: requested ? null : 'sync_failed',
+      })
+      return fallback(input, init)
+    }))
+    renderAdmin()
+    expect(await screen.findByText('GitHub access is paused until its installation state can be verified.')).toBeInTheDocument()
+    expect(screen.queryByText('GitHub has suspended this installation. Restore it in GitHub to resume synchronization.')).not.toBeInTheDocument()
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Retry sync' }))
+    expect(await screen.findByText('Connected to acme.', {}, { timeout: 4000 })).toBeInTheDocument()
+  })
+
   it('loads repositories again when installation sync finishes', async () => {
     let complete = false
     let repoReads = 0

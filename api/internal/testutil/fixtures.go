@@ -131,13 +131,16 @@ func CreateIssue(t *testing.T, f *Fixture, title string) store.Issue {
 	return issue
 }
 
-// LinkRepo binds a repository to the fixture workspace under installation 99,
-// which is the installation the GitHub stubs answer for.
+// LinkRepo seeds a verified active binding under installation 99, which is the
+// installation the GitHub stubs answer for. Legacy tests seed unverified rows
+// explicitly so evidence tests exercise the same gates as owner-authorized use.
 func LinkRepo(t *testing.T, f *Fixture, githubID int64, owner, name string) store.Repo {
 	t.Helper()
 	repo, err := f.Store.LinkRepo(t.Context(), store.LinkRepoInput{
 		WorkspaceID: f.WorkspaceID, InstallationID: testInstallationID,
 		GitHubID: githubID, Owner: owner, Name: name})
+	require.NoError(t, err)
+	_, err = f.Pool.Exec(t.Context(), `UPDATE github_installation SET workspace_id=$1,ownership_verified_at=now(),repos_synced_at=now() WHERE id=$2`, f.WorkspaceID, testInstallationID)
 	require.NoError(t, err)
 	return repo
 }

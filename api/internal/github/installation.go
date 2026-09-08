@@ -6,10 +6,50 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 )
 
 var ErrInstallationRepositories = errors.New("could not list installation repositories")
+
+// InstallationSuspended uses an App assertion, since suspended installations
+// cannot mint installation tokens. Missing fields and every non-200 fail closed.
+func (c *Client) InstallationSuspended(ctx context.Context, id int64) (bool, error) {
+	assertion, err := c.appJWT(time.Now())
+	if err != nil {
+		return false, ErrInstallationRepositories
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/app/installations/"+strconv.FormatInt(id, 10), nil)
+	if err != nil {
+		return false, ErrInstallationRepositories
+	}
+	req.Header.Set("Authorization", "Bearer "+assertion)
+	setCommonHeaders(req)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return false, ErrInstallationRepositories
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024+1))
+	if err != nil || len(body) > 2*1024*1024 || resp.StatusCode != http.StatusOK {
+		return false, ErrInstallationRepositories
+	}
+	var state struct {
+		ID          int64           `json:"id"`
+		SuspendedAt json.RawMessage `json:"suspended_at"`
+	}
+	if json.Unmarshal(body, &state) != nil || state.ID != id || len(state.SuspendedAt) == 0 {
+		return false, ErrInstallationRepositories
+	}
+	if string(state.SuspendedAt) == "null" {
+		return false, nil
+	}
+	var at time.Time
+	if json.Unmarshal(state.SuspendedAt, &at) != nil || at.IsZero() {
+		return false, ErrInstallationRepositories
+	}
+	return true, nil
+}
 
 // ListInstallationRepositories rejects incomplete lists, redirect responses,
 // and pagination outside the configured REST origin and exact endpoint.

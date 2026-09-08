@@ -2,6 +2,7 @@ package worker_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -10,7 +11,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/testutil"
+	"github.com/google/uuid"
 )
 
 // stubWithPR serves an installation token and one open PR on branch
@@ -37,6 +40,64 @@ func stubWithPR(t *testing.T, number int) *httptest.Server {
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// Installation failures are isolated: a failed listing enqueue or PR fetch
+// cannot block another organisation's hourly evidence reconciliation.
+func TestInstallationReconcileContinuesAfterFailure(t *testing.T) {
+	for _, mode := range []string{"rate-limit", "provider-error", "enqueue-error"} {
+		t.Run(mode, func(t *testing.T) {
+			f := testutil.NewFixture(t)
+			ctx := t.Context()
+			testutil.LinkRepo(t, f, 555, "acme", "widgets")
+			var other uuid.UUID
+			require.NoError(t, f.Pool.QueryRow(ctx, `INSERT INTO workspace(name,slug,issue_prefix) VALUES('Other','other','OTHER') RETURNING id`).Scan(&other))
+			_, err := f.Pool.Exec(ctx, `INSERT INTO github_installation(id,account_login,workspace_id,ownership_verified_at,repos_synced_at) VALUES(100,'other',$1,now(),now())`, other)
+			require.NoError(t, err)
+			_, err = f.Store.LinkRepo(ctx, store.LinkRepoInput{WorkspaceID: other, InstallationID: 100, GitHubID: 556, Owner: "other", Name: "repo"})
+			require.NoError(t, err)
+			_, err = f.Pool.Exec(ctx, `UPDATE repo SET synced_at=now()-interval '3 hours' WHERE installation_id=99; UPDATE repo SET synced_at=now()-interval '2 hours' WHERE installation_id=100`)
+			require.NoError(t, err)
+			if mode == "enqueue-error" {
+				_, err = f.Pool.Exec(ctx, `UPDATE github_installation SET repos_synced_at=NULL; CREATE FUNCTION reject_first_installation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF (NEW.payload->>'installation_id')::bigint=99 THEN RAISE EXCEPTION 'queue unavailable'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_first BEFORE INSERT ON job FOR EACH ROW EXECUTE FUNCTION reject_first_installation()`)
+				require.NoError(t, err)
+			}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/app/installations/99/access_tokens", "/app/installations/100/access_tokens":
+					json.NewEncoder(w).Encode(map[string]any{"token": "test-token", "expires_at": time.Now().Add(time.Hour)})
+				case "/repos/acme/widgets/pulls":
+					if mode == "rate-limit" {
+						w.Header().Set("X-RateLimit-Remaining", "0")
+						w.WriteHeader(403)
+					} else {
+						w.WriteHeader(500)
+					}
+					w.Write([]byte(`{"message":"private-provider-token"}`))
+				case "/repos/other/repo/pulls":
+					fmt.Fprintf(w, `[{"number":77,"title":"Recovered","state":"open","created_at":"2026-09-01T10:00:00Z","updated_at":%q}]`, time.Now().UTC().Format(time.RFC3339))
+				default:
+					t.Errorf("unexpected path %s", r.URL.Path)
+				}
+			}))
+			defer srv.Close()
+			wk := testutil.NewWorker(t, f, srv)
+			err = wk.Reconcile(ctx)
+			require.Error(t, err)
+			require.NotContains(t, err.Error(), "private-provider-token")
+			var title string
+			require.NoError(t, f.Pool.QueryRow(ctx, `SELECT title FROM pull_request WHERE workspace_id=$1`, other).Scan(&title))
+			require.Equal(t, "Recovered", title)
+			var synced bool
+			require.NoError(t, f.Pool.QueryRow(ctx, `SELECT synced_at>now()-interval '1 minute' FROM repo WHERE installation_id=100`).Scan(&synced))
+			require.True(t, synced)
+			if mode == "enqueue-error" {
+				var id int
+				require.NoError(t, f.Pool.QueryRow(ctx, `SELECT (payload->>'installation_id')::int FROM job`).Scan(&id))
+				require.Equal(t, 100, id)
+			}
+		})
+	}
 }
 
 func TestReconcileRecoversAMissedWebhook(t *testing.T) {
