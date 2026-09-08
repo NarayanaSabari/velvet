@@ -433,7 +433,7 @@ func (s *Store) LinkRepo(ctx context.Context, in LinkRepoInput) (Repo, error) {
 				-- Reinstalling the App issues a new installation id. Without
 				-- this the repo keeps the dead one and every token mint fails.
 				installation_id = EXCLUDED.installation_id,
-				workspace_id = EXCLUDED.workspace_id
+				disconnected_at = NULL
 			WHERE repo.workspace_id = EXCLUDED.workspace_id
 			RETURNING `+repoCols,
 			in.WorkspaceID, in.InstallationID, in.GitHubID, in.Owner, in.Name, in.DefaultBranch))

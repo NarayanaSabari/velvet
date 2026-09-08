@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useSession } from '../auth/useSession'
@@ -164,13 +164,14 @@ function MembershipPanel({
               className="flex items-center gap-3 border-b border-grey-200 px-2 py-2"
             >
               <div className="min-w-0 flex-1">
-                <div className="truncate">@{membership.invited_login}</div>
-                <div className="text-xs text-grey-500">
-                  {membership.user ? userLabel(membership.user) : 'Invite pending'}
-                </div>
+                <div className="truncate">{membership.user ? userLabel(membership.user) : `@${membership.invited_login}`}</div>
+                {!membership.user ? <div className="text-xs text-grey-500">Invite pending</div> : null}
+                {membership.user?.github_login && userLabel(membership.user) !== `@${membership.user.github_login}` ? (
+                  <div className="text-xs text-grey-500">@{membership.user.github_login}</div>
+                ) : null}
               </div>
               <label>
-                <span className="sr-only">Role for {membership.invited_login}</span>
+                <span className="sr-only">Role for {membership.user ? userLabel(membership.user) : membership.invited_login}</span>
                 <select
                   className="border border-grey-300 bg-paper px-2 py-1 text-sm"
                   value={membership.role}
@@ -209,84 +210,58 @@ function RepositoryPanel({
   hasError: boolean
 }) {
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({
-    owner: '',
-    name: '',
-    githubID: '',
-    installationID: '',
-    defaultBranch: 'main',
-  })
   const [message, setMessage] = useState<string | null>(null)
-
-  const connect = useMutation({
-    mutationFn: () =>
-      api.post<Repo>(`/w/${slug}/repos`, {
-        github_id: Number(form.githubID),
-        owner: form.owner.trim(),
-        name: form.name.trim(),
-        installation_id: Number(form.installationID),
-        default_branch: form.defaultBranch.trim(),
-      }),
+  const connection = useQuery({
+    queryKey: ['github', slug],
+    queryFn: () => api.get<GitHubConnection>(`/w/${slug}/github`),
+    refetchInterval: (query) => query.state.data?.status === 'syncing' ? 2000 : false,
+  })
+  const retry = useMutation({
+    mutationFn: () => api.post(`/w/${slug}/github/sync`),
     onSuccess: () => {
-      setForm({ owner: '', name: '', githubID: '', installationID: '', defaultBranch: 'main' })
       setMessage(null)
+      void queryClient.invalidateQueries({ queryKey: ['github', slug] })
       void queryClient.invalidateQueries({ queryKey: ['repos', slug] })
     },
     onError: (error: Error) => setMessage(error.message),
   })
 
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    connect.mutate()
-  }
+  const verificationRequired = connection.data?.error === 'verification_required'
+  const status = connection.data?.status
+  useEffect(() => {
+    if (status === 'connected') void queryClient.invalidateQueries({ queryKey: ['repos', slug] })
+  }, [status, queryClient, slug])
 
   return (
     <section aria-labelledby="repositories-heading">
       <h2 id="repositories-heading" className="mb-3 border-b border-grey-200 pb-1 text-base">
         Repositories
       </h2>
-      <p className="mb-3 text-sm text-grey-500">
-        Install the GitHub App first, then enter the repository and installation IDs from GitHub.
-      </p>
-
-      <form className="mb-4 grid gap-2 sm:grid-cols-2" onSubmit={submit}>
-        <TextField
-          label="Repository owner"
-          value={form.owner}
-          onChange={(owner) => setForm((current) => ({ ...current, owner }))}
-        />
-        <TextField
-          label="Repository name"
-          value={form.name}
-          onChange={(name) => setForm((current) => ({ ...current, name }))}
-        />
-        <TextField
-          label="GitHub repository ID"
-          value={form.githubID}
-          type="number"
-          onChange={(githubID) => setForm((current) => ({ ...current, githubID }))}
-        />
-        <TextField
-          label="GitHub App installation ID"
-          value={form.installationID}
-          type="number"
-          onChange={(installationID) => setForm((current) => ({ ...current, installationID }))}
-        />
-        <TextField
-          label="Default branch"
-          value={form.defaultBranch}
-          onChange={(defaultBranch) => setForm((current) => ({ ...current, defaultBranch }))}
-        />
-        <Button className="self-end" variant="primary" type="submit" disabled={connect.isPending}>
-          {connect.isPending ? 'Connecting…' : 'Connect repository'}
-        </Button>
-      </form>
+      {connection.isPending ? <p className="text-grey-500">Loading GitHub connection…</p> : null}
+      {connection.error ? <p role="alert" className="text-blocked">Could not load GitHub connection.</p> : null}
+      <div className="mb-4 text-sm">
+        {status === 'syncing' ? <p role="status">Syncing repositories…</p> : null}
+        {status === 'connected' ? <p>Connected to {connection.data?.installation?.account_login}.</p> : null}
+        {status === 'suspended' ? <p>GitHub has suspended this installation. Restore it in GitHub to resume synchronization.</p> : null}
+        {verificationRequired ? <p>Verify ownership in GitHub before discovering repositories.</p> : null}
+        {status === 'error' && !verificationRequired ? <p role="alert">{connection.data?.error === 'repository_conflict' ? 'A repository is connected to another organisation.' : 'Repository synchronization failed. Try again.'}</p> : null}
+        {status === 'disconnected' || verificationRequired ? (
+          <a className="underline" href={`/api/v1/w/${slug}/github/connect`}>
+            {verificationRequired ? 'Verify GitHub ownership' : 'Connect GitHub'}
+          </a>
+        ) : null}
+        {(status === 'error' && !verificationRequired) || status === 'connected' ? (
+          <Button className="mt-2" onClick={() => retry.mutate()} disabled={retry.isPending}>
+            {retry.isPending ? 'Requesting sync…' : 'Retry sync'}
+          </Button>
+        ) : null}
+      </div>
 
       {message ? <p className="mb-2 text-sm text-blocked" role="alert">{message}</p> : null}
       {isLoading ? <p className="text-grey-500">Loading repositories…</p> : null}
       {hasError ? <p className="text-blocked">Could not load repositories.</p> : null}
       {!isLoading && !hasError && repos.length === 0 ? (
-        <EmptyState title="No repositories connected" message="Connect the first repository above." />
+        <EmptyState title="No repositories connected" message="Repositories appear after GitHub ownership is verified and synchronization completes." />
       ) : null}
       {!isLoading && !hasError && repos.length > 0 ? (
         <ul className="border-t border-grey-200">
@@ -312,31 +287,10 @@ function RepositoryPanel({
   )
 }
 
-function TextField({
-  label,
-  value,
-  type = 'text',
-  onChange,
-}: {
-  label: string
-  value: string
-  type?: 'text' | 'number'
-  onChange: (value: string) => void
-}) {
-  return (
-    <label>
-      <span className="mb-0.5 block text-xs text-grey-500">{label}</span>
-      <input
-        className="w-full border border-grey-300 bg-paper px-2 py-1"
-        type={type}
-        min={type === 'number' ? 1 : undefined}
-        step={type === 'number' ? 1 : undefined}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        required
-      />
-    </label>
-  )
+type GitHubConnection = {
+  installation: { id: number; account_login: string } | null
+  status: 'disconnected' | 'syncing' | 'connected' | 'suspended' | 'error'
+  error: string | null
 }
 
 function roleLabel(role: Role) {

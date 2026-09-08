@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -90,7 +91,7 @@ func NewClient(appID string, privateKeyPEM []byte, baseURL string) (*Client, err
 		appID:      appID,
 		privateKey: key,
 		baseURL:    strings.TrimSuffix(baseURL, "/"),
-		http:       &http.Client{Timeout: requestTimeout},
+		http:       &http.Client{Timeout: requestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		tokens:     make(map[int64]cachedToken),
 	}, nil
 }
@@ -299,13 +300,18 @@ func (c *Client) ListReviews(ctx context.Context, installationID int64, owner, r
 // getJSON performs one authenticated GET and decodes the body into out. On a
 // 304 the body is drained and out is left untouched, so the caller keeps
 // whatever it already had.
-func (c *Client) getJSON(ctx context.Context, installationID int64, url, etag string, out any) (*http.Response, error) {
+func (c *Client) getJSON(ctx context.Context, installationID int64, targetURL, etag string, out any) (*http.Response, error) {
+	base, baseErr := url.Parse(c.baseURL)
+	target, targetErr := url.Parse(targetURL)
+	if baseErr != nil || targetErr != nil || base.Host == "" || target.Scheme != base.Scheme || target.Host != base.Host || target.User != nil || target.Fragment != "" {
+		return nil, errors.New("github: untrusted pagination target")
+	}
 	token, err := c.InstallationToken(ctx, installationID)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("github: build request: %w", err)
 	}

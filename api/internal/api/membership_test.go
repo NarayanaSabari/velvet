@@ -54,9 +54,8 @@ func TestMembershipManagementRequiresAdmin(t *testing.T) {
 				{http.MethodGet, "/api/v1/w/lab/memberships", nil},
 				{http.MethodPatch, "/api/v1/w/lab/memberships/" + uuid.NewString(),
 					map[string]any{"role": "admin"}},
-				{http.MethodPost, "/api/v1/w/lab/repos", map[string]any{
-					"github_id": 1, "owner": "acme", "name": "widgets", "installation_id": 2,
-				}},
+				{http.MethodPost, "/api/v1/w/lab/github/sync", nil},
+				{http.MethodGet, "/api/v1/w/lab/github/connect", nil},
 			}
 			for _, req := range paths {
 				rec := f.Do(req.method, req.path, req.body)

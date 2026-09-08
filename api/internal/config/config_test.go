@@ -62,10 +62,21 @@ func TestLoadGitHubAppUserCredentialsAndEndpoints(t *testing.T) {
 	t.Setenv("GITHUB_APP_CLIENT_SECRET", "app-secret")
 	t.Setenv("GITHUB_AUTHORIZATION_URL", "http://localhost:18499/authorize")
 	t.Setenv("GITHUB_TOKEN_URL", "http://host.docker.internal:18499/token")
+	t.Setenv("GITHUB_INSTALLATION_URL", "http://localhost:18499/install")
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, "app-client", cfg.GitHubAppClientID)
 	require.Equal(t, "app-secret", cfg.GitHubAppClientSecret)
 	require.Equal(t, "http://localhost:18499/authorize", cfg.GitHubAuthorizationURL)
 	require.Equal(t, "http://host.docker.internal:18499/token", cfg.GitHubTokenURL)
+	require.Equal(t, "http://localhost:18499/install", cfg.GitHubInstallationURL)
+}
+
+func TestServeRejectsUnsafeInstallationURL(t *testing.T) {
+	for _, value := range []string{"javascript:alert(1)", "//github.com/install", "https://user:secret@github.com/install", "https://github.com/install#fragment"} {
+		cfg := Config{BaseURL: "http://localhost:8080", GitHubInstallationURL: value}
+		require.Error(t, cfg.ValidateServe())
+	}
+	cfg := Config{BaseURL: "http://localhost:8080", GitHubInstallationURL: "http://localhost:18499/install"}
+	require.NoError(t, cfg.ValidateServe())
 }

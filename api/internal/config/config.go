@@ -17,6 +17,7 @@ type Config struct {
 	GitHubAppClientSecret  string
 	GitHubAuthorizationURL string
 	GitHubTokenURL         string
+	GitHubInstallationURL  string
 	// The GitHub App settings are optional at load time, so the API still
 	// boots before anyone has installed the App.
 	GitHubWebhookSecret string
@@ -46,6 +47,7 @@ func Load() (*Config, error) {
 		GitHubAppClientSecret:  os.Getenv("GITHUB_APP_CLIENT_SECRET"),
 		GitHubAuthorizationURL: os.Getenv("GITHUB_AUTHORIZATION_URL"),
 		GitHubTokenURL:         os.Getenv("GITHUB_TOKEN_URL"),
+		GitHubInstallationURL:  os.Getenv("GITHUB_INSTALLATION_URL"),
 		GitHubWebhookSecret:    os.Getenv("GITHUB_WEBHOOK_SECRET"),
 		GitHubAppID:            os.Getenv("GITHUB_APP_ID"),
 		GitHubAppPrivateKey:    os.Getenv("GITHUB_APP_PRIVATE_KEY"),
@@ -75,6 +77,12 @@ func Load() (*Config, error) {
 // ValidateServe enforces settings needed only by the HTTP server. Workers and
 // migrations never require mail secrets, even with a production BASE_URL.
 func (c *Config) ValidateServe() error {
+	if c.GitHubInstallationURL != "" {
+		u, err := url.Parse(c.GitHubInstallationURL)
+		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Fragment != "" {
+			return fmt.Errorf("GITHUB_INSTALLATION_URL must be an http or https URL")
+		}
+	}
 	base, err := url.Parse(c.BaseURL)
 	if err != nil || base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") || base.User != nil || base.RawQuery != "" || base.Fragment != "" || (base.Path != "" && base.Path != "/") {
 		return fmt.Errorf("BASE_URL must be an http or https origin")

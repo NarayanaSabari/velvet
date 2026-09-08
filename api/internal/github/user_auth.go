@@ -223,10 +223,18 @@ func (c *UserClient) request(req *http.Request, out any) (string, error) {
 // Every pagination target stays on the configured API origin and endpoint.
 // Reject malformed links even after finding an owner: partial lists grant nothing.
 func (c *UserClient) next(header, endpoint string) (string, error) {
+	return trustedNextPage(c.cfg.APIURL, []string{header}, endpoint)
+}
+
+func trustedNextPage(baseURL string, headers []string, endpoint string) (string, error) {
+	header := strings.Join(headers, ",")
 	if header == "" {
 		return "", nil
 	}
-	base, _ := url.Parse(c.cfg.APIURL)
+	base, err := url.Parse(baseURL)
+	if err != nil || base.Host == "" {
+		return "", ErrUserAuthorization
+	}
 	next := ""
 	for _, part := range strings.Split(header, ",") {
 		bits := strings.Split(strings.TrimSpace(part), ";")

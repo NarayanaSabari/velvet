@@ -71,7 +71,7 @@ func run(ctx context.Context, args []string) error {
 		}
 		srv := &http.Server{
 			Addr:              ":" + cfg.Port,
-			Handler:           api.NewServer(pool, cfg, api.Dependencies{Mailer: mailer, GitHubUser: githubUser}).Handler(),
+			Handler:           api.NewServer(pool, cfg, api.Dependencies{Mailer: mailer, GitHubUser: githubUser, CompleteGitHubInstallation: store.New(pool).BindInstallation}).Handler(),
 			ReadHeaderTimeout: 10 * time.Second,
 		}
 		listener, err := net.Listen("tcp", srv.Addr)

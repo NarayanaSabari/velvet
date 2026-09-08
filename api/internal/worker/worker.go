@@ -122,6 +122,12 @@ func (w *Worker) ProcessOnce(ctx context.Context) (bool, error) {
 
 func (w *Worker) runJob(ctx context.Context, job store.Job) error {
 	switch job.Kind {
+	case "sync_installation_repos":
+		var payload store.InstallationSync
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return errors.New("invalid installation sync job")
+		}
+		return w.syncInstallationRepos(ctx, payload)
 	case "process_delivery":
 		var payload struct {
 			DeliveryID string `json:"delivery_id"`

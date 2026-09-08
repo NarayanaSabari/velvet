@@ -101,14 +101,8 @@ func TestReconnectingARepoAdoptsTheNewInstallation(t *testing.T) {
 	f := testutil.NewFixture(t)
 
 	link := func(installationID int64) {
-		rec := f.Do(http.MethodPost, "/api/v1/w/lab/repos", map[string]any{
-			"github_id":       9001,
-			"owner":           "acme",
-			"name":            "widgets",
-			"installation_id": installationID,
-			"default_branch":  "main",
-		})
-		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+		_, err := f.Store.LinkRepo(t.Context(), store.LinkRepoInput{WorkspaceID: f.WorkspaceID, InstallationID: installationID, GitHubID: 9001, Owner: "acme", Name: "widgets", DefaultBranch: "main"})
+		require.NoError(t, err)
 	}
 
 	link(111)
@@ -141,13 +135,20 @@ func TestConnectingARepoCannotMoveItFromAnotherWorkspace(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	rec := f.Do(http.MethodPost, "/api/v1/w/lab/repos", map[string]any{
-		"github_id": 9001, "owner": "acme", "name": "widgets", "installation_id": 222,
-	})
-	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	_, err = f.Store.LinkRepo(t.Context(), store.LinkRepoInput{WorkspaceID: f.WorkspaceID, InstallationID: 222, GitHubID: 9001, Owner: "acme", Name: "widgets"})
+	require.ErrorIs(t, err, store.ErrForeignReference)
 
 	var workspaceID string
 	require.NoError(t, f.Pool.QueryRow(t.Context(),
 		`SELECT workspace_id FROM repo WHERE github_id = 9001`).Scan(&workspaceID))
 	require.Equal(t, foreignWorkspaceID, workspaceID)
+}
+
+func TestManualRepositoryConnectionRouteIsGone(t *testing.T) {
+	f := testutil.NewFixture(t)
+	rec := f.Do(http.MethodPost, "/api/v1/w/lab/repos", map[string]any{"github_id": 9001, "owner": "acme", "name": "widgets", "installation_id": 222})
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	var count int
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT (SELECT count(*) FROM repo)+(SELECT count(*) FROM github_installation)`).Scan(&count))
+	require.Zero(t, count)
 }

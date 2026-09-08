@@ -189,11 +189,16 @@ Make these App settings changes only as part of the separately approved operator
 Set `GITHUB_APP_CLIENT_ID` and `GITHUB_APP_CLIENT_SECRET` from the GitHub App's user authorization credentials.
 These are separate from the App id and private key used by installation workers, and from any legacy OAuth App credentials.
 User access and refresh tokens are never retained after authorization.
-Local verification may override `GITHUB_AUTHORIZATION_URL`, `GITHUB_TOKEN_URL`, and `GITHUB_API_URL` with a disposable HTTP stub; production defaults are GitHub's public authorization, token, and REST endpoints.
-The browser must be able to reach the authorization URL, while the API process must be able to reach the token and REST URLs.
+Local verification may override `GITHUB_INSTALLATION_URL`, `GITHUB_AUTHORIZATION_URL`, `GITHUB_TOKEN_URL`, and `GITHUB_API_URL` with a disposable HTTP stub.
+The installation URL defaults to `https://github.com/apps/{GITHUB_APP_SLUG}/installations/new`.
+Production defaults for the other URLs are GitHub's public authorization, token, and REST endpoints.
+The browser must be able to reach the installation and authorization URLs, while the API and worker processes must be able to reach the token and REST URLs.
 
-The installation authorization routes require an installation completer that atomically binds the installation, enqueues synchronization, and completes both callback states.
-An intermediate build without that completer returns unavailable before starting installation authorization and is not a deployable feature release.
+The installation authorization completer atomically binds the installation, enqueues synchronization, and completes both callback states.
+Administration offers Connect GitHub for new connections and Verify GitHub ownership for migrated bindings.
+Migrated bindings cannot discover repositories through retry, installation events, or scheduled reconciliation until that verification succeeds.
+Verified bindings can retry a failed synchronization from Administration without repeating authorization.
+Repository ownership conflicts leave the entire repository list unchanged and display a sanitized error.
 
 ### 1. Prepare the maintenance gate
 

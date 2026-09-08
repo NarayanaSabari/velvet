@@ -119,6 +119,8 @@ func (s *Server) handleGitHubUnlink(w http.ResponseWriter, r *http.Request) {
 
 func writeGitHubAuthorizationError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, store.ErrInstallationConflict):
+		WriteError(w, 409, "installation_conflict", "the installation or organisation already has another connection")
 	case errors.Is(err, store.ErrNotFound):
 		WriteError(w, 410, "expired", "this GitHub authorization is expired or already used; start again")
 	case errors.Is(err, store.ErrDuplicate):

@@ -58,6 +58,7 @@ function adminFetch() {
   return vi.fn().mockImplementation((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
     if (url === '/api/v1/me') return response(adminSession)
+    if (url === '/api/v1/w/lab/github') return response({ installation: { id: 99, account_login: 'acme' }, status: 'error', error: 'verification_required' })
     if (url === '/api/v1/w/lab/memberships' && (!init?.method || init.method === 'GET')) {
       return response(workspaceMembers)
     }
@@ -135,35 +136,59 @@ describe('Admin', () => {
     )
   })
 
-  it('connects a repository with the existing repo API', async () => {
+  it('offers ownership verification without manual repository identifiers', async () => {
     const fetch = adminFetch()
     vi.stubGlobal('fetch', fetch)
-    const user = userEvent.setup()
     renderAdmin()
+    expect(await screen.findByRole('link', { name: 'Verify GitHub ownership' })).toHaveAttribute('href', '/api/v1/w/lab/github/connect')
+    expect(screen.queryByLabelText('GitHub repository ID')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry sync' })).not.toBeInTheDocument()
+  })
 
-    await user.type(await screen.findByLabelText('Repository owner'), 'openai')
-    await user.type(screen.getByLabelText('Repository name'), 'codex')
-    await user.type(screen.getByLabelText('GitHub repository ID'), '1234')
-    await user.type(screen.getByLabelText('GitHub App installation ID'), '5678')
-    await user.clear(screen.getByLabelText('Default branch'))
-    await user.type(screen.getByLabelText('Default branch'), 'trunk')
-    await user.click(screen.getByRole('button', { name: 'Connect repository' }))
+  it('retries verified synchronization and refreshes status', async () => {
+    const fallback = adminFetch()
+    let requested = false
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+      if (input === '/api/v1/w/lab/github/sync' && init?.method === 'POST') {
+        requested = true
+        return response({ status: 'syncing' }, 202)
+      }
+      if (input === '/api/v1/w/lab/github') return response({ installation: { id: 99, account_login: 'acme' }, status: requested ? 'syncing' : 'error', error: requested ? null : 'sync_failed' })
+      return fallback(input, init)
+    }))
+    renderAdmin()
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Retry sync' }))
+    expect(await screen.findByText('Syncing repositories…')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Verify GitHub ownership' })).not.toBeInTheDocument()
+  })
 
-    await waitFor(() =>
-      expect(fetch).toHaveBeenCalledWith(
-        '/api/v1/w/lab/repos',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({
-            github_id: 1234,
-            owner: 'openai',
-            name: 'codex',
-            installation_id: 5678,
-            default_branch: 'trunk',
-          }),
-        }),
-      ),
-    )
+  it('labels email-only members without a GitHub prefix', async () => {
+    const fallback = adminFetch()
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+      if (input === '/api/v1/w/lab/memberships') return response({ memberships: [{ id: 'm3', role: 'member', user: { email: 'email@example.com', name: '', github_login: null } }] })
+      return fallback(input, init)
+    }))
+    renderAdmin()
+    expect(await screen.findByLabelText('Role for email@example.com')).toBeInTheDocument()
+    expect(screen.getByText('email@example.com')).toBeInTheDocument()
+    expect(screen.queryByText('@email@example.com')).not.toBeInTheDocument()
+  })
+
+  it('loads repositories again when installation sync finishes', async () => {
+    let complete = false
+    let repoReads = 0
+    const fallback = adminFetch()
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+      if (input === '/api/v1/w/lab/github') {
+        const status = complete ? 'connected' : 'syncing'
+        complete = true
+        return response({ installation: { id: 99, account_login: 'acme' }, status, error: null })
+      }
+      if (input === '/api/v1/w/lab/repos') return response({ repos: ++repoReads > 1 ? [{ id: 'r2', owner: 'acme', name: 'newly-synced', default_branch: 'main' }] : [] })
+      return fallback(input, init)
+    }))
+    renderAdmin()
+    expect(await screen.findByRole('link', { name: 'acme/newly-synced' }, { timeout: 4000 })).toBeInTheDocument()
   })
 
   it('does not load admin resources for a non-admin', async () => {

@@ -3,7 +3,10 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 )
 
 type installationEvent struct {
@@ -28,6 +31,61 @@ func (w *Worker) handleInstallation(ctx context.Context, payload []byte) error {
 		return nil
 	}
 	suspended := ev.Action == "suspend"
-	return w.store.UpsertInstallation(ctx, ev.Installation.ID,
-		ev.Installation.Account.Login, suspended)
+	if err := w.store.UpsertInstallation(ctx, ev.Installation.ID,
+		ev.Installation.Account.Login, suspended); err != nil {
+		return err
+	}
+	return w.store.RequestInstallationSyncForEvent(ctx, ev.Installation.ID)
+}
+
+func (w *Worker) syncInstallationRepos(ctx context.Context, job store.InstallationSync) error {
+	current, err := w.store.InstallationSyncCurrent(ctx, job)
+	if err != nil {
+		return errors.New("installation sync failed")
+	}
+	if !current {
+		return nil
+	}
+	fail := func(code string) error {
+		if err := w.store.FailInstallationSync(ctx, job, code); err != nil {
+			return errors.New("could not record installation sync failure")
+		}
+		return errors.New(code)
+	}
+	if w.gh == nil {
+		return fail("sync_failed")
+	}
+	repos, err := w.gh.ListInstallationRepositories(ctx, job.InstallationID)
+	if err != nil {
+		return fail("sync_failed")
+	}
+	err = w.store.ApplyInstallationRepos(ctx, job, repos)
+	if errors.Is(err, store.ErrStaleInstallationSync) {
+		return nil
+	}
+	if errors.Is(err, store.ErrRepositoryConflict) {
+		return fail("repository_conflict")
+	}
+	if err != nil {
+		return fail("sync_failed")
+	}
+	// Initial evidence backfill runs immediately, using preserved sync history
+	// for repositories reconnected within the same organisation.
+	for _, item := range repos {
+		current, err := w.store.InstallationSyncCurrent(ctx, job)
+		if err != nil {
+			return fail("sync_failed")
+		}
+		if !current {
+			return nil
+		}
+		repo, err := w.store.RepoByGitHubID(ctx, item.ID)
+		if err != nil {
+			return fail("sync_failed")
+		}
+		if err := w.reconcileRepo(ctx, repo); err != nil {
+			return fail("sync_failed")
+		}
+	}
+	return nil
 }

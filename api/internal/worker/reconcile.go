@@ -25,6 +25,9 @@ func (w *Worker) Reconcile(ctx context.Context) error {
 	if w.gh == nil {
 		return nil
 	}
+	if err := w.store.ScheduleInstallationSyncs(ctx); err != nil {
+		return err
+	}
 
 	repos, err := w.store.ReposDueForSync(ctx, reconcileInterval)
 	if err != nil {
