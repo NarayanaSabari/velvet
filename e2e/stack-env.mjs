@@ -18,6 +18,6 @@ const values = {
   GITHUB_INSTALLATION_URL: `http://localhost:${providerPort}/install`,
   GITHUB_TOKEN_URL: 'http://github:18599/token', GITHUB_API_URL: 'http://github:18599',
   GITHUB_WEBHOOK_SECRET: 'e2e-webhook-secret', RESEND_API_KEY: '', MAIL_FROM: '', BACKUP_S3_URL: '',
-  PROXY_SUBNET: '172.30.77.0/24', PROXY_CADDY_IP: '172.30.77.2', PROXY_API_IP: '172.30.77.3',
+  PROXY_SUBNET: '172.30.77.0/24', PROXY_CADDY_IP: '172.30.77.2', PROXY_API_IP: '172.30.77.3', PROXY_GITHUB_IP: '172.30.77.4',
 }
 writeFileSync(new URL('.env.generated', import.meta.url), Object.entries(values).map(([key, value]) => `${key}='${value}'\n`).join(''), { mode: 0o600 })

@@ -12,6 +12,7 @@ services:
       default:
       # Docker cannot publish ports from an internal-only network.
       proxy:
+        ipv4_address: ${PROXY_GITHUB_IP:-172.30.77.4}
   api:
     environment:
       RESEND_API_KEY: ""

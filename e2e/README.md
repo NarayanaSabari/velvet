@@ -16,7 +16,7 @@ env -u NO_COLOR npx playwright test tests/onboarding.spec.ts
 ```
 
 The stack uses the disposable project `worklog-e2e-organisations`, HTTP port 18399, HTTPS port 18400, provider port 18599, and proxy subnet `172.30.77.0/24`.
-Its fixed Caddy and API addresses are `172.30.77.2` and `172.30.77.3`; the API trusts only Caddy's `/32` for forwarded client IPs.
+Its fixed Caddy, API, and GitHub stub addresses are `172.30.77.2`, `172.30.77.3`, and `172.30.77.4`; the API trusts only Caddy's `/32` for forwarded client IPs.
 Published ports bind only to `127.0.0.1`.
 `E2E_PORT` and `E2E_PROVIDER_PORT` can override the host ports.
 Other project names are rejected before Docker is called.

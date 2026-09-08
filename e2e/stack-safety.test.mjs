@@ -11,6 +11,22 @@ const entrypoints = {
 }
 
 for (const [name, [command, args]] of Object.entries(entrypoints)) {
+  test(`${name} Compose config gives every proxy participant a unique static address`, () => {
+    const result = spawnSync(command, args, {
+      cwd: import.meta.dirname,
+      env: { ...process.env, E2E_PROJECT: 'worklog-e2e-organisations' },
+      encoding: 'utf8',
+    })
+    assert.equal(result.status, 0, result.stderr)
+    const config = JSON.parse(result.stdout)
+    const proxyAddresses = Object.values(config.services)
+      .filter((service) => Object.hasOwn(service.networks ?? {}, 'proxy'))
+      .map((service) => service.networks.proxy?.ipv4_address)
+    assert.equal(proxyAddresses.length, 3)
+    assert.equal(proxyAddresses.every(Boolean), true, `missing static proxy address: ${proxyAddresses}`)
+    assert.equal(new Set(proxyAddresses).size, proxyAddresses.length, `duplicate static proxy address: ${proxyAddresses}`)
+  })
+
   test(`${name} Compose config ignores inherited database and image settings`, () => {
     const result = spawnSync(command, args, {
       cwd: import.meta.dirname,
