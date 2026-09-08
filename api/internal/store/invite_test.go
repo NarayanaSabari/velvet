@@ -23,6 +23,8 @@ func TestInviteAcceptance(t *testing.T) {
 			require.NoError(t, pool.QueryRow(ctx, `INSERT INTO workspace(name,slug) VALUES ('Lab','lab') RETURNING id`).Scan(&ws))
 			actor, err := st.UpsertUserByEmail(ctx, "actor@example.com")
 			require.NoError(t, err)
+			_, err = pool.Exec(ctx, `INSERT INTO membership(workspace_id,user_id,role) VALUES ($1,$2,'admin')`, ws, actor.ID)
+			require.NoError(t, err)
 			user, err := st.UpsertUserByEmail(ctx, " Person@Example.com ")
 			require.NoError(t, err)
 			invite, token, err := st.CreateInvite(ctx, ws, actor.ID, " PERSON@EXAMPLE.COM ", "member")
@@ -64,7 +66,12 @@ func TestInviteAcceptance(t *testing.T) {
 				require.Error(t, err)
 				memberships, e := st.MembershipsForUser(ctx, user.ID)
 				require.NoError(t, e)
-				require.Empty(t, memberships)
+				if mode == "wrong email" {
+					require.Len(t, memberships, 1)
+					require.Equal(t, "admin", memberships[0].Role)
+				} else {
+					require.Empty(t, memberships)
+				}
 				return
 			}
 			require.NoError(t, err)
@@ -89,6 +96,8 @@ func TestInviteExpiryIsCheckedAfterWaitingForWorkspaceLock(t *testing.T) {
 	var ws uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx, `INSERT INTO workspace(name,slug) VALUES ('Lab','lab') RETURNING id`).Scan(&ws))
 	user, err := st.UpsertUserByEmail(ctx, "person@example.com")
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO membership(workspace_id,user_id,role) VALUES ($1,$2,'admin')`, ws, user.ID)
 	require.NoError(t, err)
 	invite, _, err := st.CreateInvite(ctx, ws, user.ID, user.Email, "member")
 	require.NoError(t, err)
@@ -116,6 +125,8 @@ func TestReplaceInviteInvalidatesOldInviteAndLoginTokens(t *testing.T) {
 	var ws uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx, `INSERT INTO workspace(name,slug) VALUES ('Lab','lab') RETURNING id`).Scan(&ws))
 	actor, err := st.UpsertUserByEmail(ctx, "actor@example.com")
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO membership(workspace_id,user_id,role) VALUES ($1,$2,'admin')`, ws, actor.ID)
 	require.NoError(t, err)
 	first, oldToken, err := st.CreateInvite(ctx, ws, actor.ID, "person@example.com", "member")
 	require.NoError(t, err)
@@ -145,6 +156,8 @@ func TestConcurrentInviteAcceptanceIsSingleUse(t *testing.T) {
 	var ws uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx, `INSERT INTO workspace(name,slug) VALUES ('Lab','lab') RETURNING id`).Scan(&ws))
 	user, err := st.UpsertUserByEmail(ctx, "person@example.com")
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO membership(workspace_id,user_id,role) VALUES ($1,$2,'admin')`, ws, user.ID)
 	require.NoError(t, err)
 	invite, _, err := st.CreateInvite(ctx, ws, user.ID, user.Email, "member")
 	require.NoError(t, err)
@@ -179,6 +192,8 @@ func TestDeletingInvitePreservesLoginRateLimitsAndInvalidatesTokens(t *testing.T
 	var ws uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx, `INSERT INTO workspace(name,slug) VALUES ('Lab','lab') RETURNING id`).Scan(&ws))
 	user, err := st.UpsertUserByEmail(ctx, "person@example.com")
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO membership(workspace_id,user_id,role) VALUES ($1,$2,'admin')`, ws, user.ID)
 	require.NoError(t, err)
 	invite, _, err := st.CreateInvite(ctx, ws, user.ID, user.Email, "member")
 	require.NoError(t, err)

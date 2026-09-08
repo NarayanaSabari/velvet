@@ -4,11 +4,31 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
 // SessionTTL is shared by session creation and browser cookie expiry.
 const SessionTTL = 30 * 24 * time.Hour
+
+func (s *Store) RememberWorkspace(ctx context.Context, token string, workspaceID uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `UPDATE session s SET last_workspace_id=$2 WHERE s.id=$1 AND EXISTS(SELECT 1 FROM membership m WHERE m.workspace_id=$2 AND m.user_id=s.user_id)`, HashToken(token), workspaceID)
+	return err
+}
+
+// LastWorkspace validates the remembered membership and falls back to the
+// earliest workspace. An inaccessible remembered id never reaches the client.
+func (s *Store) LastWorkspace(ctx context.Context, token string) (*Membership, error) {
+	var m Membership
+	err := s.pool.QueryRow(ctx, `SELECT m.id,m.workspace_id,w.slug,w.name,m.role::text FROM session s JOIN membership m ON m.user_id=s.user_id JOIN workspace w ON w.id=m.workspace_id WHERE s.id=$1 ORDER BY (w.id=s.last_workspace_id) DESC NULLS LAST,w.created_at,w.id LIMIT 1`, HashToken(token)).Scan(&m.ID, &m.WorkspaceID, &m.Slug, &m.Name, &m.Role)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
 
 // DeleteExpiredSessions removes only sessions that can no longer
 // authenticate. Live sessions are never touched.

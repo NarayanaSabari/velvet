@@ -131,25 +131,9 @@ func (s *Store) ListWorkspaceMembers(ctx context.Context, workspaceID uuid.UUID)
 func (s *Store) UpdateWorkspaceMembershipRole(ctx context.Context, workspaceID, membershipID, actorID uuid.UUID, role string) (WorkspaceMembership, error) {
 	var out WorkspaceMembership
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
-		// Lock the workspace's membership set so two concurrent demotions cannot
-		// both believe another admin will remain.
-		rows, err := tx.Query(ctx,
-			`SELECT id FROM membership WHERE workspace_id = $1 FOR UPDATE`, workspaceID)
-		if err != nil {
+		if err := LockWorkspaceAdminTx(ctx, tx, workspaceID, actorID); err != nil {
 			return err
 		}
-		for rows.Next() {
-			var ignored uuid.UUID
-			if err := rows.Scan(&ignored); err != nil {
-				rows.Close()
-				return err
-			}
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return err
-		}
-		rows.Close()
 
 		var previousRole, email string
 		if err := tx.QueryRow(ctx, `
@@ -159,14 +143,8 @@ func (s *Store) UpdateWorkspaceMembershipRole(ctx context.Context, workspaceID, 
 			return mapErr(err)
 		}
 		if previousRole == "admin" && role != "admin" {
-			var admins int
-			if err := tx.QueryRow(ctx, `
-				SELECT count(*) FROM membership
-				WHERE workspace_id = $1 AND role = 'admin'`, workspaceID).Scan(&admins); err != nil {
+			if err := retainAdminTx(ctx, tx, workspaceID, previousRole); err != nil {
 				return err
-			}
-			if admins <= 1 {
-				return ErrLastAdmin
 			}
 		}
 
@@ -175,6 +153,7 @@ func (s *Store) UpdateWorkspaceMembershipRole(ctx context.Context, workspaceID, 
 			WHERE id = $2 AND workspace_id = $3`, role, membershipID, workspaceID); err != nil {
 			return mapErr(err)
 		}
+		var err error
 		out, err = scanWorkspaceMembership(tx.QueryRow(ctx, `
 			SELECT `+workspaceMembershipCols+`
 			FROM membership m LEFT JOIN app_user u ON u.id = m.user_id
@@ -214,13 +193,13 @@ func (s *Store) MembershipsForUser(ctx context.Context, userID uuid.UUID) ([]Mem
 	rows, err := s.pool.Query(ctx, `
 		SELECT m.id, m.workspace_id, w.slug, w.name, m.role::text
 		FROM membership m JOIN workspace w ON w.id = m.workspace_id
-		WHERE m.user_id = $1 ORDER BY w.name`, userID)
+		WHERE m.user_id = $1 ORDER BY w.created_at,w.id`, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var out []Membership
+	out := []Membership{}
 	for rows.Next() {
 		var m Membership
 		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.Slug, &m.Name, &m.Role); err != nil {

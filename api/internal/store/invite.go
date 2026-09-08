@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,19 +13,23 @@ import (
 
 // Invite is safe for API responses. The secret is only returned on creation.
 type Invite struct {
-	ID          uuid.UUID `json:"id"`
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	Email       string    `json:"email"`
-	Role        string    `json:"role"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	ID            uuid.UUID `json:"id"`
+	WorkspaceID   uuid.UUID `json:"workspace_id"`
+	Email         string    `json:"email"`
+	Role          string    `json:"role"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	WorkspaceName string    `json:"workspace_name"`
+	WorkspaceSlug string    `json:"workspace_slug"`
 }
 
-const inviteCols = `id, workspace_id, email, role::text, expires_at`
+const inviteCols = `id, workspace_id, email, role::text, expires_at,
+	(SELECT name FROM workspace WHERE workspace.id=invite.workspace_id),
+	(SELECT slug FROM workspace WHERE workspace.id=invite.workspace_id)`
 const liveInvite = `accepted_at IS NULL AND revoked_at IS NULL AND expires_at > clock_timestamp()`
 
 func scanInvite(row scanner) (Invite, error) {
 	var i Invite
-	err := row.Scan(&i.ID, &i.WorkspaceID, &i.Email, &i.Role, &i.ExpiresAt)
+	err := row.Scan(&i.ID, &i.WorkspaceID, &i.Email, &i.Role, &i.ExpiresAt, &i.WorkspaceName, &i.WorkspaceSlug)
 	return i, mapErr(err)
 }
 
@@ -96,10 +101,19 @@ func (s *Store) CreateInvite(ctx context.Context, workspaceID, actorID uuid.UUID
 	var i Invite
 	var token string
 	err = s.InTx(ctx, func(tx pgx.Tx) error {
-		if err := lockWorkspaceTx(ctx, tx, workspaceID); err != nil {
+		if err := LockWorkspaceAdminTx(ctx, tx, workspaceID, actorID); err != nil {
 			return err
 		}
-		var err error
+		var previous uuid.UUID
+		err := tx.QueryRow(ctx, `SELECT id FROM invite WHERE workspace_id=$1 AND lower(btrim(email))=$2 AND accepted_at IS NULL AND revoked_at IS NULL`, workspaceID, email).Scan(&previous)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		if err == nil {
+			if err := revokeInviteTx(ctx, tx, workspaceID, previous, actorID); err != nil {
+				return err
+			}
+		}
 		i, token, err = insertInviteTx(ctx, tx, workspaceID, actorID, email, role)
 		return err
 	})
@@ -115,12 +129,15 @@ func (s *Store) ReplaceInvite(ctx context.Context, workspaceID, inviteID, actorI
 	var i Invite
 	var token string
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
-		if err := lockWorkspaceTx(ctx, tx, workspaceID); err != nil {
+		if err := LockWorkspaceAdminTx(ctx, tx, workspaceID, actorID); err != nil {
 			return err
 		}
-		var email string
-		if err := tx.QueryRow(ctx, `SELECT email FROM invite WHERE id=$1 AND workspace_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL FOR UPDATE`, inviteID, workspaceID).Scan(&email); err != nil {
+		var email, previousRole string
+		if err := tx.QueryRow(ctx, `SELECT email,role::text FROM invite WHERE id=$1 AND workspace_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL FOR UPDATE`, inviteID, workspaceID).Scan(&email, &previousRole); err != nil {
 			return mapErr(err)
+		}
+		if role == "" {
+			role = previousRole
 		}
 		if err := revokeInviteTx(ctx, tx, workspaceID, inviteID, actorID); err != nil {
 			return err
@@ -151,7 +168,7 @@ func revokeInviteTx(ctx context.Context, tx pgx.Tx, workspaceID, inviteID, actor
 
 func (s *Store) RevokeInvite(ctx context.Context, workspaceID, inviteID, actorID uuid.UUID) error {
 	return s.InTx(ctx, func(tx pgx.Tx) error {
-		if err := lockWorkspaceTx(ctx, tx, workspaceID); err != nil {
+		if err := LockWorkspaceAdminTx(ctx, tx, workspaceID, actorID); err != nil {
 			return err
 		}
 		return revokeInviteTx(ctx, tx, workspaceID, inviteID, actorID)

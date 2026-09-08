@@ -82,6 +82,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ws, _ := CurrentWorkspace(r.Context())
+	user, _ := CurrentUser(r.Context())
 
 	// Subscribing before the first flush closes the window in which a mutation
 	// could land after the client believes it is connected but before it is.
@@ -104,9 +105,15 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-keepalive.C:
+			if _, err := s.store.MembershipForSlug(r.Context(), user.ID, ws.Slug); err != nil {
+				return
+			}
 			fmt.Fprint(w, ": keepalive\n\n")
 			flusher.Flush()
 		case ev := <-events:
+			if _, err := s.store.MembershipForSlug(r.Context(), user.ID, ws.Slug); err != nil {
+				return
+			}
 			payload, err := json.Marshal(ev)
 			if err != nil {
 				continue

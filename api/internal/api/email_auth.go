@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/auth"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/mail"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
@@ -23,12 +25,16 @@ func (s *Server) handleEmail(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "invalid_request", "a valid email address is required")
 		return
 	}
+	s.issueEmailSignIn(w, r, email, nil)
+}
+
+func (s *Server) issueEmailSignIn(w http.ResponseWriter, r *http.Request, email string, inviteID *uuid.UUID) {
 	ip, err := s.clientIP(r)
 	if err != nil {
 		WriteError(w, http.StatusBadRequest, "invalid_request", "invalid client address")
 		return
 	}
-	token, err := s.store.IssueLoginToken(r.Context(), email, ip, nil)
+	token, err := s.store.IssueLoginToken(r.Context(), email, ip, inviteID)
 	if err != nil && !errors.Is(err, store.ErrRateLimited) {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not request sign-in")
 		return

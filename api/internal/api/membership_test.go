@@ -85,14 +85,14 @@ func TestViewerCanListSignedInWorkspaceMembers(t *testing.T) {
 		ID: 2002, Login: "octocat", Name: "Octo Cat",
 	})
 	require.NoError(t, err)
+	_, _, err = f.Store.CreateInvite(t.Context(), f.WorkspaceID, f.User.ID, "pending-user@example.com", "member")
+	require.NoError(t, err)
 	_, err = f.Pool.Exec(t.Context(),
 		`UPDATE membership SET role = 'viewer' WHERE user_id = $1`, f.User.ID)
 	require.NoError(t, err)
 	_, err = f.Pool.Exec(t.Context(), `
 		INSERT INTO membership (workspace_id, user_id, role)
 		VALUES ($1, $2, 'member')`, f.WorkspaceID, member.ID)
-	require.NoError(t, err)
-	_, _, err = f.Store.CreateInvite(t.Context(), f.WorkspaceID, f.User.ID, "pending-user@example.com", "member")
 	require.NoError(t, err)
 
 	rec := f.Do(http.MethodGet, "/api/v1/w/lab/members", nil)

@@ -46,6 +46,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /webhooks/github", s.handleGitHubWebhook)
 
 	s.registerAuthRoutes(mux)
+	s.registerOrganisationRoutes(mux)
+	s.registerInviteRoutes(mux)
 	s.registerMembershipRoutes(mux)
 	s.registerSprintRoutes(mux)
 	s.registerMilestoneRoutes(mux)

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -54,9 +55,16 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not read membership")
 		return
 	}
+	cookie, _ := r.Cookie(auth.CookieName)
+	last, err := s.store.LastWorkspace(r.Context(), cookie.Value)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "internal", "could not read the last organisation")
+		return
+	}
 	WriteJSON(w, http.StatusOK, map[string]any{
-		"user":        user,
-		"memberships": memberships,
+		"user":           user,
+		"memberships":    memberships,
+		"last_workspace": last,
 	})
 }
 
@@ -94,8 +102,59 @@ func (s *Server) RequireWorkspace(next http.Handler) http.Handler {
 			WriteError(w, http.StatusNotFound, "not_found", "no such workspace")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), workspaceKey, m)))
+		cookie, _ := r.Cookie(auth.CookieName)
+		response := &workspaceResponseWriter{ResponseWriter: w, remember: func() {
+			if err := s.store.RememberWorkspace(r.Context(), cookie.Value, m.WorkspaceID); err != nil {
+				// The handler may already have committed a mutation. A failed
+				// preference update must not replace its successful response.
+				slog.Error("could not remember organisation", "request_id", r.Context().Value(requestIDKey))
+			}
+		}}
+		next.ServeHTTP(response, r.WithContext(context.WithValue(r.Context(), workspaceKey, m)))
+		if !response.wroteHeader {
+			response.WriteHeader(http.StatusOK)
+		}
 	}))
+}
+
+// Remember at the first successful response, including an SSE connection's
+// initial flush. Waiting for the handler to return would defer streaming
+// persistence until disconnect; resolving membership alone also counts errors.
+type workspaceResponseWriter struct {
+	http.ResponseWriter
+	remember    func()
+	wroteHeader bool
+}
+
+func (w *workspaceResponseWriter) WriteHeader(status int) {
+	if w.wroteHeader {
+		return
+	}
+	if status >= 100 && status < 200 && status != http.StatusSwitchingProtocols {
+		w.ResponseWriter.WriteHeader(status)
+		return
+	}
+	w.wroteHeader = true
+	if status >= 200 && status < 300 {
+		w.remember()
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *workspaceResponseWriter) Write(p []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *workspaceResponseWriter) Flush() {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 // RequireRole wraps a handler so that viewers cannot mutate.
