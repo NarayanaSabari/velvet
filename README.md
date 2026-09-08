@@ -86,11 +86,14 @@ Set `SITE_ADDRESS=http://localhost` for local work, where there is nothing to ce
 # API
 cd api
 DATABASE_URL=postgres://... go run ./cmd/ticket migrate
-DATABASE_URL=postgres://... go run ./cmd/ticket serve
+DATABASE_URL=postgres://... BASE_URL=http://localhost:5173 go run ./cmd/ticket serve
 
-# SPA, proxying /api to localhost:8080
+# SPA at localhost:5173, proxying /api to localhost:8080
 cd web && npm install && npm run dev
 ```
+
+`BASE_URL` must match the browser's origin for mail links and same-origin mutation checks.
+Vite reserves port 5173 and exits if it is occupied; stop the conflicting process before starting the SPA.
 
 Tests: `cd api && go test ./...` and `cd web && npx vitest run && npx tsc --noEmit`.
 The Go tests use testcontainers, so Docker must be running for them.

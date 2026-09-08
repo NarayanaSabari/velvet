@@ -6,6 +6,8 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    port: 5173,
+    strictPort: true,
     // Same-origin in dev as in production, so the session cookie behaves
     // identically in both and no CORS handling is ever needed.
     proxy: {
