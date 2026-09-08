@@ -179,8 +179,23 @@ Do not use the foundation image if it contains the earlier unconditional mail-va
 
 ## Release 2: feature and contract
 
+### Mail and deployment configuration
+
+Before scheduling the maintenance window, verify the Resend sending domain `mail.velvet.sabarinarayana.com` and prepare `RESEND_API_KEY` and `MAIL_FROM` in the operator-managed host environment.
+The API refuses HTTPS startup without both; worker and migration commands do not require mail configuration.
+Use the verified domain in the sender, for example `Velvet <noreply@mail.velvet.sabarinarayana.com>`.
+Never substitute that example for an operator-approved address or backfill mapping.
+Production delivery must be checked through an approved recipient's real confirmation flow after deployment; local log-mail tests do not validate Resend delivery or DNS.
+
+Compose forwards `GITHUB_APP_SLUG` to the API along with App user-authorization credentials, App ID, private key, and webhook secret.
+Set the slug even when legacy OAuth credentials remain in the host environment; those old credentials are not the App credentials and cannot enable email sign-in.
+For several local stacks, choose unique host ports and a non-overlapping `PROXY_SUBNET`, then set both `PROXY_CADDY_IP` and `PROXY_API_IP` inside it.
+Compose trusts only the fixed Caddy address (`/32`) for forwarded client IPs.
+Changing the subnet alone leaves the fixed addresses inconsistent.
+
 ### GitHub App authorization settings
 
+Make the App public so other accounts and organisations can install it.
 Configure the GitHub App's callback URL as `BASE_URL/api/v1/auth/github/callback` and its setup URL as `BASE_URL/api/v1/github/setup`.
 Disable **Request user authorization (OAuth) during installation** and **Redirect on update**.
 Velvet starts user authorization explicitly after claiming the setup state, so automatic authorization must not bypass that state and PKCE flow.
@@ -192,7 +207,11 @@ User access and refresh tokens are never retained after authorization.
 Local verification may override `GITHUB_INSTALLATION_URL`, `GITHUB_AUTHORIZATION_URL`, `GITHUB_TOKEN_URL`, and `GITHUB_API_URL` with a disposable HTTP stub.
 The installation URL defaults to `https://github.com/apps/{GITHUB_APP_SLUG}/installations/new`.
 Production defaults for the other URLs are GitHub's public authorization, token, and REST endpoints.
+These endpoint overrides are for a disposable provider or GitHub Enterprise, not required ordinary GitHub.com configuration.
 The browser must be able to reach the installation and authorization URLs, while the API and worker processes must be able to reach the token and REST URLs.
+Check repository permissions for Contents, Metadata, and Pull requests reads; subscribe to Pull request, Pull request review, and Push events, and configure `BASE_URL/webhooks/github` with the matching webhook secret.
+Check the actual organisation owner can authorize the App and that the authenticated-user membership listing returns its active `admin` membership before considering ownership verification operational.
+The [authenticated-user membership endpoint](https://docs.github.com/en/rest/orgs/members#list-organization-memberships-for-the-authenticated-user) supports App user tokens; the verified flow reads all pages and fails closed if ownership cannot be established.
 
 The installation authorization completer atomically binds the installation, enqueues synchronization, and completes both callback states.
 Administration offers Connect GitHub for new connections and Verify GitHub ownership for migrated bindings.
@@ -263,6 +282,39 @@ ORDER BY name;
 ```
 
 Do not end the maintenance window until both rows exist and the new application passes its production smoke checks.
+
+### 5. Production smoke checks and release record
+
+Use operator-approved accounts and organisations for these actions; do not modify an existing organisation merely to test destructive flows.
+Record the final feature commit, both image tags, migration output, second-preflight output, designated rollback dump, operator approvals, and smoke-check results together.
+
+- Request a sign-in link to an approved address, confirm mail delivery, open the link without creating a session, then click Sign in and verify the expected existing identity and organisation.
+- Confirm the last organisation selection, existing email-only member names, and retained issue/PR evidence.
+- Where approved, create an organisation and invite a test colleague; verify matching-address acceptance and membership.
+- Verify each migrated GitHub installation through its owner in Administration before expecting discovery of additional repositories.
+  Confirm successful synchronization and preserved existing repository ownership.
+- Confirm signed webhook delivery and a PR appearing on its intended issue without changing issue status.
+- Confirm profile linking separately when needed; installation verification must not implicitly link the admin's profile.
+
+`deploy/preflight.sh` is a supplementary operator diagnostic, not a migration preflight or a delivery/authorization proof.
+It reads the selected environment file and sends signed and invalid diagnostic ping webhooks; run it only against the intended deployment after configuration is approved.
+The replacement local setup entrypoints share the guarded browser suite and never target a production deployment.
+The removed bootstrap, login-invite, and manual repository-connection scripts are superseded by signup and Administration.
+
+## GitHub lifecycle recovery
+
+Repository removal marks historical rows disconnected and retains PRs, reviews, commits, links, and issue evidence.
+Only a complete successful repository listing may disconnect absent repositories, and reconnecting reuses the retained row without moving it between organisations.
+Suspension pauses access and reconciliation.
+After a provider state-check failure, Administration reports suspended plus `sync_failed`; resolve the provider problem and click **Retry sync** to recheck the installation before resuming discovery.
+
+A current-state API 404 is not terminal deletion authority.
+It fails closed, retains the installation binding and evidence, and requires provider access recovery or the authentic signed lifecycle delivery.
+Only a verified `installation.deleted` webhook marks that installation ID permanently deleted and unbinds it.
+If a deletion delivery was missed, an operator can inspect and redeliver that authentic GitHub event as an approved operational action.
+Never synthesize deletion from an HTTP status or directly reassign ownership to bypass a stale binding.
+Without webhooks, active repositories can reconcile PRs hourly, but terminal-deletion recovery is unavailable until a signed deletion delivery is recovered.
+After deletion, Connect GitHub can verify a new installation; stale events from the deleted ID cannot overwrite retained evidence.
 
 ## Contract failure and rollback
 

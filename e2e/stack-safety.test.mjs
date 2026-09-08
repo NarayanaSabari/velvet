@@ -60,7 +60,7 @@ for (const [name, [command, args]] of Object.entries(entrypoints)) {
   })
 }
 
-for (const script of ['stack-up.sh', 'stack-down.sh']) {
+for (const script of ['stack-up.sh', 'stack-down.sh', '../deploy/verify-setup.sh', '../deploy/verify-localhost.sh']) {
   test(`${script} rejects a non-test project before invoking Docker`, () => {
     const temp = mkdtempSync(join(tmpdir(), 'worklog-stack-safety-'))
     try {

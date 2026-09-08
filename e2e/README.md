@@ -16,6 +16,7 @@ env -u NO_COLOR npx playwright test tests/onboarding.spec.ts
 ```
 
 The stack uses the disposable project `worklog-e2e-organisations`, HTTP port 18399, HTTPS port 18400, provider port 18599, and proxy subnet `172.30.77.0/24`.
+Its fixed Caddy and API addresses are `172.30.77.2` and `172.30.77.3`; the API trusts only Caddy's `/32` for forwarded client IPs.
 Published ports bind only to `127.0.0.1`.
 `E2E_PORT` and `E2E_PROVIDER_PORT` can override the host ports.
 Other project names are rejected before Docker is called.
@@ -45,3 +46,6 @@ Cleanup deletes this project's test database and other named volumes:
 
 The cleanup script displays the exact labelled containers and volumes before removal and rejects other project names.
 Run its guard regressions with `node --test stack-safety.test.mjs`.
+From the repository root, `./deploy/verify-setup.sh` and `./deploy/verify-localhost.sh` both run the focused onboarding suite through the same guarded stack boundary.
+Both include signed webhook checks and leave the stack running; neither claims to test a webhook-free deployment.
+Run `node --test deploy/rollout.test.mjs e2e/stack-safety.test.mjs` after generating the disposable environment to check deployment configuration and wrapper safety.

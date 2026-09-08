@@ -95,163 +95,156 @@ cd web && npm install && npm run dev
 Tests: `cd api && go test ./...` and `cd web && npx vitest run && npx tsc --noEmit`.
 The Go tests use testcontainers, so Docker must be running for them.
 
+## Accounts and organisations
+
+Open `/signin`, enter your email, and follow the mailed link to the confirmation page.
+Click **Sign in** to create the session; opening the link alone never consumes it.
+Links expire after 15 minutes and work once.
+A reused or expired link offers a fresh sign-in request.
+Email addresses are normalized to lowercase, and GitHub is optional.
+
+A new account can create an organisation with a name, unique slug, and 2-6 letter uppercase issue prefix.
+The creator becomes its first admin.
+The organisation switcher remembers the last selection in the session.
+Admins invite colleagues by email and role from Administration, resend invitations with a replacement token, revoke invitations, and manage existing members.
+Invitations expire after seven days.
+The recipient can accept while signed in with the matching address, or complete a separate mailed sign-in confirmation to join.
+A different signed-in address cannot accept it.
+People without memberships also see their pending invitations after ordinary sign-in and can accept without reopening the invitation mail.
+
+Roles are `admin` (membership, GitHub, and sprint administration), `member` (create and edit work), and `viewer` (read).
+Leaving, removing, or demoting a member cannot leave the organisation without an admin.
+Deleting an organisation requires typing its slug and deletes its work and evidence.
+
+Sessions use a random opaque bearer token in an HttpOnly, SameSite=Lax cookie; only its SHA-256 hash is stored.
+Sign-in and invitation tokens arrive in URL fragments and are submitted only after a confirmation click.
+Sign-in issuance is limited to five requests per normalized address and 20 per client IP in 15 minutes.
+Production requires `RESEND_API_KEY` and `MAIL_FROM` from a verified sending domain.
+On HTTP localhost without a Resend key, the log mailer writes confirmation links to the API container log.
+
 ## GitHub configuration
 
-Two GitHub identities are used deliberately and kept separate.
-App permissions survive any one person leaving the team, whereas a personal access token dies with its owner.
+### App settings and credentials
 
-### The GitHub App - webhooks and repository reads
+Use a GitHub App that can be installed by any account or organisation.
+Configure these settings on the App:
 
-1. Organisation settings, Developer settings, GitHub Apps, New GitHub App.
-2. Webhook URL `https://YOUR_HOST/webhooks/github`, and set a webhook secret.
-3. Repository permissions: Contents read-only, Metadata read-only, Pull requests read-only.
-4. Subscribe to events: Pull request, Pull request review, Push.
-   The installation events the worker also handles are not in this list because every GitHub App receives them automatically.
-5. Generate a private key and download the PEM.
-6. Install the App on the organisation and choose which repositories map to the workspace.
+1. Setup URL: `https://YOUR_HOST/api/v1/github/setup`.
+2. User-authorization callback URL: `https://YOUR_HOST/api/v1/auth/github/callback`.
+3. Disable **Request user authorization (OAuth) during installation** and **Redirect on update**.
+4. Webhook URL: `https://YOUR_HOST/webhooks/github`, with a matching webhook secret.
+5. Repository permissions: Contents read-only, Metadata read-only, Pull requests read-only.
+6. Subscribe to Pull request, Pull request review, and Push events.
+   Installation lifecycle and repository-selection events are delivered automatically.
+7. Generate a private key and configure the App's user-authorization client secret.
 
-Put the App ID in `GITHUB_APP_ID`, the PEM contents in `GITHUB_APP_PRIVATE_KEY`, and the webhook secret in `GITHUB_WEBHOOK_SECRET`.
+Set `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, and `GITHUB_WEBHOOK_SECRET` on the API deployment.
+The worker needs the App ID and private key.
+The App client credentials are distinct from the old OAuth App's `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`; those legacy values no longer enable sign-in.
+Quote the complete multiline PEM, retaining its BEGIN and END lines.
 
-The downloaded key is a multi-line PEM, so quote it when you paste it into `.env.local`, keeping the `BEGIN` and `END` lines. An unquoted value silently truncates at the first newline and every App call then fails to sign.
+### Connect and verify ownership
 
-Then connect each repository:
+An organisation admin clicks **Connect GitHub** in Administration, selects the installation, and completes GitHub user authorization.
+The server verifies both access to that installation and ownership: the personal account owner or an active GitHub organisation owner.
+Read access and delegated installation management alone are insufficient in this release.
+Each organisation supports one live installation, and an installation cannot belong to several organisations.
+The temporary user token is discarded after verification, and this flow does not link the admin's profile.
 
-```
-SESSION_TOKEN=<your ticket_session cookie> GITHUB_TOKEN=<a token that can read the repo> \
-  ./deploy/connect-repo.sh your-org/your-repo your-workspace-slug
-```
+Repositories are discovered from the App's complete granted repository list.
+There is no manual repository connection form or setup script.
+Existing installations migrated from the old release show **Verify GitHub ownership** and preserve existing evidence until that verification permits further discovery.
+After verification, **Retry sync** retries a failed repository sync.
+Repository ownership conflicts are reported in Administration and never move another organisation's repository.
+The worker backfills 90 days of PRs on first synchronization and reconciles active repositories hourly.
 
-Workspace admins can also connect a repository from the Administration page.
-The script remains useful because it resolves the numeric repository id and the App installation id for you, which GitHub scatters across three different pages.
-The worker backfills the last 90 days of pull requests on its next reconcile pass, which runs at startup and hourly after that, so the views are not empty on day one.
+### Access changes and evidence
 
-When it is all wired up, check it:
+Removing repository access marks the repository **Disconnected** and stops synchronization while retaining PRs, commits, reviews, links, and issue evidence.
+Adding access again reconnects the same repository row.
+Suspended installations stop syncing until GitHub reports them active again.
+If Administration shows a suspended installation with a state-check error (`sync_failed`), use **Retry sync** to check GitHub's current state after resolving the provider error.
 
-```
-cd deploy && ./preflight.sh your-slug
-```
+**Disconnect GitHub** explains how to uninstall the App on GitHub and links to its settings.
+Only a correctly signed `installation.deleted` delivery permanently marks that installation deleted and releases its organisation binding.
+A current-state API 404 fails closed, preserves the binding and evidence, and does not prove deletion.
+Restore provider access or recover the signed deletion delivery through GitHub; follow the [rollout runbook](docs/operations/organisations-rollout.md) for operational recovery.
+Deleting an organisation itself still deletes its evidence.
 
-That verifies the API answers, sign-in redirects to GitHub, a correctly signed webhook is accepted and an unsigned one refused, the private key is a complete PEM, and at least one repository and member exist. Every one of those fails silently in normal use, which is why they are worth asserting explicitly.
+### Profile linking
 
-`./verify-setup.sh` walks this whole procedure from an empty stack against a stub GitHub, ending with a signed webhook that must link a pull request to an issue. It exists because the individual scripts working is not the same claim as the documented steps producing a working integration: the first run of it found that preflight rejected a correctly quoted private key, which would have told a new operator they had made a mistake when they had not.
+Open Profile inside an organisation to link or unlink a personal GitHub account.
+Linking uses the App's user-authorization flow, does not create a session, and refuses an account already linked to another user.
+User tokens are not retained.
+Email-only members appear by name when available, otherwise by email.
+Linked GitHub logins support existing mentions and PR-author attribution within the organisation.
 
-### Do you need webhooks at all?
+### Local development and verification
 
-No. They are a latency optimisation, not a requirement.
+A webhook URL on localhost cannot receive GitHub deliveries.
+For a local trial, active, verified repositories can reconcile PR evidence hourly without deliveries.
+Installation deletion still requires a signed webhook; polling cannot release a stale binding after an uninstall.
+Expose localhost through a tunnel when testing real lifecycle deliveries, and update the App's webhook URL to that public address.
+The setup and user-authorization callback URLs can use `http://localhost:8088` because those redirects run in the user's browser.
 
-Both paths run the same code. A webhook delivery and the hourly reconciliation
-pass both end in the same `syncPullRequest`, so the difference is only *when* a
-pull request appears on its issue:
+`GITHUB_INSTALLATION_URL`, `GITHUB_AUTHORIZATION_URL`, `GITHUB_TOKEN_URL`, and `GITHUB_API_URL` are optional test-provider or GitHub Enterprise overrides.
+Ordinary GitHub.com use leaves them empty and uses the App slug for the installation URL.
+The browser must reach installation and authorization endpoints; the API and worker must reach token and REST endpoints.
 
-| | With webhooks | Without |
-|---|---|---|
-| PR appears on the issue | seconds | within the hour |
-| Links by branch name | yes | yes |
-| Commits and reviews mirrored | yes | yes |
-| Survives downtime | reconciliation backfills it | same |
+After configuring a deployment, `cd deploy && ./preflight.sh your-slug` checks health, the sign-in page, mail/App configuration, signed and invalid webhook handling, the PEM, and active repositories and memberships.
+It sends diagnostic ping webhooks but does not send mail or perform signup.
+It cannot prove mail delivery, owner authorization, or App dashboard settings; complete the runbook's smoke checks.
 
-Reconciliation is not a degraded fallback bolted on afterwards. It exists
-because deliveries are missed in practice - a restart, a GitHub incident, an
-exhausted retry - so a system that only worked when every webhook arrived would
-be quietly wrong within a month. It reads every pull request updated since the
-last successful sync, and 90 days back on first run.
-
-So webhooks are worth configuring when you can reach the host from the
-internet, and worth skipping when you cannot.
-
-### Running on localhost
-
-A webhook URL of `http://localhost:8088/webhooks/github` cannot work: GitHub
-sends deliveries from its own servers, and `localhost` there means GitHub's
-machine, not yours. The delivery fails and never arrives.
-
-Two honest options:
-
-1. **Leave the webhook URL blank.** Everything works, pull requests appear
-   within the hour. This is the right choice for a local trial, and
-   `preflight.sh` reports it as a note rather than a failure.
-
-2. **Expose the port while you test**, with `cloudflared tunnel --url
-   http://localhost:8088` or `ngrok http 8088`, and use the public URL it
-   prints. The URL changes each restart, so update the App's webhook setting
-   when it does.
-
-Neither affects sign-in: OAuth redirects happen in *your* browser, so
-`http://localhost:8088/api/v1/auth/github/callback` is a perfectly good
-callback URL.
-
-`./verify-localhost.sh` proves the first option end to end: it stands up a
-stack with no webhook secret at all, connects a repository, and asserts a pull
-request reaches its issue through reconciliation with zero deliveries made.
-
-### The OAuth app - who is this human
-
-Members sign in with GitHub OAuth; there are no passwords, because every member already has a GitHub account and a second credential store is a liability without a benefit.
-
-Each session is a cryptographically random opaque bearer token stored in an HttpOnly, SameSite=Lax cookie.
-Only the token's SHA-256 hash is stored in Postgres, so there is no cookie-signing secret to configure and a database leak does not expose replayable session tokens.
-
-1. Organisation settings, Developer settings, OAuth Apps, New OAuth App.
-2. Authorization callback URL `https://YOUR_HOST/api/v1/auth/github/callback`.
-3. Put the client ID and secret in `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
-
-A GitHub login must be invited to the workspace before it can sign in; a stranger who finds the URL sees a "not invited" page rather than an account.
-Roles are `admin` (membership, repo connections, sprint lifecycle), `member` (create and edit issues, comment, attach PRs), and `viewer` (read).
-
-### First workspace and invites
-
-Sign-in is invite-gated, so the first admin cannot be invited through the app by anyone. Create the workspace and that first invite once:
-
-```
-cd deploy
-./bootstrap.sh <your-github-login> "Your Team" your-slug ENG
-```
-
-Everyone after them can be invited and have their role changed from the workspace Administration page.
-The deployment script remains available for operators:
-
-```
-./invite.sh <github-login> member
-./invite.sh <github-login> admin
-```
-
-An invite works before the person has ever signed in, so the whole team can be seeded up front. Re-running either script changes the role rather than failing.
+`./deploy/verify-setup.sh` runs the shared isolated browser onboarding suite: email confirmation, organisation creation, invitations, owner verification, signed evidence, sync retry, and retention/reconnection.
+`./deploy/verify-localhost.sh` is an alias for the same suite, including signed webhooks.
+Both accept browser-runner arguments such as `--list` and preserve the disposable stack.
+Polling without any delivery is covered separately by the Go worker test `TestReconcileAloneLinksWithoutAnyWebhook`.
 
 ## Environment variables
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `SITE_ADDRESS` | yes | Hostname Caddy serves and certifies |
-| `BASE_URL` | yes | Origin the API builds absolute links and OAuth callbacks from |
+| `BASE_URL` | yes | Origin for mail links, App callbacks, and same-origin mutation checks |
 | `DATABASE_URL` | yes | Postgres connection string |
 | `POSTGRES_USER` | yes | Postgres superuser for the container |
 | `POSTGRES_PASSWORD` | yes | Its password |
 | `POSTGRES_DB` | no | Database name, default `worklog` |
 | `PORT` | no | API listen port, default `8080` |
-| `GITHUB_CLIENT_ID` | for login | OAuth app client ID |
-| `GITHUB_CLIENT_SECRET` | for login | OAuth app client secret |
+| `RESEND_API_KEY`, `MAIL_FROM` | for HTTPS API | Mail delivery key and sender on a verified domain; required only by `serve` |
+| `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` | for GitHub authorization | GitHub App user-authorization credentials for owner verification and profile linking |
+| `GITHUB_APP_SLUG` | for GitHub connection | App URL slug used by the default installation redirect |
 | `GITHUB_WEBHOOK_SECRET` | for webhooks | HMAC secret verifying deliveries |
 | `GITHUB_APP_ID` | for the worker | GitHub App ID |
 | `GITHUB_APP_PRIVATE_KEY` | for the worker | App private key, PEM contents |
+| `GITHUB_INSTALLATION_URL`, `GITHUB_AUTHORIZATION_URL`, `GITHUB_TOKEN_URL`, `GITHUB_API_URL` | no | Test-provider or Enterprise overrides; leave empty for GitHub.com |
 | `HTTP_PORT`, `HTTPS_PORT` | no | Host ports Caddy binds, default 80 and 443 |
+| `CADDY_HTTP_PORT`, `CADDY_HTTPS_PORT` | no | Container ports matching `SITE_ADDRESS`, default 80 and 443 |
+| `PROXY_SUBNET`, `PROXY_CADDY_IP`, `PROXY_API_IP` | no | Private proxy network and fixed addresses, default `172.30.75.0/24`, `172.30.75.2`, `172.30.75.3` |
+| `TRUSTED_PROXY_CIDRS` | outside Compose | Explicit trusted proxy CIDRs; Compose derives the API value from `PROXY_CADDY_IP/32` |
 | `BACKUP_S3_URL` | no | Object-storage destination for dumps |
 
 Secrets are supplied through the environment and never committed.
-`deploy/.env.example` holds variable names only; `.gitignore` covers every `.env*` except the example.
+Use the table above for the feature's required settings; existing environment templates may predate email sign-in and App authorization.
+For coexisting Compose stacks, choose a distinct project, available ports, a non-overlapping `PROXY_SUBNET`, and both fixed addresses `PROXY_CADDY_IP` and `PROXY_API_IP` inside that subnet.
+Caddy's address is the only trusted source of forwarded client IPs, so updating only the subnet is insufficient.
 
 ## Tests
 
 ```
 cd api  && go test ./...            # domain and integration, real Postgres via testcontainers
 cd web  && npx vitest run           # components
-cd e2e  && npx playwright test      # the whole system, in a browser
+cd e2e  && env -u NO_COLOR npx playwright test  # the whole system, in a browser
 ```
 
-The Playwright suite brings up the production Compose stack on port 8099, drives it in Chromium, and tears it down.
+The Playwright suite starts or reuses the disposable `worklog-e2e-organisations` Compose stack on port 18399, with the local provider on 18599, and leaves it running.
+Install its dependencies and Chromium first; see [the browser test guide](e2e/README.md) for focused runs, safety checks, rebuilds, and explicit cleanup.
 It runs against the real deployment rather than a dev server because several of this project's worst bugs lived there and nowhere else: a worker that crash-looped when no GitHub App was configured, a Caddy port mismatch that refused every request, and timestamps a browser could not parse.
 None of those were visible to a unit test.
 
-Auth is seeded directly rather than clicked through github.com: driving GitHub's login page would test GitHub, not this application. The seeded cookie is the same one the OAuth callback issues, so everything after sign-in is exercised for real.
+The onboarding suite drives email confirmation and both GitHub callbacks through a local provider, using the real API, worker, database, and log mailer.
+Existing work/evidence specs use seeded email accounts and sessions to focus on their respective workflows.
+Run deployment wiring and guarded entrypoint regressions from the repository root with `node --test deploy/rollout.test.mjs e2e/stack-safety.test.mjs` after the disposable test environment has been generated.
 
 ### CI
 
@@ -292,8 +285,10 @@ The `images` job in `.github/workflows/ci.yml` builds both images for x86 and pu
 The host never builds: it pulls the images and restarts what changed, and the job fails unless the API answers over the public URL afterwards.
 A pull that fails leaves the previous containers running.
 
-To roll back, open Actions, choose CI, click Run workflow, and pick the commit you want back.
-That rebuilds and redeploys exactly that tree.
+For schema-compatible application rollback, Actions can rebuild and redeploy a selected commit through Run workflow.
+After `0006_email_identity.sql` commits, selecting an old commit is unsafe: rollback requires stopping writers and restoring the verified pre-contract backup before running the foundation release.
+Follow the [two-release organisations runbook](docs/operations/organisations-rollout.md) before either organisations release, including the approved email backfill, ownership preflights, stopped legacy writers, and fresh verified backup immediately before `0006`.
+Merging to `main` authorizes the automatic production deployment and requires separate operator approval from opening a review PR.
 
 The host side is one restricted SSH key.
 Its `authorized_keys` entry forces a single command that accepts a commit sha, checks it out, and runs the deploy script, so the key can do nothing else:

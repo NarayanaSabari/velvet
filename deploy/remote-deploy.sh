@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Deploys one image tag on the production host. CI runs this over SSH after it
-# has pushed the images; an operator can run it by hand to roll back.
+# has pushed the images. An older tag requires a compatible schema;
+# after 0006, restore the pre-contract backup first as described in the runbook.
 #
 # Usage:
 #   ./remote-deploy.sh <image-tag>            # registry token on stdin, or none

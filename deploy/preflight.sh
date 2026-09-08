@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Checks that the GitHub configuration is actually wired up.
+# Checks email onboarding and optional GitHub configuration.
 #
 # Every failure mode here is silent in normal use: a wrong webhook secret
 # rejects deliveries that GitHub reports as sent, an unquoted private key
@@ -13,6 +13,10 @@
 set -euo pipefail
 
 slug="${1:-lab}"
+if [[ ! "$slug" =~ ^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$ ]]; then
+  echo "error: invalid organisation slug" >&2
+  exit 1
+fi
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 env_file="${ENV_FILE:-$here/.env.local}"
 project="${COMPOSE_PROJECT:-worklog}"
@@ -57,8 +61,12 @@ PYEOF
 BASE_URL="$(env_get BASE_URL)"
 POSTGRES_USER="$(env_get POSTGRES_USER)"
 POSTGRES_DB="$(env_get POSTGRES_DB)"
-GITHUB_CLIENT_ID="$(env_get GITHUB_CLIENT_ID)"
-GITHUB_CLIENT_SECRET="$(env_get GITHUB_CLIENT_SECRET)"
+RESEND_API_KEY="$(env_get RESEND_API_KEY)"
+MAIL_FROM="$(env_get MAIL_FROM)"
+GITHUB_APP_CLIENT_ID="$(env_get GITHUB_APP_CLIENT_ID)"
+GITHUB_APP_CLIENT_SECRET="$(env_get GITHUB_APP_CLIENT_SECRET)"
+GITHUB_APP_SLUG="$(env_get GITHUB_APP_SLUG)"
+GITHUB_INSTALLATION_URL="$(env_get GITHUB_INSTALLATION_URL)"
 GITHUB_WEBHOOK_SECRET="$(env_get GITHUB_WEBHOOK_SECRET)"
 GITHUB_APP_ID="$(env_get GITHUB_APP_ID)"
 GITHUB_APP_PRIVATE_KEY="$(env_get GITHUB_APP_PRIVATE_KEY)"
@@ -72,8 +80,8 @@ bad()  { printf '  FAIL  %s\n' "$1"; printf '        %s\n' "$2"; fail=$((fail + 
 warn() { printf '  note  %s\n' "$1"; }
 
 psql_q() {
-  docker compose --env-file "$env_file" -p "$project" exec -T postgres \
-    psql -U "${POSTGRES_USER:-worklog}" -d "${POSTGRES_DB:-worklog}" -tA -c "$1" 2>/dev/null || true
+  docker compose -f "$here/docker-compose.yml" --env-file "$env_file" -p "$project" exec -T postgres \
+    psql -X -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-worklog}" -d "${POSTGRES_DB:-worklog}" -tA -c "$1"
 }
 
 echo "Checking ${base}"
@@ -90,20 +98,33 @@ else
   exit 1
 fi
 
-# --- OAuth -------------------------------------------------------------------
-if [ -n "${GITHUB_CLIENT_ID:-}" ] && [ -n "${GITHUB_CLIENT_SECRET:-}" ]; then
-  ok "OAuth app configured"
-  # A redirect to github.com means the app built the authorize URL; anything
-  # else means the client id never reached the process.
-  location=$(curl -s -o /dev/null -w '%{redirect_url}' "${base}/api/v1/auth/github/login" || true)
-  case "$location" in
-    https://github.com/login/oauth/authorize*) ok "sign-in redirects to GitHub" ;;
-    "") bad "sign-in did not redirect" "Check GITHUB_CLIENT_ID reached the api container." ;;
-    *)  bad "sign-in redirected somewhere unexpected" "Got: $location" ;;
-  esac
+# --- Email onboarding --------------------------------------------------------
+if curl -fsS "${base}/signin" >/dev/null 2>&1; then
+  ok "email sign-in page is reachable"
 else
-  bad "OAuth app not configured" \
-      "Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET; without them nobody can sign in."
+  bad "email sign-in page is not reachable" "Check the web service and Caddy routing."
+fi
+if [ -n "$RESEND_API_KEY" ] && [ -n "$MAIL_FROM" ]; then
+  ok "mail credentials and sender are configured (delivery still needs a real sign-in smoke check)"
+elif [[ "$base" == https://* ]]; then
+  bad "production mail is not configured" "Set RESEND_API_KEY and MAIL_FROM from a verified sending domain."
+elif [ -n "$RESEND_API_KEY" ]; then
+  bad "mail sender is missing" "Set MAIL_FROM when using Resend."
+else
+  warn "local log mailer is in use; read the API log for confirmation links"
+fi
+
+if [ -n "$GITHUB_APP_CLIENT_ID$GITHUB_APP_CLIENT_SECRET$GITHUB_APP_ID$GITHUB_APP_PRIVATE_KEY" ]; then
+  if [ -n "$GITHUB_APP_CLIENT_ID" ] && [ -n "$GITHUB_APP_CLIENT_SECRET" ] &&
+     [ -n "$GITHUB_APP_ID" ] && [ -n "$GITHUB_APP_PRIVATE_KEY" ] &&
+     { [ -n "$GITHUB_APP_SLUG" ] || [ -n "$GITHUB_INSTALLATION_URL" ]; }; then
+    ok "GitHub App installation and user-authorization settings are configured"
+  else
+    bad "GitHub App configuration is incomplete" \
+        "Set GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET and GITHUB_APP_SLUG."
+  fi
+else
+  warn "GitHub is optional; configure the App before connecting from Administration"
 fi
 
 # --- Webhook secret ----------------------------------------------------------
@@ -136,10 +157,7 @@ if [ -n "${GITHUB_WEBHOOK_SECRET:-}" ]; then
         "This endpoint is public; it must reject anything it cannot verify."
   fi
 else
-  # Not a failure: without a public URL there is nothing for GitHub to call,
-  # and reconciliation still links pull requests on its hourly pass. Webhooks
-  # buy latency, not capability.
-  warn "no webhook secret set; pull requests will link on the hourly poll instead of instantly"
+  warn "no webhook secret; active repositories poll hourly, but terminal installation deletion requires a signed deleted delivery"
 fi
 
 # --- App private key ---------------------------------------------------------
@@ -157,22 +175,20 @@ else
 fi
 
 # --- Connected repositories --------------------------------------------------
-repos=$(psql_q "SELECT count(*) FROM repo")
+repos=$(psql_q "SELECT count(*) FROM repo r JOIN workspace w ON w.id=r.workspace_id WHERE w.slug='${slug}' AND r.disconnected_at IS NULL")
 if [ "${repos:-0}" -gt 0 ]; then
   ok "${repos} repository/repositories connected"
-  psql_q "SELECT '        ' || owner || '/' || name || '  installation=' || installation_id FROM repo ORDER BY owner, name"
+  psql_q "SELECT '        ' || r.owner || '/' || r.name || '  installation=' || r.installation_id FROM repo r JOIN workspace w ON w.id=r.workspace_id WHERE w.slug='${slug}' AND r.disconnected_at IS NULL ORDER BY r.owner,r.name"
 else
-  bad "no repositories connected" \
-      "Run ./connect-repo.sh <owner/repo> ${slug}; until then deliveries are dropped as unattributable."
+  warn "no active repositories in '${slug}'; use Connect GitHub or Verify GitHub ownership in Administration"
 fi
 
 # --- Members -----------------------------------------------------------------
 members=$(psql_q "SELECT count(*) FROM membership m JOIN workspace w ON w.id = m.workspace_id WHERE w.slug = '${slug}'")
 if [ "${members:-0}" -gt 0 ]; then
-  ok "${members} member(s) invited to '${slug}'"
+  ok "${members} member(s) belong to '${slug}'"
 else
-  bad "no members invited to '${slug}'" \
-      "Run ./bootstrap.sh <your-github-login> to create the workspace and first admin."
+  warn "Create an organisation after confirming your email; invite colleagues from Administration"
 fi
 
 echo
