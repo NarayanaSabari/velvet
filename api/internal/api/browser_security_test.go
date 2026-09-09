@@ -47,6 +47,34 @@ func TestBrowserMutationsRequireSameOriginJSON(t *testing.T) {
 	}
 }
 
+func TestBrowserMutationsCanonicalizeOrigin(t *testing.T) {
+	f := testutil.NewFixture(t)
+	for _, tc := range []struct {
+		name, baseURL, origin string
+		want                  int
+	}{
+		{"http default port", "http://LOCALHOST:80", "http://localhost", http.StatusOK},
+		{"https default port", "HTTPS://Example.COM:443", "https://example.com", http.StatusOK},
+		{"ipv6 default port", "http://[2001:0DB8::1]:80", "http://[2001:db8::1]", http.StatusOK},
+		{"nondefault port preserved", "https://example.com:8443", "https://example.com:8443", http.StatusOK},
+		{"nondefault port is required", "https://example.com:8443", "https://example.com", http.StatusForbidden},
+		{"origin path rejected", "http://localhost:80", "http://localhost/", http.StatusForbidden},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &config.Config{BaseURL: tc.baseURL}
+			h := api.NewServer(f.Pool, cfg, api.Dependencies{}).Handler()
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+			req.Header.Set("Origin", tc.origin)
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, tc.want, rec.Code, rec.Body.String())
+		})
+	}
+}
+
 func TestMagicWrongOriginDoesNotConsume(t *testing.T) {
 	f := testutil.NewFixture(t)
 	token, err := f.Store.IssueLoginToken(t.Context(), "new@example.com", "127.0.0.1", nil)
