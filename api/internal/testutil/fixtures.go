@@ -44,6 +44,18 @@ type Fixture struct {
 	Token       string
 }
 
+// CreateLinkedUser creates an email account with optional GitHub profile data.
+// Tests never use GitHub identity to claim membership or establish a session.
+func CreateLinkedUser(t *testing.T, st *store.Store, gh store.GitHubIdentity) (store.User, error) {
+	t.Helper()
+	user, err := st.UpsertUserByEmail(t.Context(), gh.Login+"@example.com")
+	if err != nil {
+		return user, err
+	}
+	err = st.Pool().QueryRow(t.Context(), `UPDATE app_user SET github_id=$1,github_login=$2,name=$3,avatar_url=$4 WHERE id=$5 RETURNING id,email,github_id,github_login,name,avatar_url`, gh.ID, gh.Login, gh.Name, gh.AvatarURL, user.ID).Scan(&user.ID, &user.Email, &user.GitHubID, &user.GitHubLogin, &user.Name, &user.AvatarURL)
+	return user, err
+}
+
 // NewFixture gives a test a migrated database, one workspace, one signed-in
 // admin, and a ready HTTP handler.
 func NewFixture(t *testing.T) *Fixture {
@@ -65,13 +77,13 @@ func NewFixtureWithWebhookSecret(t *testing.T, secret string) *Fixture {
 		`INSERT INTO workspace (name, slug, issue_prefix) VALUES ('Lab', 'lab', 'ENG')
 		 RETURNING id`).Scan(&wsID))
 
-	user, err := st.UpsertUserByGitHub(ctx, store.GitHubIdentity{
+	user, err := CreateLinkedUser(t, st, store.GitHubIdentity{
 		ID: 1001, Login: "sabari", Name: "Sabari"})
 	require.NoError(t, err)
 
 	_, err = pool.Exec(ctx,
-		`INSERT INTO membership (workspace_id, user_id, invited_login, role)
-		 VALUES ($1, $2, 'sabari', 'admin')`, wsID, user.ID)
+		`INSERT INTO membership (workspace_id, user_id, role)
+		 VALUES ($1, $2, 'admin')`, wsID, user.ID)
 	require.NoError(t, err)
 
 	token, err := st.CreateSession(ctx, user.ID, time.Hour)
@@ -82,7 +94,7 @@ func NewFixtureWithWebhookSecret(t *testing.T, secret string) *Fixture {
 
 	return &Fixture{
 		T: t, Pool: pool, Store: st,
-		Handler:     api.NewServer(pool, cfg).Handler(),
+		Handler:     api.NewServer(pool, cfg, api.Dependencies{}).Handler(),
 		WorkspaceID: wsID, Slug: "lab", User: user, Token: token,
 	}
 }
@@ -96,6 +108,7 @@ func (f *Fixture) Do(method, path string, body any) *httptest.ResponseRecorder {
 	}
 	req := httptest.NewRequest(method, path, &buf)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://localhost:8080")
 	req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: f.Token})
 	rec := httptest.NewRecorder()
 	f.Handler.ServeHTTP(rec, req)
@@ -118,13 +131,16 @@ func CreateIssue(t *testing.T, f *Fixture, title string) store.Issue {
 	return issue
 }
 
-// LinkRepo binds a repository to the fixture workspace under installation 99,
-// which is the installation the GitHub stubs answer for.
+// LinkRepo seeds a verified active binding under installation 99, which is the
+// installation the GitHub stubs answer for. Legacy tests seed unverified rows
+// explicitly so evidence tests exercise the same gates as owner-authorized use.
 func LinkRepo(t *testing.T, f *Fixture, githubID int64, owner, name string) store.Repo {
 	t.Helper()
 	repo, err := f.Store.LinkRepo(t.Context(), store.LinkRepoInput{
 		WorkspaceID: f.WorkspaceID, InstallationID: testInstallationID,
 		GitHubID: githubID, Owner: owner, Name: name})
+	require.NoError(t, err)
+	_, err = f.Pool.Exec(t.Context(), `UPDATE github_installation SET workspace_id=$1,ownership_verified_at=now(),repos_synced_at=now() WHERE id=$2`, f.WorkspaceID, testInstallationID)
 	require.NoError(t, err)
 	return repo
 }

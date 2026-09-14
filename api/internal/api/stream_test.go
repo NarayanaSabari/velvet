@@ -3,6 +3,7 @@ package api_test
 import (
 	"bufio"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/auth"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/testutil"
+	"github.com/google/uuid"
 )
 
 func TestStreamDeliversNewActivity(t *testing.T) {
@@ -63,4 +65,49 @@ func TestStreamRequiresMembership(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/w/lab/stream", nil)
 	f.Handler.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+// A real established connection must close before emitting either an event or
+// the production heartbeat after the viewer loses their membership.
+func TestStreamStopsAfterMembershipRemoval(t *testing.T) {
+	for _, trigger := range []string{"activity", "heartbeat"} {
+		t.Run(trigger, func(t *testing.T) {
+			f := testutil.NewFixture(t)
+			u, err := f.Store.UpsertUserByEmail(t.Context(), "viewer@example.com")
+			require.NoError(t, err)
+			var id uuid.UUID
+			require.NoError(t, f.Pool.QueryRow(t.Context(), `INSERT INTO membership(workspace_id,user_id,role) VALUES ($1,$2,'viewer') RETURNING id`, f.WorkspaceID, u.ID).Scan(&id))
+			token, err := f.Store.CreateSession(t.Context(), u.ID, time.Hour)
+			require.NoError(t, err)
+			srv := httptest.NewServer(f.Handler)
+			defer srv.Close()
+			ctx, cancel := context.WithTimeout(t.Context(), 40*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, "GET", srv.URL+"/api/v1/w/lab/stream", nil)
+			require.NoError(t, err)
+			req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: token})
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, 200, resp.StatusCode)
+			reader := bufio.NewReader(resp.Body)
+			line, err := reader.ReadString('\n')
+			require.NoError(t, err)
+			require.Equal(t, ": connected\n", line)
+			_, err = reader.ReadString('\n')
+			require.NoError(t, err)
+			if trigger == "activity" {
+				r := f.Do("DELETE", "/api/v1/w/lab/memberships/"+id.String(), nil)
+				require.Equal(t, 204, r.Code, r.Body.String())
+			} else {
+				// External membership removal emits no broker event, leaving the
+				// heartbeat as the only trigger for revalidation.
+				_, err = f.Pool.Exec(t.Context(), `DELETE FROM membership WHERE id=$1`, id)
+				require.NoError(t, err)
+			}
+			line, err = reader.ReadString('\n')
+			require.ErrorIs(t, err, io.EOF, "received after removal: %q", line)
+			require.Empty(t, line)
+		})
+	}
 }

@@ -3,14 +3,10 @@
 # an empty database.
 set -euo pipefail
 
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-root="$(cd "$here/.." && pwd)"
-
-: "${E2E_PROJECT:=worklog-e2e}"
-
-cd "$root/deploy"
+source "$(dirname "${BASH_SOURCE[0]}")/stack-common.sh"
 if [ -f "$here/.env.generated" ]; then
-  docker compose --env-file "$here/.env.generated" -p "$E2E_PROJECT" down -v >/dev/null 2>&1 || true
-  rm -f "$here/.env.generated"
+  docker_local ps -a --filter "label=com.docker.compose.project=$E2E_PROJECT" --format '{{.Names}}'
+  docker_local volume ls --filter "label=com.docker.compose.project=$E2E_PROJECT" --format '{{.Name}}'
+  compose down -v
 fi
-echo "stack torn down"
+echo "test stack torn down"

@@ -97,12 +97,11 @@ func TestOnlyTheAuthorCanEditAComment(t *testing.T) {
 	f.DecodeInto(rec, &c)
 
 	// A second member of the same workspace must not be able to edit it.
-	other, err := f.Store.UpsertUserByGitHub(t.Context(),
-		store.GitHubIdentity{ID: 2002, Login: "other"})
+	other, err := testutil.CreateLinkedUser(t, f.Store, store.GitHubIdentity{ID: 2002, Login: "other"})
 	require.NoError(t, err)
 	_, err = f.Pool.Exec(t.Context(),
-		`INSERT INTO membership (workspace_id, user_id, invited_login, role)
-		 VALUES ($1, $2, 'other', 'member')`, f.WorkspaceID, other.ID)
+		`INSERT INTO membership (workspace_id, user_id, role)
+		 VALUES ($1, $2, 'member')`, f.WorkspaceID, other.ID)
 	require.NoError(t, err)
 
 	original := f.Token

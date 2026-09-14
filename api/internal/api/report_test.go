@@ -98,7 +98,8 @@ func TestPersonActivityCountsPerMember(t *testing.T) {
 	}
 	f.DecodeInto(rec, &out)
 	require.Len(t, out.People, 1)
-	require.Equal(t, "sabari", out.People[0].GitHubLogin)
+	require.NotNil(t, out.People[0].GitHubLogin)
+	require.Equal(t, "sabari", *out.People[0].GitHubLogin)
 	require.GreaterOrEqual(t, out.People[0].Total, 2)
 	require.Equal(t, 1, out.People[0].Verbs[store.VerbCommented])
 }

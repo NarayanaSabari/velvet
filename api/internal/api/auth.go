@@ -2,12 +2,10 @@ package api
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/auth"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
@@ -15,7 +13,6 @@ import (
 
 const userKey ctxKey = "user"
 const workspaceKey ctxKey = "workspace"
-const oauthStateCookie = "ticket_oauth_state"
 
 func CurrentUser(ctx context.Context) (store.User, bool) {
 	u, ok := ctx.Value(userKey).(store.User)
@@ -28,76 +25,16 @@ func CurrentWorkspace(ctx context.Context) (store.Membership, bool) {
 }
 
 func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/auth/github/login", s.handleLogin)
-	mux.HandleFunc("GET /api/v1/auth/github/callback", s.handleCallback)
+	mux.HandleFunc("POST /api/v1/auth/email", s.handleEmail)
+	mux.HandleFunc("POST /api/v1/auth/magic", s.handleMagic)
+	mux.HandleFunc("GET /api/v1/auth/magic", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Allow", "POST")
+		WriteError(w, http.StatusMethodNotAllowed, "method_not_allowed", "POST is required")
+	})
 	// Logout is deliberately idempotent. It must clear a stale browser cookie
 	// even when the backing session has expired or was already removed.
 	mux.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)
 	mux.Handle("GET /api/v1/me", s.RequireAuth(http.HandlerFunc(s.handleMe)))
-}
-
-func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	raw := make([]byte, 24)
-	if _, err := rand.Read(raw); err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal", "could not start sign-in")
-		return
-	}
-	state := base64.RawURLEncoding.EncodeToString(raw)
-	http.SetCookie(w, &http.Cookie{
-		Name: oauthStateCookie, Value: state, Path: "/",
-		HttpOnly: true, Secure: s.secureCookies(), SameSite: http.SameSiteLaxMode,
-		Expires: time.Now().Add(10 * time.Minute),
-	})
-	cfg := auth.OAuthConfig(s.cfg.GitHubClientID, s.cfg.GitHubClientSecret, s.cfg.BaseURL)
-	http.Redirect(w, r, cfg.AuthCodeURL(state), http.StatusFound)
-}
-
-func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(oauthStateCookie)
-	if err != nil || cookie.Value == "" || cookie.Value != r.URL.Query().Get("state") {
-		WriteError(w, http.StatusBadRequest, "invalid_state", "sign-in state did not match")
-		return
-	}
-	cfg := auth.OAuthConfig(s.cfg.GitHubClientID, s.cfg.GitHubClientSecret, s.cfg.BaseURL)
-	tok, err := cfg.Exchange(r.Context(), r.URL.Query().Get("code"))
-	if err != nil {
-		WriteError(w, http.StatusBadRequest, "exchange_failed", "could not complete sign-in")
-		return
-	}
-	identity, err := auth.FetchIdentity(r.Context(), cfg, tok)
-	if err != nil {
-		WriteError(w, http.StatusBadGateway, "github_unavailable", "could not reach GitHub")
-		return
-	}
-
-	user, err := s.store.UpsertUserByGitHub(r.Context(), identity)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal", "could not record the account")
-		return
-	}
-	if _, err := s.store.BindMembership(r.Context(), user.ID, user.GitHubLogin); err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal", "could not bind membership")
-		return
-	}
-	memberships, err := s.store.MembershipsForUser(r.Context(), user.ID)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal", "could not read membership")
-		return
-	}
-	// An uninvited GitHub account gets no session at all: discovering the URL
-	// must not be enough to obtain an account.
-	if len(memberships) == 0 {
-		http.Redirect(w, r, "/not-invited", http.StatusFound)
-		return
-	}
-
-	token, err := s.store.CreateSession(r.Context(), user.ID, auth.SessionTTL)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal", "could not create a session")
-		return
-	}
-	auth.SetSessionCookie(w, token, s.secureCookies())
-	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -112,15 +49,23 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	user, _ := CurrentUser(r.Context())
 	memberships, err := s.store.MembershipsForUser(r.Context(), user.ID)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not read membership")
 		return
 	}
+	cookie, _ := r.Cookie(auth.CookieName)
+	last, err := s.store.LastWorkspace(r.Context(), cookie.Value)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "internal", "could not read the last organisation")
+		return
+	}
 	WriteJSON(w, http.StatusOK, map[string]any{
-		"user":        user,
-		"memberships": memberships,
+		"user":           user,
+		"memberships":    memberships,
+		"last_workspace": last,
 	})
 }
 
@@ -158,8 +103,59 @@ func (s *Server) RequireWorkspace(next http.Handler) http.Handler {
 			WriteError(w, http.StatusNotFound, "not_found", "no such workspace")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), workspaceKey, m)))
+		cookie, _ := r.Cookie(auth.CookieName)
+		response := &workspaceResponseWriter{ResponseWriter: w, remember: func() {
+			if err := s.store.RememberWorkspace(r.Context(), cookie.Value, m.WorkspaceID); err != nil {
+				// The handler may already have committed a mutation. A failed
+				// preference update must not replace its successful response.
+				slog.Error("could not remember organisation", "request_id", r.Context().Value(requestIDKey))
+			}
+		}}
+		next.ServeHTTP(response, r.WithContext(context.WithValue(r.Context(), workspaceKey, m)))
+		if !response.wroteHeader {
+			response.WriteHeader(http.StatusOK)
+		}
 	}))
+}
+
+// Remember at the first successful response, including an SSE connection's
+// initial flush. Waiting for the handler to return would defer streaming
+// persistence until disconnect; resolving membership alone also counts errors.
+type workspaceResponseWriter struct {
+	http.ResponseWriter
+	remember    func()
+	wroteHeader bool
+}
+
+func (w *workspaceResponseWriter) WriteHeader(status int) {
+	if w.wroteHeader {
+		return
+	}
+	if status >= 100 && status < 200 && status != http.StatusSwitchingProtocols {
+		w.ResponseWriter.WriteHeader(status)
+		return
+	}
+	w.wroteHeader = true
+	if status >= 200 && status < 300 {
+		w.remember()
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *workspaceResponseWriter) Write(p []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *workspaceResponseWriter) Flush() {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 // RequireRole wraps a handler so that viewers cannot mutate.

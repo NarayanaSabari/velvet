@@ -20,7 +20,7 @@ func TestRecordActivityRollsBackWithItsTransaction(t *testing.T) {
 	var wsID uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO workspace (name, slug) VALUES ('Lab', 'lab') RETURNING id`).Scan(&wsID))
-	u, err := st.UpsertUserByGitHub(ctx, store.GitHubIdentity{ID: 3, Login: "dev"})
+	u, err := testutil.CreateLinkedUser(t, st, store.GitHubIdentity{ID: 3, Login: "dev"})
 	require.NoError(t, err)
 
 	// A failing transaction must leave no activity behind, which is the whole

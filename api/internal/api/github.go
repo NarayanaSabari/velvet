@@ -24,8 +24,9 @@ func (s *Server) registerGitHubRoutes(mux *http.ServeMux) {
 		s.RequireWorkspace(http.HandlerFunc(s.handleUnlinkedPRs)))
 	mux.Handle("GET /api/v1/w/{slug}/repos",
 		s.RequireWorkspace(http.HandlerFunc(s.handleListRepos)))
-	mux.Handle("POST /api/v1/w/{slug}/repos",
-		s.RequireWorkspace(admin(http.HandlerFunc(s.handleLinkRepo))))
+	mux.Handle("GET /api/v1/w/{slug}/github", s.RequireWorkspace(http.HandlerFunc(s.handleGitHubStatus)))
+	mux.Handle("GET /api/v1/w/{slug}/github/connect", s.RequireWorkspace(admin(http.HandlerFunc(s.handleGitHubConnect))))
+	mux.Handle("POST /api/v1/w/{slug}/github/sync", s.RequireWorkspace(admin(http.HandlerFunc(s.handleGitHubSync))))
 }
 
 func (s *Server) handleIssueEvidence(w http.ResponseWriter, r *http.Request) {
@@ -128,40 +129,6 @@ func (s *Server) handleListRepos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"repos": repos})
-}
-
-func (s *Server) handleLinkRepo(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		GitHubID       int64  `json:"github_id"`
-		Owner          string `json:"owner"`
-		Name           string `json:"name"`
-		InstallationID int64  `json:"installation_id"`
-		DefaultBranch  string `json:"default_branch"`
-	}
-	if !DecodeJSON(w, r, &body) {
-		return
-	}
-	if body.GitHubID == 0 || body.Owner == "" || body.Name == "" || body.InstallationID == 0 {
-		WriteError(w, http.StatusBadRequest, "invalid_request",
-			"github_id, owner, name, and installation_id are required")
-		return
-	}
-
-	ws, _ := CurrentWorkspace(r.Context())
-	repo, err := s.store.LinkRepo(r.Context(), store.LinkRepoInput{
-		WorkspaceID: ws.WorkspaceID, InstallationID: body.InstallationID,
-		GitHubID: body.GitHubID, Owner: body.Owner, Name: body.Name,
-		DefaultBranch: body.DefaultBranch})
-	if err != nil {
-		if errors.Is(err, store.ErrForeignReference) {
-			WriteError(w, http.StatusBadRequest, "invalid_request",
-				"that repository is already connected to another workspace")
-			return
-		}
-		writePRError(w, err)
-		return
-	}
-	WriteJSON(w, http.StatusCreated, repo)
 }
 
 // writePRError answers 400 for a reference to another workspace's pull

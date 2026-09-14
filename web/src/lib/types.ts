@@ -17,8 +17,9 @@ export type Role = 'admin' | 'member' | 'viewer'
 
 export interface User {
   id: string
-  github_id?: number
-  github_login: string
+  email?: string
+  github_id?: number | null
+  github_login: string | null
   name: string
   avatar_url: string
 }
@@ -34,14 +35,24 @@ export interface Membership {
 export interface WorkspaceMembership {
   id: string
   workspace_id: string
-  invited_login: string
   role: Role
-  user: User | null
+  user: User
 }
 
 export interface SessionPayload {
   user: User
   memberships: Membership[]
+  last_workspace: Membership | null
+}
+
+export interface Invitation {
+  id: string
+  workspace_id: string
+  workspace_slug: string
+  workspace_name: string
+  email: string
+  role: Role
+  expires_at: string
 }
 
 export interface Label {
@@ -166,6 +177,7 @@ export interface Repo {
   name: string
   default_branch: string
   synced_at: string | null
+  disconnected_at: string | null
 }
 
 export interface Review {
@@ -195,7 +207,8 @@ export interface Evidence {
 
 export interface PersonActivityRow {
   user_id: string | null
-  github_login: string
+  email: string
+  github_login: string | null
   name: string
   verbs: Record<string, number>
   total: number
@@ -222,7 +235,9 @@ export interface StaleIssueRow {
   key: string
   title?: string
   status: IssueStatus
-  assignee_login: string
+  assignee_email?: string
+  assignee_login: string | null
+  assignee_name?: string
   milestone_name?: string
   last_signal_at?: string
   days_silent: number

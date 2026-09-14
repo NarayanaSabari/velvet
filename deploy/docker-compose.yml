@@ -56,8 +56,16 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
       BASE_URL: ${BASE_URL:?set BASE_URL}
-      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
-      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      # Only Caddy may supply forwarded client addresses.
+      TRUSTED_PROXY_CIDRS: ${PROXY_CADDY_IP:-172.30.75.2}/32
+      GITHUB_APP_CLIENT_ID: ${GITHUB_APP_CLIENT_ID:-}
+      GITHUB_APP_CLIENT_SECRET: ${GITHUB_APP_CLIENT_SECRET:-}
+      GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+      GITHUB_AUTHORIZATION_URL: ${GITHUB_AUTHORIZATION_URL:-}
+      GITHUB_TOKEN_URL: ${GITHUB_TOKEN_URL:-}
+      GITHUB_INSTALLATION_URL: ${GITHUB_INSTALLATION_URL:-}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
       GITHUB_APP_ID: ${GITHUB_APP_ID}
       GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY}
@@ -66,6 +74,10 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    networks:
+      default:
+      proxy:
+        ipv4_address: ${PROXY_API_IP:-172.30.75.3}
     restart: unless-stopped
 
   worker:
@@ -112,6 +124,9 @@ services:
       - "${HTTPS_PORT:-443}:${CADDY_HTTPS_PORT:-443}"
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS}
+    networks:
+      proxy:
+        ipv4_address: ${PROXY_CADDY_IP:-172.30.75.2}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - webdist:/srv:ro
@@ -127,3 +142,10 @@ volumes:
   pgdata:
   caddydata:
   webdist:
+
+networks:
+  default:
+  proxy:
+    ipam:
+      config:
+        - subnet: ${PROXY_SUBNET:-172.30.75.0/24}

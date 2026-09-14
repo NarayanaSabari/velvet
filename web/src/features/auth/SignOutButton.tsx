@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
+import { clearPrivateQueries } from './sessionNavigation'
 
 export function SignOutButton({
   navigate = (to) => window.location.assign(to),
@@ -23,7 +24,7 @@ export function SignOutButton({
           setFailed(false)
           try {
             await api.post('/auth/logout')
-            queryClient.removeQueries({ queryKey: ['session'] })
+            await clearPrivateQueries(queryClient)
             navigate('/signin')
           } catch {
             setFailed(true)

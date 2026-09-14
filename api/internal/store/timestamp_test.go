@@ -61,11 +61,11 @@ func TestPullRequestAuthorResolvesCaseInsensitively(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO workspace (name, slug) VALUES ('Lab', 'lab') RETURNING id`).Scan(&wsID))
 
-	user, err := st.UpsertUserByGitHub(ctx, store.GitHubIdentity{ID: 1, Login: "sabari"})
+	user, err := testutil.CreateLinkedUser(t, st, store.GitHubIdentity{ID: 1, Login: "sabari"})
 	require.NoError(t, err)
 	_, err = pool.Exec(ctx,
-		`INSERT INTO membership (workspace_id, user_id, invited_login, role)
-		 VALUES ($1, $2, 'sabari', 'member')`, wsID, user.ID)
+		`INSERT INTO membership (workspace_id, user_id, role)
+		 VALUES ($1, $2, 'member')`, wsID, user.ID)
 	require.NoError(t, err)
 
 	_, err = pool.Exec(ctx, `INSERT INTO github_installation (id, account_login) VALUES (99, 'acme')`)

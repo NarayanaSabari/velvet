@@ -14,6 +14,21 @@ function stubFetch(status: number, body: unknown, ok = status < 400) {
 }
 
 describe('api', () => {
+  it.each(['post', 'put', 'patch', 'del'] as const)('marks bodyless %s as JSON for browser mutation protection', async (method) => {
+    const spy = stubFetch(204, undefined)
+    await api[method]('/auth/logout')
+    expect(spy).toHaveBeenCalledWith('/api/v1/auth/logout', expect.objectContaining({
+      headers: { 'Content-Type': 'application/json' },
+      body: undefined,
+    }))
+  })
+
+  it('keeps GET free of mutation headers', async () => {
+    const spy = stubFetch(200, {})
+    await api.get('/me')
+    expect(spy).toHaveBeenCalledWith('/api/v1/me', expect.objectContaining({ headers: {} }))
+  })
+
   it('sends credentials so the session cookie is included', async () => {
     const spy = stubFetch(200, { status: 'ok' })
     await api.get('/health')

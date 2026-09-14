@@ -40,6 +40,19 @@ describe('CommentComposer', () => {
 })
 
 describe('CommentThread', () => {
+	// If user labels go back to GitHub-only, email-authored history becomes
+	// anonymous even though its identity is present in the API response.
+	it('shows an email-only comment author', () => {
+		render(<CommentThread comments={[{
+			id: 'c-email', workspace_id: 'w1', target_type: 'issue', target_id: 'i1',
+			parent_id: null,
+			author: { id: 'u-email', email: 'member@example.com', github_id: null, github_login: null, name: '', avatar_url: '' },
+			body: 'Email-authored update', created_at: '2026-01-01T00:00:00Z', edited_at: null, deleted_at: null,
+		}]} />)
+
+		expect(screen.getByText('member@example.com')).toBeInTheDocument()
+	})
+
   it('lets a writer reply to a top-level update', async () => {
     const onReply = vi.fn().mockResolvedValue(undefined)
     const user = userEvent.setup()

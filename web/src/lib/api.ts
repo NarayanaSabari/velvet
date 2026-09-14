@@ -15,9 +15,9 @@ export class ApiError extends Error {
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(BASE + path, {
     method,
-    // The session lives in an HttpOnly cookie; the SPA never holds a token.
+    // The session lives in an HttpOnly cookie; the SPA never holds a session token.
     credentials: 'same-origin',
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+    headers: method === 'GET' ? {} : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
 
@@ -45,5 +45,5 @@ export const api = {
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
-  del: (path: string) => request<void>('DELETE', path),
+  del: (path: string, body?: unknown) => request<void>('DELETE', path, body),
 }

@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"strings"
 	"time"
 
@@ -16,8 +15,9 @@ import (
 
 type User struct {
 	ID          uuid.UUID `json:"id"`
-	GitHubID    int64     `json:"github_id"`
-	GitHubLogin string    `json:"github_login"`
+	Email       string    `json:"email"`
+	GitHubID    *int64    `json:"github_id"`
+	GitHubLogin *string   `json:"github_login"`
 	Name        string    `json:"name"`
 	AvatarURL   string    `json:"avatar_url"`
 }
@@ -29,6 +29,15 @@ type GitHubIdentity struct {
 	AvatarURL string
 }
 
+type scanner interface {
+	Scan(...any) error
+}
+
+func scanUser(row scanner, user *User) error {
+	return mapErr(row.Scan(&user.ID, &user.Email, &user.GitHubID, &user.GitHubLogin,
+		&user.Name, &user.AvatarURL))
+}
+
 type Membership struct {
 	ID          uuid.UUID `json:"id"`
 	WorkspaceID uuid.UUID `json:"workspace_id"`
@@ -37,36 +46,31 @@ type Membership struct {
 	Role        string    `json:"role"`
 }
 
-// WorkspaceMembership is the administrative view of an invite. User stays
-// nil until that GitHub login has signed in and claimed the invite.
+// WorkspaceMembership is the administrative view of a current member.
 type WorkspaceMembership struct {
-	ID           uuid.UUID `json:"id"`
-	WorkspaceID  uuid.UUID `json:"workspace_id"`
-	InvitedLogin string    `json:"invited_login"`
-	Role         string    `json:"role"`
-	User         *User     `json:"user"`
+	ID          uuid.UUID `json:"id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Role        string    `json:"role"`
+	User        *User     `json:"user"`
 }
 
-const workspaceMembershipCols = `m.id, m.workspace_id, m.invited_login, m.role::text,
-	u.id, u.github_id, u.github_login, u.name, u.avatar_url`
+const workspaceMembershipCols = `m.id, m.workspace_id, m.role::text,
+	u.id, u.email, u.github_id, u.github_login, u.name, u.avatar_url`
 
 func scanWorkspaceMembership(row pgx.Row) (WorkspaceMembership, error) {
 	var m WorkspaceMembership
 	var userID *uuid.UUID
+	var email, login, name, avatar *string
 	var githubID *int64
-	var login, name, avatar *string
-	err := row.Scan(&m.ID, &m.WorkspaceID, &m.InvitedLogin, &m.Role,
-		&userID, &githubID, &login, &name, &avatar)
+	err := row.Scan(&m.ID, &m.WorkspaceID, &m.Role,
+		&userID, &email, &githubID, &login, &name, &avatar)
 	if err != nil {
 		return m, mapErr(err)
 	}
 	if userID != nil {
-		m.User = &User{ID: *userID}
-		if githubID != nil {
-			m.User.GitHubID = *githubID
-		}
-		if login != nil {
-			m.User.GitHubLogin = *login
+		m.User = &User{ID: *userID, GitHubID: githubID, GitHubLogin: login}
+		if email != nil {
+			m.User.Email = *email
 		}
 		if name != nil {
 			m.User.Name = *name
@@ -83,7 +87,7 @@ func (s *Store) ListWorkspaceMemberships(ctx context.Context, workspaceID uuid.U
 		SELECT `+workspaceMembershipCols+`
 		FROM membership m LEFT JOIN app_user u ON u.id = m.user_id
 		WHERE m.workspace_id = $1
-		ORDER BY lower(m.invited_login)`, workspaceID)
+		ORDER BY lower(u.email)`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -104,10 +108,10 @@ func (s *Store) ListWorkspaceMemberships(ctx context.Context, workspaceID uuid.U
 // selectors. Pending invites are absent because they do not identify a user.
 func (s *Store) ListWorkspaceMembers(ctx context.Context, workspaceID uuid.UUID) ([]User, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT u.id, u.github_id, u.github_login, u.name, u.avatar_url
+		SELECT u.id, COALESCE(u.email, ''), u.github_id, u.github_login, u.name, u.avatar_url
 		FROM membership m JOIN app_user u ON u.id = m.user_id
 		WHERE m.workspace_id = $1
-		ORDER BY lower(u.github_login)`, workspaceID)
+		ORDER BY lower(COALESCE(u.github_login, u.email))`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -116,8 +120,7 @@ func (s *Store) ListWorkspaceMembers(ctx context.Context, workspaceID uuid.UUID)
 	out := []User{}
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.ID, &user.GitHubID, &user.GitHubLogin,
-			&user.Name, &user.AvatarURL); err != nil {
+		if err := scanUser(rows, &user); err != nil {
 			return nil, err
 		}
 		out = append(out, user)
@@ -125,82 +128,23 @@ func (s *Store) ListWorkspaceMembers(ctx context.Context, workspaceID uuid.UUID)
 	return out, rows.Err()
 }
 
-// InviteWorkspaceMember creates an invite. If the login has already used this
-// service, it binds the new membership immediately.
-func (s *Store) InviteWorkspaceMember(ctx context.Context, workspaceID, actorID uuid.UUID, login, role string) (WorkspaceMembership, error) {
-	login = strings.ToLower(strings.TrimSpace(login))
-	var out WorkspaceMembership
-	err := s.InTx(ctx, func(tx pgx.Tx) error {
-		var id uuid.UUID
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO membership (workspace_id, user_id, invited_login, role)
-			VALUES ($1,
-				(SELECT id FROM app_user WHERE lower(github_login) = lower($2)),
-				$2, $3::membership_role)
-			ON CONFLICT (workspace_id, lower(invited_login)) DO NOTHING
-			RETURNING id`, workspaceID, login, role).Scan(&id); err != nil {
-			if errors.Is(mapErr(err), ErrNotFound) {
-				return ErrDuplicate
-			}
-			return mapErr(err)
-		}
-
-		var err error
-		out, err = scanWorkspaceMembership(tx.QueryRow(ctx, `
-			SELECT `+workspaceMembershipCols+`
-			FROM membership m LEFT JOIN app_user u ON u.id = m.user_id
-			WHERE m.id = $1 AND m.workspace_id = $2`, id, workspaceID))
-		if err != nil {
-			return err
-		}
-		return RecordActivity(ctx, tx, ActivityInput{
-			WorkspaceID: workspaceID, ActorID: actorID,
-			Verb: VerbInvitedMember, TargetType: "membership", TargetID: out.ID,
-			Metadata: map[string]any{"github_login": out.InvitedLogin, "role": out.Role},
-		})
-	})
-	return out, err
-}
-
 func (s *Store) UpdateWorkspaceMembershipRole(ctx context.Context, workspaceID, membershipID, actorID uuid.UUID, role string) (WorkspaceMembership, error) {
 	var out WorkspaceMembership
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
-		// Lock the workspace's membership set so two concurrent demotions cannot
-		// both believe another admin will remain.
-		rows, err := tx.Query(ctx,
-			`SELECT id FROM membership WHERE workspace_id = $1 FOR UPDATE`, workspaceID)
-		if err != nil {
+		if err := LockWorkspaceAdminTx(ctx, tx, workspaceID, actorID); err != nil {
 			return err
 		}
-		for rows.Next() {
-			var ignored uuid.UUID
-			if err := rows.Scan(&ignored); err != nil {
-				rows.Close()
-				return err
-			}
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return err
-		}
-		rows.Close()
 
-		var previousRole, login string
+		var previousRole, email string
 		if err := tx.QueryRow(ctx, `
-			SELECT role::text, invited_login FROM membership
-			WHERE id = $1 AND workspace_id = $2`, membershipID, workspaceID).
-			Scan(&previousRole, &login); err != nil {
+			SELECT m.role::text, u.email FROM membership m JOIN app_user u ON u.id = m.user_id
+			WHERE m.id = $1 AND m.workspace_id = $2`, membershipID, workspaceID).
+			Scan(&previousRole, &email); err != nil {
 			return mapErr(err)
 		}
 		if previousRole == "admin" && role != "admin" {
-			var admins int
-			if err := tx.QueryRow(ctx, `
-				SELECT count(*) FROM membership
-				WHERE workspace_id = $1 AND role = 'admin'`, workspaceID).Scan(&admins); err != nil {
+			if err := retainAdminTx(ctx, tx, workspaceID, previousRole); err != nil {
 				return err
-			}
-			if admins <= 1 {
-				return ErrLastAdmin
 			}
 		}
 
@@ -209,6 +153,7 @@ func (s *Store) UpdateWorkspaceMembershipRole(ctx context.Context, workspaceID, 
 			WHERE id = $2 AND workspace_id = $3`, role, membershipID, workspaceID); err != nil {
 			return mapErr(err)
 		}
+		var err error
 		out, err = scanWorkspaceMembership(tx.QueryRow(ctx, `
 			SELECT `+workspaceMembershipCols+`
 			FROM membership m LEFT JOIN app_user u ON u.id = m.user_id
@@ -223,53 +168,38 @@ func (s *Store) UpdateWorkspaceMembershipRole(ctx context.Context, workspaceID, 
 			WorkspaceID: workspaceID, ActorID: actorID,
 			Verb: VerbChangedMemberRole, TargetType: "membership", TargetID: out.ID,
 			Metadata: map[string]any{
-				"github_login": login, "from": previousRole, "to": role,
+				"email": email, "from": previousRole, "to": role,
 			},
 		})
 	})
 	return out, err
 }
 
-func (s *Store) UpsertUserByGitHub(ctx context.Context, gh GitHubIdentity) (User, error) {
+// UpsertUserByEmail finds or creates the normalized email identity. The
+// expression conflict target matches the database's case-insensitive index.
+func (s *Store) UpsertUserByEmail(ctx context.Context, email string) (User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
 	var u User
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO app_user (github_id, github_login, name, avatar_url)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (github_id) DO UPDATE
-		SET github_login = EXCLUDED.github_login,
-		    name         = EXCLUDED.name,
-		    avatar_url   = EXCLUDED.avatar_url,
-		    updated_at   = now()
-		RETURNING id, github_id, github_login, name, avatar_url`,
-		gh.ID, gh.Login, gh.Name, gh.AvatarURL).
-		Scan(&u.ID, &u.GitHubID, &u.GitHubLogin, &u.Name, &u.AvatarURL)
+		INSERT INTO app_user (email)
+		VALUES ($1)
+		ON CONFLICT (lower(email)) DO UPDATE SET email = EXCLUDED.email
+		RETURNING id, email, github_id, github_login, name, avatar_url`, email).
+		Scan(&u.ID, &u.Email, &u.GitHubID, &u.GitHubLogin, &u.Name, &u.AvatarURL)
 	return u, mapErr(err)
-}
-
-// BindMembership claims any invite issued to this GitHub login. Invites are
-// written before the user has ever signed in, so this is what turns an invite
-// into real access.
-func (s *Store) BindMembership(ctx context.Context, userID uuid.UUID, login string) (int, error) {
-	tag, err := s.pool.Exec(ctx, `
-		UPDATE membership SET user_id = $1
-		WHERE lower(invited_login) = lower($2) AND user_id IS NULL`, userID, login)
-	if err != nil {
-		return 0, err
-	}
-	return int(tag.RowsAffected()), nil
 }
 
 func (s *Store) MembershipsForUser(ctx context.Context, userID uuid.UUID) ([]Membership, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT m.id, m.workspace_id, w.slug, w.name, m.role::text
 		FROM membership m JOIN workspace w ON w.id = m.workspace_id
-		WHERE m.user_id = $1 ORDER BY w.name`, userID)
+		WHERE m.user_id = $1 ORDER BY w.created_at,w.id`, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var out []Membership
+	out := []Membership{}
 	for rows.Next() {
 		var m Membership
 		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.Slug, &m.Name, &m.Role); err != nil {
@@ -316,10 +246,10 @@ func (s *Store) CreateSession(ctx context.Context, userID uuid.UUID, ttl time.Du
 func (s *Store) UserBySessionToken(ctx context.Context, token string) (User, error) {
 	var u User
 	err := s.pool.QueryRow(ctx, `
-		SELECT u.id, u.github_id, u.github_login, u.name, u.avatar_url
+		SELECT u.id, COALESCE(u.email, ''), u.github_id, u.github_login, u.name, u.avatar_url
 		FROM session s JOIN app_user u ON u.id = s.user_id
 		WHERE s.id = $1 AND s.expires_at > now()`, HashToken(token)).
-		Scan(&u.ID, &u.GitHubID, &u.GitHubLogin, &u.Name, &u.AvatarURL)
+		Scan(&u.ID, &u.Email, &u.GitHubID, &u.GitHubLogin, &u.Name, &u.AvatarURL)
 	return u, mapErr(err)
 }
 

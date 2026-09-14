@@ -11,52 +11,37 @@ import (
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/testutil"
 )
 
-func TestUpsertUserIsIdempotent(t *testing.T) {
-	st := store.New(testutil.NewPostgres(t))
-	ctx := context.Background()
-
-	u1, err := st.UpsertUserByGitHub(ctx, store.GitHubIdentity{
-		ID: 42, Login: "sabari", Name: "Sabari", AvatarURL: "https://x/a.png"})
-	require.NoError(t, err)
-
-	u2, err := st.UpsertUserByGitHub(ctx, store.GitHubIdentity{
-		ID: 42, Login: "sabari-renamed", Name: "Sabari K", AvatarURL: "https://x/b.png"})
-	require.NoError(t, err)
-
-	require.Equal(t, u1.ID, u2.ID, "the same GitHub id must map to one user")
-	require.Equal(t, "sabari-renamed", u2.GitHubLogin, "a renamed login must be picked up")
-}
-
-func TestBindMembershipClaimsInviteCaseInsensitively(t *testing.T) {
+func TestUpsertUserByEmailNormalizesAndPreservesLinkedIdentity(t *testing.T) {
 	pool := testutil.NewPostgres(t)
 	st := store.New(pool)
 	ctx := context.Background()
 
-	var wsID string
-	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO workspace (name, slug) VALUES ('Lab', 'lab') RETURNING id`).Scan(&wsID))
-	_, err := pool.Exec(ctx,
-		`INSERT INTO membership (workspace_id, invited_login, role) VALUES ($1, 'Sabari', 'admin')`, wsID)
+	first, err := st.UpsertUserByEmail(ctx, " Member@Example.com ")
+	require.NoError(t, err)
+	require.Equal(t, "member@example.com", first.Email)
+	require.Nil(t, first.GitHubID)
+	require.Nil(t, first.GitHubLogin)
+
+	_, err = pool.Exec(ctx, `
+		UPDATE app_user SET github_id = 42, github_login = 'member-gh', name = 'Member'
+		WHERE id = $1`, first.ID)
 	require.NoError(t, err)
 
-	u, err := st.UpsertUserByGitHub(ctx, store.GitHubIdentity{ID: 7, Login: "sabari"})
+	second, err := st.UpsertUserByEmail(ctx, "MEMBER@example.COM")
 	require.NoError(t, err)
-
-	bound, err := st.BindMembership(ctx, u.ID, u.GitHubLogin)
-	require.NoError(t, err)
-	require.Equal(t, 1, bound)
-
-	ms, err := st.MembershipsForUser(ctx, u.ID)
-	require.NoError(t, err)
-	require.Len(t, ms, 1)
-	require.Equal(t, "admin", ms[0].Role)
+	require.Equal(t, first.ID, second.ID)
+	require.Equal(t, "member@example.com", second.Email)
+	require.NotNil(t, second.GitHubID)
+	require.NotNil(t, second.GitHubLogin)
+	require.Equal(t, int64(42), *second.GitHubID)
+	require.Equal(t, "member-gh", *second.GitHubLogin)
 }
 
 func TestSessionRoundTripAndExpiry(t *testing.T) {
 	st := store.New(testutil.NewPostgres(t))
 	ctx := context.Background()
 
-	u, err := st.UpsertUserByGitHub(ctx, store.GitHubIdentity{ID: 9, Login: "dev"})
+	u, err := testutil.CreateLinkedUser(t, st, store.GitHubIdentity{ID: 9, Login: "dev"})
 	require.NoError(t, err)
 
 	token, err := st.CreateSession(ctx, u.ID, time.Hour)

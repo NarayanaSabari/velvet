@@ -3,6 +3,7 @@ package api_test
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -24,6 +25,35 @@ func TestEvidenceEndpointReturnsAttachedPRs(t *testing.T) {
 	f.DecodeInto(rec, &ev)
 	require.Len(t, ev.PullRequests, 1)
 	require.Equal(t, 42, ev.PullRequests[0].Number)
+}
+
+func TestRepositoryListRetainsDisconnectedHistory(t *testing.T) {
+	f := testutil.NewFixture(t)
+	pr := testutil.InsertPullRequest(t, f, 42, "Retained evidence", "open")
+	read := func() map[string]any {
+		t.Helper()
+		rec := f.Do(http.MethodGet, "/api/v1/w/lab/repos", nil)
+		require.Equal(t, http.StatusOK, rec.Code)
+		var body struct {
+			Repos []map[string]any `json:"repos"`
+		}
+		f.DecodeInto(rec, &body)
+		require.Len(t, body.Repos, 1)
+		return body.Repos[0]
+	}
+	connected := read()
+	require.Contains(t, connected, "disconnected_at")
+	require.Nil(t, connected["disconnected_at"])
+	_, err := f.Pool.Exec(t.Context(), `UPDATE repo SET disconnected_at='2026-09-08T10:00:00Z',synced_at='2026-09-07T10:00:00Z' WHERE id=$1`, pr.RepoID)
+	require.NoError(t, err)
+	disconnected := read()
+	require.Equal(t, connected["id"], disconnected["id"])
+	at, err := time.Parse(time.RFC3339, disconnected["disconnected_at"].(string))
+	require.NoError(t, err)
+	require.Equal(t, time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC), at.UTC())
+	var retained int
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM pull_request WHERE id=$1`, pr.ID).Scan(&retained))
+	require.Equal(t, 1, retained)
 }
 
 func TestManualAttachRecordsActivityAndIsIdempotent(t *testing.T) {
@@ -101,14 +131,8 @@ func TestReconnectingARepoAdoptsTheNewInstallation(t *testing.T) {
 	f := testutil.NewFixture(t)
 
 	link := func(installationID int64) {
-		rec := f.Do(http.MethodPost, "/api/v1/w/lab/repos", map[string]any{
-			"github_id":       9001,
-			"owner":           "acme",
-			"name":            "widgets",
-			"installation_id": installationID,
-			"default_branch":  "main",
-		})
-		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+		_, err := f.Store.LinkRepo(t.Context(), store.LinkRepoInput{WorkspaceID: f.WorkspaceID, InstallationID: installationID, GitHubID: 9001, Owner: "acme", Name: "widgets", DefaultBranch: "main"})
+		require.NoError(t, err)
 	}
 
 	link(111)
@@ -141,13 +165,20 @@ func TestConnectingARepoCannotMoveItFromAnotherWorkspace(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	rec := f.Do(http.MethodPost, "/api/v1/w/lab/repos", map[string]any{
-		"github_id": 9001, "owner": "acme", "name": "widgets", "installation_id": 222,
-	})
-	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	_, err = f.Store.LinkRepo(t.Context(), store.LinkRepoInput{WorkspaceID: f.WorkspaceID, InstallationID: 222, GitHubID: 9001, Owner: "acme", Name: "widgets"})
+	require.ErrorIs(t, err, store.ErrForeignReference)
 
 	var workspaceID string
 	require.NoError(t, f.Pool.QueryRow(t.Context(),
 		`SELECT workspace_id FROM repo WHERE github_id = 9001`).Scan(&workspaceID))
 	require.Equal(t, foreignWorkspaceID, workspaceID)
+}
+
+func TestManualRepositoryConnectionRouteIsGone(t *testing.T) {
+	f := testutil.NewFixture(t)
+	rec := f.Do(http.MethodPost, "/api/v1/w/lab/repos", map[string]any{"github_id": 9001, "owner": "acme", "name": "widgets", "installation_id": 222})
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	var count int
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT (SELECT count(*) FROM repo)+(SELECT count(*) FROM github_installation)`).Scan(&count))
+	require.Zero(t, count)
 }

@@ -4,8 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Deploys any ref by hand: the way to roll back is to dispatch this on the
-  # commit you want back, which rebuilds and redeploys exactly that tree.
+  # Deploys a ref by hand. Rollback by commit requires a compatible schema;
+  # committed 0006 requires restoring the pre-contract backup first.
+  # See docs/operations/organisations-rollout.md before dispatching.
   workflow_dispatch:
 
 permissions:
@@ -141,8 +142,8 @@ jobs:
 
       # The production host is x86; the images are built for it here so the
       # host itself never has to compile anything. Every build is tagged with
-      # its commit so a deploy is reproducible and a rollback is just an
-      # older tag; `latest` only moves on main.
+      # its commit so a deploy is reproducible. Older tags require a compatible
+      # schema; 0006 rollback needs a restore first. `latest` only moves on main.
       - name: Build and push api
         uses: docker/build-push-action@v7
         with:

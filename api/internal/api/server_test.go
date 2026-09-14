@@ -19,7 +19,7 @@ func newTestServer(t *testing.T) http.Handler {
 	cfg := &config.Config{
 		BaseURL: "http://localhost:8080",
 	}
-	return api.NewServer(pool, cfg).Handler()
+	return api.NewServer(pool, cfg, api.Dependencies{}).Handler()
 }
 
 func TestHealthReportsOK(t *testing.T) {

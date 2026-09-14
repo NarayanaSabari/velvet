@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const PORT = process.env.E2E_PORT ?? '8099'
+const PORT = process.env.E2E_PORT ?? '18399'
 
 export default defineConfig({
   testDir: './tests',
@@ -18,6 +18,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   use: {
     baseURL: `http://localhost:${PORT}`,
+    actionTimeout: 10_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

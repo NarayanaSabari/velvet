@@ -87,15 +87,14 @@ func TestIssueRejectsUnknownStatus(t *testing.T) {
 
 func TestIssueRejectsAssigneeFromAnotherWorkspace(t *testing.T) {
 	f := testutil.NewFixture(t)
-	foreign, err := f.Store.UpsertUserByGitHub(t.Context(),
-		store.GitHubIdentity{ID: 9999, Login: "outsider"})
+	foreign, err := testutil.CreateLinkedUser(t, f.Store, store.GitHubIdentity{ID: 9999, Login: "outsider"})
 	require.NoError(t, err)
 	var otherWorkspace string
 	require.NoError(t, f.Pool.QueryRow(t.Context(),
 		`INSERT INTO workspace (name, slug) VALUES ('Other', 'other') RETURNING id`).Scan(&otherWorkspace))
 	_, err = f.Pool.Exec(t.Context(),
-		`INSERT INTO membership (workspace_id, user_id, invited_login)
-		 VALUES ($1, $2, 'outsider')`, otherWorkspace, foreign.ID)
+		`INSERT INTO membership (workspace_id, user_id)
+		 VALUES ($1, $2)`, otherWorkspace, foreign.ID)
 	require.NoError(t, err)
 
 	rec := f.Do(http.MethodPost, "/api/v1/w/lab/issues", map[string]any{

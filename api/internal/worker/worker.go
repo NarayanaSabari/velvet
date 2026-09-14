@@ -54,9 +54,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	default:
 	}
 
-	if _, err := w.store.DeleteExpiredSessions(ctx); err != nil {
-		slog.Error("delete expired sessions", "err", err)
-	}
+	w.cleanupAuthentication(ctx)
 
 	// Reconcile once at start, which is also what backfills a freshly
 	// onboarded repository without waiting an hour for the first tick.
@@ -73,9 +71,7 @@ func (w *Worker) Run(ctx context.Context) error {
 				slog.Error("reconcile", "err", err)
 			}
 		case <-sessionTicker.C:
-			if _, err := w.store.DeleteExpiredSessions(ctx); err != nil {
-				slog.Error("delete expired sessions", "err", err)
-			}
+			w.cleanupAuthentication(ctx)
 		default:
 		}
 
@@ -90,6 +86,15 @@ func (w *Worker) Run(ctx context.Context) error {
 			case <-time.After(idlePause):
 			}
 		}
+	}
+}
+
+func (w *Worker) cleanupAuthentication(ctx context.Context) {
+	if _, err := w.store.DeleteExpiredSessions(ctx); err != nil {
+		slog.Error("delete expired sessions", "err", err)
+	}
+	if err := w.store.CleanupExpiredAuthentication(ctx); err != nil {
+		slog.Error("delete expired authentication records", "err", err)
 	}
 }
 
@@ -117,6 +122,15 @@ func (w *Worker) ProcessOnce(ctx context.Context) (bool, error) {
 
 func (w *Worker) runJob(ctx context.Context, job store.Job) error {
 	switch job.Kind {
+	case "sync_installation_repos", "sync_installation_state":
+		var payload store.InstallationSync
+		if err := json.Unmarshal(job.Payload, &payload); err != nil {
+			return errors.New("invalid installation sync job")
+		}
+		if job.Kind == "sync_installation_state" {
+			return w.syncInstallationState(ctx, payload)
+		}
+		return w.syncInstallationRepos(ctx, payload)
 	case "process_delivery":
 		var payload struct {
 			DeliveryID string `json:"delivery_id"`
@@ -166,8 +180,8 @@ func (w *Worker) processDelivery(ctx context.Context, deliveryID string) error {
 // repoFromPayload resolves the repository a delivery belongs to. A repository
 // nobody has linked cannot be attributed to a workspace, and no amount of
 // retrying will change that, so the caller drops the delivery.
-func (w *Worker) repoFromPayload(ctx context.Context, githubID int64) (store.Repo, bool, error) {
-	repo, err := w.store.RepoByGitHubID(ctx, githubID)
+func (w *Worker) repoFromPayload(ctx context.Context, githubID, installationID int64) (store.Repo, bool, error) {
+	repo, err := w.store.ActiveRepo(ctx, githubID, installationID)
 	if errors.Is(err, store.ErrNotFound) {
 		return store.Repo{}, false, nil
 	}

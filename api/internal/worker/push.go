@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/github"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/linker"
@@ -16,6 +17,9 @@ import (
 )
 
 type pushEvent struct {
+	Installation struct {
+		ID int64 `json:"id"`
+	} `json:"installation"`
 	Ref        string            `json:"ref"`
 	Repository github.Repository `json:"repository"`
 	Commits    []pushCommit      `json:"commits"`
@@ -38,7 +42,7 @@ func (w *Worker) handlePush(ctx context.Context, payload []byte) error {
 		return fmt.Errorf("decode push event: %w", err)
 	}
 
-	repo, ok, err := w.repoFromPayload(ctx, ev.Repository.ID)
+	repo, ok, err := w.repoFromPayload(ctx, ev.Repository.ID, ev.Installation.ID)
 	if err != nil || !ok {
 		return err
 	}
@@ -65,24 +69,26 @@ func (w *Worker) handlePush(ctx context.Context, payload []byte) error {
 		}
 	}
 
-	for _, c := range ev.Commits {
-		author := c.Author.Username
-		if author == "" {
-			author = c.Author.Name
+	return w.store.WithActiveRepo(ctx, repo, func(tx pgx.Tx) error {
+		for _, c := range ev.Commits {
+			author := c.Author.Username
+			if author == "" {
+				author = c.Author.Name
+			}
+			if err := store.UpsertCommitTx(ctx, tx, store.UpsertCommitInput{
+				SHA:         c.ID,
+				WorkspaceID: repo.WorkspaceID,
+				RepoID:      repo.ID,
+				IssueID:     issueID,
+				Branch:      branch,
+				Message:     c.Message,
+				AuthorLogin: author,
+				HTMLURL:     c.URL,
+				CommittedAt: c.Timestamp,
+			}); err != nil {
+				return err
+			}
 		}
-		if err := w.store.UpsertCommit(ctx, store.UpsertCommitInput{
-			SHA:         c.ID,
-			WorkspaceID: repo.WorkspaceID,
-			RepoID:      repo.ID,
-			IssueID:     issueID,
-			Branch:      branch,
-			Message:     c.Message,
-			AuthorLogin: author,
-			HTMLURL:     c.URL,
-			CommittedAt: c.Timestamp,
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
+		return nil
+	})
 }

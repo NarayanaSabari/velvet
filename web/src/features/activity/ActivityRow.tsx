@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import type { Activity, IssueStatus } from '../../lib/types'
+import { userLabel } from '../../lib/userLabel'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
 import { Avatar } from '../../ui/Avatar'
 import { RelativeTime } from '../../ui/RelativeTime'
@@ -13,6 +14,12 @@ function str(metadata: Record<string, unknown>, key: string): string | null {
 function num(metadata: Record<string, unknown>, key: string): number | null {
   const value = metadata[key]
   return typeof value === 'number' ? value : null
+}
+
+function memberLabel(metadata: Record<string, unknown>): string {
+  const email = str(metadata, 'email')
+  const login = str(metadata, 'github_login')
+  return email ? userLabel({ email }) : login ? `@${login}` : 'someone'
 }
 
 /** Status metadata comes from the API as free text, so it is labelled only
@@ -55,7 +62,7 @@ function Target({
  */
 export function ActivityRow({ activity }: { activity: Activity }) {
   const { actor, metadata, verb } = activity
-  const who = actor?.name || actor?.github_login || 'Someone'
+  const who = userLabel(actor)
 
   let body: ReactNode
   switch (verb) {
@@ -116,14 +123,14 @@ export function ActivityRow({ activity }: { activity: Activity }) {
     case 'invited_member':
       body = (
         <span>
-          {`invited @${str(metadata, 'github_login') ?? 'unknown'} as ${str(metadata, 'role') ?? 'member'}`}
+          {`invited ${memberLabel(metadata)} as ${str(metadata, 'role') ?? 'member'}`}
         </span>
       )
       break
     case 'changed_member_role':
       body = (
         <span>
-          {`changed @${str(metadata, 'github_login') ?? 'unknown'} from ${str(metadata, 'from') ?? 'unknown'} to ${str(metadata, 'to') ?? 'unknown'}`}
+          {`changed ${memberLabel(metadata)} from ${str(metadata, 'from') ?? 'unknown'} to ${str(metadata, 'to') ?? 'unknown'}`}
         </span>
       )
       break

@@ -9,9 +9,13 @@ import (
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/github"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
 type reviewEvent struct {
+	Installation struct {
+		ID int64 `json:"id"`
+	} `json:"installation"`
 	Action      string            `json:"action"`
 	Review      github.Review     `json:"review"`
 	Repository  github.Repository `json:"repository"`
@@ -26,7 +30,7 @@ func (w *Worker) handleReview(ctx context.Context, payload []byte) error {
 		return fmt.Errorf("decode pull_request_review event: %w", err)
 	}
 
-	repo, ok, err := w.repoFromPayload(ctx, ev.Repository.ID)
+	repo, ok, err := w.repoFromPayload(ctx, ev.Repository.ID, ev.Installation.ID)
 	if err != nil || !ok {
 		return err
 	}
@@ -45,13 +49,15 @@ func (w *Worker) handleReview(ctx context.Context, payload []byte) error {
 	if submitted.IsZero() {
 		submitted = time.Now()
 	}
-	return w.store.UpsertReview(ctx, store.UpsertReviewInput{
-		WorkspaceID:   repo.WorkspaceID,
-		PullRequestID: prID,
-		GitHubID:      ev.Review.ID,
-		ReviewerLogin: ev.Review.ReviewerLogin,
-		State:         ev.Review.State,
-		SubmittedAt:   submitted,
+	return w.store.WithActiveRepo(ctx, repo, func(tx pgx.Tx) error {
+		return store.UpsertReviewTx(ctx, tx, store.UpsertReviewInput{
+			WorkspaceID:   repo.WorkspaceID,
+			PullRequestID: prID,
+			GitHubID:      ev.Review.ID,
+			ReviewerLogin: ev.Review.ReviewerLogin,
+			State:         ev.Review.State,
+			SubmittedAt:   submitted,
+		})
 	})
 }
 

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/config"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/db"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/github"
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/mail"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/worker"
 )
@@ -37,6 +39,11 @@ func run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if args[0] == "serve" {
+		if err := cfg.ValidateServe(); err != nil {
+			return err
+		}
+	}
 	pool, err := db.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
@@ -47,9 +54,24 @@ func run(ctx context.Context, args []string) error {
 	case "migrate":
 		return db.Migrate(ctx, pool)
 	case "serve":
+		var githubUser *github.UserClient
+		if cfg.GitHubAppClientID != "" || cfg.GitHubAppClientSecret != "" {
+			githubUser, err = github.NewUserClient(github.UserClientConfig{
+				ClientID: cfg.GitHubAppClientID, ClientSecret: cfg.GitHubAppClientSecret,
+				AuthorizationURL: cfg.GitHubAuthorizationURL, TokenURL: cfg.GitHubTokenURL,
+				APIURL: cfg.GitHubAPIURL, RedirectURL: strings.TrimRight(cfg.BaseURL, "/") + "/api/v1/auth/github/callback",
+			})
+			if err != nil {
+				return err
+			}
+		}
+		var mailer mail.Mailer = mail.NewLogMailer(slog.Default())
+		if cfg.ResendAPIKey != "" && cfg.MailFrom != "" {
+			mailer = mail.NewResend(cfg.ResendAPIKey, cfg.MailFrom, nil, "")
+		}
 		srv := &http.Server{
 			Addr:              ":" + cfg.Port,
-			Handler:           api.NewServer(pool, cfg).Handler(),
+			Handler:           api.NewServer(pool, cfg, api.Dependencies{Mailer: mailer, GitHubUser: githubUser, CompleteGitHubInstallation: store.New(pool).BindInstallation}).Handler(),
 			ReadHeaderTimeout: 10 * time.Second,
 		}
 		listener, err := net.Listen("tcp", srv.Addr)

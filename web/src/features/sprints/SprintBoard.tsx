@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
+import { userLabel } from '../../lib/userLabel'
 import type { Milestone, Sprint, User } from '../../lib/types'
 import { NavLink } from '../../app/nav'
 import { EmptyState } from '../../ui/EmptyState'
@@ -134,7 +135,7 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
           <div className="mt-2">
             <MilestoneForm
               members={(members.data?.members ?? []).map((member) => ({
-                id: member.id, label: member.github_login,
+                id: member.id, label: userLabel(member),
               }))}
               onSubmit={(input) => createMilestone.mutateAsync(input)}
             />

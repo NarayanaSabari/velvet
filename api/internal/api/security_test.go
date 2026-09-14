@@ -36,11 +36,11 @@ func TestSecurityViewerCannotCreateSprint(t *testing.T) {
 	f := testutil.NewFixture(t)
 	ctx := t.Context()
 
-	viewer, err := f.Store.UpsertUserByGitHub(ctx, store.GitHubIdentity{ID: 4242, Login: "viewer"})
+	viewer, err := testutil.CreateLinkedUser(t, f.Store, store.GitHubIdentity{ID: 4242, Login: "viewer"})
 	require.NoError(t, err)
 	_, err = f.Pool.Exec(ctx,
-		`INSERT INTO membership (workspace_id, user_id, invited_login, role)
-		 VALUES ($1, $2, 'viewer', 'viewer')`, f.WorkspaceID, viewer.ID)
+		`INSERT INTO membership (workspace_id, user_id, role)
+		 VALUES ($1, $2, 'viewer')`, f.WorkspaceID, viewer.ID)
 	require.NoError(t, err)
 
 	tok, err := f.Store.CreateSession(ctx, viewer.ID, time.Hour)
@@ -61,11 +61,11 @@ func TestSecurityMemberCannotManageSprintLifecycle(t *testing.T) {
 	f := testutil.NewFixture(t)
 	ctx := t.Context()
 
-	member, err := f.Store.UpsertUserByGitHub(ctx, store.GitHubIdentity{ID: 4343, Login: "member"})
+	member, err := testutil.CreateLinkedUser(t, f.Store, store.GitHubIdentity{ID: 4343, Login: "member"})
 	require.NoError(t, err)
 	_, err = f.Pool.Exec(ctx,
-		`INSERT INTO membership (workspace_id, user_id, invited_login, role)
-		 VALUES ($1, $2, 'member', 'member')`, f.WorkspaceID, member.ID)
+		`INSERT INTO membership (workspace_id, user_id, role)
+		 VALUES ($1, $2, 'member')`, f.WorkspaceID, member.ID)
 	require.NoError(t, err)
 	tok, err := f.Store.CreateSession(ctx, member.ID, time.Hour)
 	require.NoError(t, err)
