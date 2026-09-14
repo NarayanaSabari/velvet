@@ -63,7 +63,7 @@ export function List<T>({
               setIndex(i)
               onActivate?.(item)
             }}
-            className={`cursor-default px-2 py-1 transition-colors hover:bg-grey-100 ${
+            className={`cursor-default px-2 py-1 hover:bg-grey-100 ${
               isActive ? 'bg-grey-100' : ''
             }`}
           >

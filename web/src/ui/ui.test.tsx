@@ -6,6 +6,38 @@ import { StatusBadge } from './StatusBadge'
 import { Markdown } from './Markdown'
 import { RelativeTime } from './RelativeTime'
 import { List } from './List'
+import { Button } from './Button'
+
+describe('Button', () => {
+  it('exposes the four monochrome variants and press feedback contract', () => {
+    render(
+      <div>
+        <Button variant="primary">Primary</Button>
+        <Button variant="secondary">Secondary</Button>
+        <Button variant="danger">Danger</Button>
+        <Button variant="ghost">Ghost</Button>
+      </div>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Primary' })).toHaveClass(
+      'bg-ink',
+      'text-paper',
+      'rounded-[6px]',
+      'ui-button',
+    )
+    expect(screen.getByRole('button', { name: 'Secondary' })).toHaveClass(
+      'border-grey-300',
+    )
+    expect(screen.getByRole('button', { name: 'Danger' })).toHaveClass(
+      'border-blocked',
+      'text-blocked',
+    )
+    expect(screen.getByRole('button', { name: 'Ghost' })).toHaveClass(
+      'border-transparent',
+      'bg-transparent',
+    )
+  })
+})
 
 describe('StatusBadge', () => {
   it('names the status in text, never colour alone', () => {

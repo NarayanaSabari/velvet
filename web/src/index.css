@@ -25,6 +25,27 @@
   --text-lg: 1.125rem;
 }
 
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --radius-control: 6px;
+  --radius-surface: 8px;
+}
+
+@layer components {
+  .ui-button {
+    transition: transform 160ms ease-out;
+  }
+
+  .ui-button:active {
+    transform: scale(0.97);
+  }
+
+  /* Keyboard activation keeps the focus ring and skips press animation. */
+  .ui-button:focus-visible:active {
+    transform: scale(1);
+  }
+}
+
 @layer base {
   html {
     color-scheme: light dark;

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import { useSession } from '../features/auth/useSession'
 import { SignIn } from '../features/auth/SignIn'
@@ -17,6 +17,183 @@ const NAV = [
   { label: 'Unlinked PRs', path: '/unlinked' },
   { label: 'Reports', path: '/reports' },
 ] as const
+
+const MOBILE_NAV = [
+  { label: 'Dashboard', path: '' },
+  { label: 'Feed', path: '/feed' },
+  { label: 'Sprints', path: '/sprints' },
+  { label: 'Mentions', path: '/mentions' },
+] as const
+
+const NAV_ITEM =
+  'flex min-h-7 items-center rounded-[6px] border-l-2 border-transparent px-2 py-1 text-sm hover:bg-grey-100 focus-visible:bg-grey-100'
+const NAV_ACTIVE = 'border-l-ink bg-grey-100 font-medium'
+const MENU_ITEM =
+  'block rounded-[6px] px-2 py-1.5 text-sm hover:bg-grey-100 focus-visible:bg-grey-100'
+const TAB_ITEM =
+  'flex min-h-12 flex-col items-center justify-center rounded-[6px] px-1 py-1 text-[0.6875rem] leading-tight text-grey-700 hover:bg-grey-100 focus-visible:bg-grey-100'
+
+function WorkspaceSwitcher({
+  memberships,
+  workspaceSlug,
+  workspaceName,
+}: {
+  memberships: { id: string; workspace_slug: string; workspace_name: string }[]
+  workspaceSlug: string
+  workspaceName: string
+}) {
+  if (memberships.length <= 1) {
+    return <span className="block truncate font-medium text-ink">{workspaceName}</span>
+  }
+
+  return (
+    <label className="block">
+      <span className="sr-only">Organisation</span>
+      <select
+        aria-label="Organisation"
+        className="w-full rounded-[6px] border border-grey-300 bg-paper px-2 py-1 text-sm text-ink"
+        value={workspaceSlug}
+        onChange={(event) => {
+          window.location.href = `/w/${event.target.value}`
+        }}
+      >
+        {memberships.map((membership) => (
+          <option key={membership.id} value={membership.workspace_slug}>
+            {membership.workspace_name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function MenuLink({ to, children }: { to: string; children: ReactNode }) {
+  return (
+    <NavLink to={to} className={MENU_ITEM} activeClassName="bg-grey-100 font-medium">
+      {children}
+    </NavLink>
+  )
+}
+
+function AccountMenu({
+  base,
+  user,
+  workspaceSlug,
+}: {
+  base: string
+  user: Parameters<typeof Avatar>[0]['user']
+  workspaceSlug: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [openedByKeyboard, setOpenedByKeyboard] = useState(false)
+  const label = userLabel(user)
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 rounded-[6px] px-1 py-1.5 text-left text-sm hover:bg-grey-100 focus-visible:bg-grey-100"
+        aria-label={`${label} account menu`}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-controls="account-menu"
+        onClick={(event) => {
+          setOpenedByKeyboard(event.detail === 0)
+          setOpen((isOpen) => !isOpen)
+        }}
+      >
+        <Avatar user={user} size="md" />
+        <span className="min-w-0 flex-1 truncate text-grey-700">{label}</span>
+        <span aria-hidden="true" className="text-grey-500">
+          {open ? '−' : '+'}
+        </span>
+      </button>
+
+      <div
+        id="account-menu"
+        role="menu"
+        inert={!open}
+        className={`absolute bottom-[calc(100%+0.5rem)] left-0 z-40 w-52 origin-bottom-left rounded-[8px] border border-grey-200 bg-paper p-1 ${
+          openedByKeyboard ? 'transition-none' : 'transition-[opacity,transform] duration-[150ms] ease-[var(--ease-out)]'
+        } ${
+          open
+            ? 'pointer-events-auto scale-100 opacity-100'
+            : 'pointer-events-none scale-[0.97] opacity-0'
+        }`}
+      >
+        <MenuLink to={`${base}/settings/profile`}>Profile</MenuLink>
+        <MenuLink to="/orgs/new">New organisation</MenuLink>
+        <div className="px-2 py-1.5 text-sm">
+          <LeaveOrganisation slug={workspaceSlug} />
+        </div>
+        <div className="px-2 py-1.5 text-sm">
+          <SignOutButton />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MoreMenu({
+  base,
+  isAdmin,
+  workspaceSlug,
+}: {
+  base: string
+  isAdmin: boolean
+  workspaceSlug: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [openedByKeyboard, setOpenedByKeyboard] = useState(false)
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className={TAB_ITEM}
+        aria-label="More"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-controls="mobile-more-menu"
+        onClick={(event) => {
+          setOpenedByKeyboard(event.detail === 0)
+          setOpen((isOpen) => !isOpen)
+        }}
+      >
+        <span aria-hidden="true" className="text-base leading-none">
+          {open ? '−' : '+'}
+        </span>
+        <span>More</span>
+      </button>
+
+      <div
+        id="mobile-more-menu"
+        role="menu"
+        aria-hidden={!open}
+        className={`absolute bottom-[calc(100%+0.5rem)] right-0 z-40 w-56 origin-bottom-right rounded-[8px] border border-grey-200 bg-paper p-1 ${
+          openedByKeyboard ? 'transition-none' : 'transition-[opacity,transform] duration-[150ms] ease-[var(--ease-out)]'
+        } ${
+          open
+            ? 'pointer-events-auto scale-100 opacity-100'
+            : 'pointer-events-none scale-[0.97] opacity-0'
+        }`}
+      >
+        <MenuLink to={`${base}/unlinked`}>Unlinked PRs</MenuLink>
+        <MenuLink to={`${base}/reports`}>Reports</MenuLink>
+        {isAdmin ? <MenuLink to={`${base}/admin`}>Administration</MenuLink> : null}
+        <div className="my-1 border-t border-grey-200" />
+        <MenuLink to={`${base}/settings/profile`}>Profile</MenuLink>
+        <MenuLink to="/orgs/new">New organisation</MenuLink>
+        <div className="px-2 py-1.5 text-sm">
+          <LeaveOrganisation slug={workspaceSlug} />
+        </div>
+        <div className="px-2 py-1.5 text-sm">
+          <SignOutButton />
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export function Shell({ slug, children }: { slug?: string; children: ReactNode }) {
   const { user, memberships, workspace, isLoading, isSignedIn } =
@@ -41,67 +218,84 @@ export function Shell({ slug, children }: { slug?: string; children: ReactNode }
   const base = `/w/${workspace.workspace_slug}`
 
   return (
-    <div className="flex min-h-screen flex-col sm:flex-row">
-      <nav className="w-full shrink-0 border-b border-grey-200 p-3 sm:min-h-screen sm:w-48 sm:border-r sm:border-b-0">
-        <div className="mb-3 sm:mb-4">
-          {memberships.length > 1 ? (
-            <label className="block">
-              <span className="sr-only">Organisation</span>
-              <select
-                className="w-full border border-grey-300 bg-paper px-1 py-0.5 text-sm"
-                value={workspace.workspace_slug}
-                onChange={(e) => {
-                  window.location.href = `/w/${e.target.value}`
-                }}
-              >
-                {memberships.map((m) => (
-                  <option key={m.id} value={m.workspace_slug}>
-                    {m.workspace_name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <span className="text-ink">{workspace.workspace_name}</span>
-          )}
+    <div className="min-h-screen bg-paper sm:flex">
+      <aside className="hidden w-full shrink-0 border-b border-grey-200 p-3 sm:flex sm:min-h-screen sm:w-48 sm:flex-col sm:border-r sm:border-b-0">
+        <div className="mb-4">
+          <WorkspaceSwitcher
+            memberships={memberships}
+            workspaceSlug={workspace.workspace_slug}
+            workspaceName={workspace.workspace_name}
+          />
         </div>
 
-        <ul className="flex flex-wrap gap-x-3 gap-y-1 sm:block sm:space-y-1">
-          {NAV.map((item) => (
-            <li key={item.label}>
-              <NavLink
-                to={base + item.path}
-                className="block px-1 py-0.5 transition-colors hover:bg-grey-100"
-              >
-                {item.label}
-              </NavLink>
-            </li>
-          ))}
-          {workspace.role === 'admin' ? (
-            <li>
-              <NavLink
-                to={`${base}/admin`}
-                className="block px-1 py-0.5 transition-colors hover:bg-grey-100"
-              >
-                Administration
-              </NavLink>
-            </li>
-          ) : null}
-        </ul>
-        <NavLink to="/orgs/new" className="mt-4 block px-1 underline">New organisation</NavLink>
+        <nav aria-label="Workspace navigation">
+          <ul className="space-y-1">
+            {NAV.map((item) => (
+              <li key={item.label}>
+                <NavLink
+                  to={base + item.path}
+                  className={NAV_ITEM}
+                  activeClassName={NAV_ACTIVE}
+                >
+                  {item.label}
+                </NavLink>
+              </li>
+            ))}
+            {workspace.role === 'admin' ? (
+              <li>
+                <NavLink
+                  to={`${base}/admin`}
+                  className={NAV_ITEM}
+                  activeClassName={NAV_ACTIVE}
+                >
+                  Administration
+                </NavLink>
+              </li>
+            ) : null}
+          </ul>
+        </nav>
 
-        <div className="mt-3 flex items-center gap-3 border-t border-grey-200 pt-3 text-sm sm:mt-6 sm:block">
-          <span className="flex items-center gap-2">
-            <Avatar user={user} />
-            <span className="truncate text-grey-700">{userLabel(user)}</span>
-          </span>
-          <SignOutButton />
-          <NavLink to={`${base}/settings/profile`} className="mt-2 block underline">Profile</NavLink>
-          <LeaveOrganisation slug={workspace.workspace_slug} />
+        <div className="mt-auto border-t border-grey-200 pt-3">
+          <AccountMenu
+            base={base}
+            user={user}
+            workspaceSlug={workspace.workspace_slug}
+          />
+        </div>
+      </aside>
+
+      <header className="border-b border-grey-200 p-3 sm:hidden">
+        <WorkspaceSwitcher
+          memberships={memberships}
+          workspaceSlug={workspace.workspace_slug}
+          workspaceName={workspace.workspace_name}
+        />
+      </header>
+
+      <main className="min-w-0 flex-1 px-3 pb-24 pt-4 sm:p-4">{children}</main>
+
+      <nav
+        aria-label="Mobile navigation"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-grey-200 bg-paper sm:hidden"
+      >
+        <div className="grid grid-cols-5 gap-1 px-2 pt-1 pb-[calc(0.25rem+env(safe-area-inset-bottom))]">
+          {MOBILE_NAV.map((item) => (
+            <NavLink
+              key={item.label}
+              to={base + item.path}
+              className={TAB_ITEM}
+              activeClassName="bg-grey-100 font-medium text-ink"
+            >
+              {item.label}
+            </NavLink>
+          ))}
+          <MoreMenu
+            base={base}
+            isAdmin={workspace.role === 'admin'}
+            workspaceSlug={workspace.workspace_slug}
+          />
         </div>
       </nav>
-
-      <main className="min-w-0 flex-1 p-3 sm:p-4">{children}</main>
     </div>
   )
 }
