@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { IssueTimeline } from './IssuePage'
+import { IssueEvidenceSection, IssuePageLayout, IssueTimeline } from './IssuePage'
 import { EvidenceCard } from '../evidence/EvidenceCard'
+import { StatusSelect } from './StatusSelect'
 
 describe('IssueTimeline', () => {
   it('interleaves comments, status changes, and PRs in time order', () => {
@@ -17,6 +18,73 @@ describe('IssueTimeline', () => {
     expect(items).toHaveLength(3)
     expect(items[0]).toHaveTextContent('Starting')
     expect(items[2]).toHaveTextContent('#42')
+  })
+})
+
+describe('IssuePageLayout', () => {
+  it('keeps the narrative main column before the metadata rail', () => {
+    render(
+      <IssuePageLayout
+        main={<p>Issue narrative</p>}
+        sidebar={<p>Issue metadata</p>}
+      />,
+    )
+
+    const columns = screen.getByTestId('issue-page-columns')
+    expect(columns).toHaveClass('grid')
+    expect(screen.getByTestId('issue-main')).toHaveTextContent('Issue narrative')
+    expect(screen.getByTestId('issue-sidebar')).toHaveTextContent('Issue metadata')
+    expect(columns.firstElementChild).toBe(screen.getByTestId('issue-main'))
+    expect(columns.lastElementChild).toBe(screen.getByTestId('issue-sidebar'))
+  })
+})
+
+describe('StatusSelect', () => {
+  it('moves with arrows and commits the active option with Enter', async () => {
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    render(<StatusSelect value="backlog" onChange={onChange} />)
+
+    const trigger = screen.getByTestId('status-listbox')
+    await user.click(trigger)
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+
+    await user.keyboard('{ArrowDown}')
+    expect(trigger).toHaveAttribute('aria-activedescendant', expect.stringContaining('-todo'))
+    await user.keyboard('{Enter}')
+
+    expect(onChange).toHaveBeenCalledWith('todo')
+    expect(screen.queryByRole('listbox')).toBeNull()
+  })
+
+  it('closes with Escape without changing the selection', async () => {
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    render(<StatusSelect value="in_progress" onChange={onChange} />)
+
+    const trigger = screen.getByTestId('status-listbox')
+    await user.click(trigger)
+    await user.keyboard('{ArrowDown}{Escape}')
+
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(onChange).not.toHaveBeenCalled()
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  })
+})
+
+describe('IssueEvidenceSection', () => {
+  it('always renders an actionable empty linked-PR state without a status control', () => {
+    render(
+      <IssueEvidenceSection
+        issueStatus="in_progress"
+        evidence={{ pull_requests: [], reviews: [], commits: [] }}
+      />,
+    )
+
+    expect(screen.getByTestId('issue-evidence-section')).toBeInTheDocument()
+    expect(screen.getByText('No linked PRs.')).toBeInTheDocument()
+    expect(screen.getByText('Branch as sabari/eng-42-... to link automatically.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /mark issue done/i })).toBeNull()
   })
 })
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
@@ -16,12 +16,13 @@ import { Avatar } from '../../ui/Avatar'
 import { Markdown } from '../../ui/Markdown'
 import { RelativeTime } from '../../ui/RelativeTime'
 import { StatusBadge, STATUS_LABELS } from '../../ui/StatusBadge'
+import { EmptyState } from '../../ui/EmptyState'
 import { CommentComposer } from '../comments/CommentComposer'
 import { ReplyEditor } from '../comments/CommentThread'
 import { EvidenceCard } from '../evidence/EvidenceCard'
-import { StatusSelect } from './StatusSelect'
+import { StatusDot, StatusSelect } from './StatusSelect'
 import { IssueLabels } from './IssueLabels'
-import { IssueMetadata, ReadOnlyIssueMetadata } from './IssueMetadata'
+import { IssueMetadata, ReadOnlyIssueMetadata, type IssueMetadataPatch } from './IssueMetadata'
 import { useSession } from '../auth/useSession'
 import { userLabel } from '../../lib/userLabel'
 import { IssueEditForm, IssueForm, type IssueInput } from '../work/CoreForms'
@@ -51,6 +52,10 @@ export function IssueTimeline({ entries, onReply }: {
   onReply?: (commentId: string, body: string) => Promise<unknown>
 }) {
   const sorted = [...entries].sort((a, b) => a.at.localeCompare(b.at))
+
+  if (sorted.length === 0) {
+    return <EmptyState title="No updates yet." message="Add the first update below." />
+  }
 
   return (
     <ul className="divide-y divide-grey-200 border-y border-grey-200">
@@ -157,11 +162,71 @@ function buildTimeline(
   return entries
 }
 
+export function IssuePageLayout({ main, sidebar }: { main: ReactNode; sidebar: ReactNode }) {
+  return (
+    <div className="w-full max-w-[66rem]" data-testid="issue-page">
+      <div
+        className="grid items-start gap-8 lg:grid-cols-[minmax(0,46rem)_17rem]"
+        data-testid="issue-page-columns"
+      >
+        <main className="min-w-0" data-testid="issue-main">
+          {main}
+        </main>
+        <aside className="min-w-0 lg:sticky lg:top-4" data-testid="issue-sidebar">
+          {sidebar}
+        </aside>
+      </div>
+    </div>
+  )
+}
+
+export function IssueEvidenceSection({
+  evidence,
+  issueStatus,
+  isPending = false,
+  hasError = false,
+}: {
+  evidence?: Evidence
+  issueStatus: IssueStatus
+  isPending?: boolean
+  hasError?: boolean
+}) {
+  const pullRequests = evidence?.pull_requests ?? []
+
+  return (
+    <section className="border-t border-grey-200 pt-4" data-testid="issue-evidence-section">
+      <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Linked PRs / evidence</h2>
+      {isPending ? (
+        <p className="text-sm text-grey-500">Loading linked PRs…</p>
+      ) : hasError ? (
+        <p className="text-sm text-blocked" role="alert">Could not load linked PRs.</p>
+      ) : pullRequests.length === 0 ? (
+        <div data-testid="issue-evidence-empty">
+          <EmptyState
+            title="No linked PRs."
+            message="Branch as sabari/eng-42-... to link automatically."
+          />
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {/* PRs are evidence only. Status changes stay in the status control
+              above and are never triggered by this section. */}
+          {pullRequests.map((pr) => (
+            <EvidenceCard key={pr.id} pr={pr} issueStatus={issueStatus} />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
 export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }) {
   const queryClient = useQueryClient()
   const { workspace } = useSession(slug)
   const canWrite = workspace?.role === 'admin' || workspace?.role === 'member'
   const [newLabel, setNewLabel] = useState('')
+  const [editingIssue, setEditingIssue] = useState(false)
+  const [creatingSubIssue, setCreatingSubIssue] = useState(false)
 
   const issue = useQuery({
     queryKey: ['issue', slug, issueKey],
@@ -244,7 +309,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
     },
   })
   const assignIssue = useMutation({
-    mutationFn: (patch: { assignee_id?: string; milestone_id?: string }) =>
+    mutationFn: (patch: IssueMetadataPatch) =>
       api.patch<Issue>(`/w/${slug}/issues/${issueKey}`, patch),
     onSuccess: invalidate,
   })
@@ -254,7 +319,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
 
   const data = issue.data
   const memberChoices = (members.data?.members ?? []).map((member) => ({
-    id: member.id, label: userLabel(member),
+    id: member.id, label: userLabel(member), user: member,
   }))
   const milestoneChoices = (milestones.data?.milestones ?? []).map((milestone) => ({
     id: milestone.id, label: milestone.name,
@@ -265,73 +330,183 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
     evidence.data,
   )
 
-  return (
-    <div className="max-w-3xl">
-      <div className="flex items-baseline gap-2">
-        <span className="text-grey-500">{data.key}</span>
-        <h1 className="min-w-0 flex-1 text-lg">{data.title}</h1>
+  const main = (
+    <div className="space-y-6">
+      <header className="flex items-start justify-between gap-3 border-b border-grey-200 pb-4" data-testid="issue-header">
+        <div className="min-w-0">
+          <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase">{data.key}</p>
+          <h1 className="text-lg">{data.title}</h1>
+        </div>
+        {canWrite ? (
+          <Button
+            className="shrink-0"
+            aria-controls={editingIssue ? 'issue-edit-panel' : undefined}
+            onClick={() => setEditingIssue((open) => !open)}
+          >
+            {editingIssue ? 'Close editor' : 'Edit issue'}
+          </Button>
+        ) : null}
+      </header>
+
+      <section data-testid="issue-description">
+        {data.description ? (
+          <div className="border-b border-grey-200 pb-4 text-sm">
+            <Markdown source={data.description} />
+          </div>
+        ) : (
+          <EmptyState
+            title="No description yet."
+            message={canWrite ? 'Add context so the next person can pick up the work.' : 'Ask a member to add context.'}
+            action={canWrite ? <Button onClick={() => setEditingIssue(true)}>Add description</Button> : undefined}
+          />
+        )}
+      </section>
+
+      {editingIssue ? (
+        <section id="issue-edit-panel" data-testid="issue-edit-panel">
+          <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Edit issue</h2>
+          <IssueEditForm
+            issue={data}
+            onSubmit={async (input) => {
+              await editIssue.mutateAsync(input)
+              setEditingIssue(false)
+            }}
+          />
+        </section>
+      ) : null}
+
+      <section data-testid="issue-timeline-section">
+        <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Timeline</h2>
+        {entries.length ? (
+          <IssueTimeline
+            entries={entries}
+            onReply={canWrite
+              ? (parentId, body) => addReply.mutateAsync({ parentId, body })
+              : undefined}
+          />
+        ) : (
+          <EmptyState
+            title="No updates yet."
+            message={canWrite ? 'Add the first update below.' : 'Ask a teammate to add the first update.'}
+          />
+        )}
+        {canWrite ? <CommentComposer onSubmit={(body) => addComment.mutateAsync(body)} /> : null}
+      </section>
+    </div>
+  )
+
+  const sidebar = (
+    <div className="space-y-6">
+      <section className="border-b border-grey-200 pb-4" data-testid="issue-status-section">
+        <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Status</h2>
         {canWrite ? (
           <StatusSelect
             value={data.status}
             disabled={setStatus.isPending}
             onChange={(status) => setStatus.mutate(status)}
           />
-        ) : <StatusBadge status={data.status} />}
-      </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <StatusDot status={data.status} />
+            <StatusBadge status={data.status} />
+          </div>
+        )}
+        {setStatus.error ? (
+          <p className="mt-2 text-xs text-blocked" role="alert">Could not update status. Try again.</p>
+        ) : null}
+      </section>
 
-      {canWrite ? (
-        <>
-          <p className="mt-2 text-sm text-grey-500">Priority <span className="text-ink">{data.priority}</span></p>
+      <section data-testid="issue-metadata-section">
+        {canWrite ? (
           <IssueMetadata
+            priority={data.priority}
             assigneeId={data.assignee_id}
             milestoneId={data.milestone_id}
             members={memberChoices}
             milestones={milestoneChoices}
             onPatch={(patch) => assignIssue.mutateAsync(patch)}
           />
-        </>
-      ) : (
-        <ReadOnlyIssueMetadata
-          priority={data.priority}
-          assigneeId={data.assignee_id}
-          milestoneId={data.milestone_id}
-          members={memberChoices}
-          milestones={milestoneChoices}
-        />
-      )}
+        ) : (
+          <ReadOnlyIssueMetadata
+            priority={data.priority}
+            assigneeId={data.assignee_id}
+            milestoneId={data.milestone_id}
+            members={memberChoices}
+            milestones={milestoneChoices}
+          />
+        )}
+      </section>
 
-      {data.description ? (
-        <div className="mt-3 border-y border-grey-200 py-2 text-sm">
-          <Markdown source={data.description} />
-        </div>
-      ) : null}
-
-      {canWrite ? (
-        <details className="mt-3">
-          <summary className="cursor-pointer text-sm underline">Edit issue</summary>
-          <div className="mt-2">
-            <IssueEditForm issue={data} onSubmit={(input) => editIssue.mutateAsync(input)} />
+      <section className="border-t border-grey-200 pt-4" data-testid="issue-labels-section">
+        <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Labels</h2>
+        {canWrite ? (
+          <>
+            <IssueLabels
+              labels={labels.data?.labels ?? []}
+              selected={(data.labels ?? []).map((label) => label.id)}
+              onChange={(ids) => setLabels.mutateAsync(ids)}
+            />
+            <form
+              className="mt-3 flex gap-2"
+              onSubmit={(event) => {
+                event.preventDefault()
+                if (newLabel.trim()) createLabel.mutate(newLabel.trim())
+              }}
+            >
+              <label className="min-w-0 flex-1">
+                <span className="sr-only">New label name</span>
+                <input
+                  className="w-full border border-grey-300 bg-paper px-2 py-1 text-sm"
+                  placeholder="New label"
+                  value={newLabel}
+                  onChange={(event) => setNewLabel(event.target.value)}
+                />
+              </label>
+              <Button type="submit" disabled={!newLabel.trim() || createLabel.isPending}>Add label</Button>
+            </form>
+          </>
+        ) : data.labels?.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {data.labels.map((label) => (
+              <span key={label.id} className="border border-grey-200 px-1.5 py-1 text-xs">{label.name}</span>
+            ))}
           </div>
-        </details>
-      ) : null}
+        ) : (
+          <p className="text-sm text-grey-500">No labels yet. Ask a member to add one.</p>
+        )}
+      </section>
 
-      {canWrite && !data.parent_id ? (
-        <details className="mt-3">
-          <summary className="cursor-pointer text-sm underline">Add sub-issue</summary>
-          <div className="mt-2">
+      <IssueEvidenceSection
+        evidence={evidence.data}
+        issueStatus={data.status}
+        isPending={evidence.isPending}
+        hasError={Boolean(evidence.error)}
+      />
+
+      <section className="border-t border-grey-200 pt-4" data-testid="issue-sub-issues-section">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-xs tracking-wide text-grey-500 uppercase">Sub-issues</h2>
+          {canWrite && !data.parent_id && !creatingSubIssue ? (
+            <Button onClick={() => setCreatingSubIssue(true)}>New sub-issue</Button>
+          ) : null}
+        </div>
+
+        {creatingSubIssue ? (
+          <div className="mt-3">
             <IssueForm
               milestoneId={data.milestone_id ?? undefined}
               parentId={data.id}
-              onSubmit={(input) => createSubIssue.mutateAsync(input)}
+              onSubmit={async (input) => {
+                await createSubIssue.mutateAsync(input)
+                setCreatingSubIssue(false)
+              }}
             />
+            <Button className="mt-2" onClick={() => setCreatingSubIssue(false)}>Cancel</Button>
           </div>
-        </details>
-      ) : null}
+        ) : null}
 
-      {data.children?.length ? (
-        <section className="mt-4">
-          <h2 className="mb-2 text-sm tracking-wide text-grey-500 uppercase">Sub-issues</h2>
-          <ul className="divide-y divide-grey-200 border-y border-grey-200">
+        {data.children?.length ? (
+          <ul className="mt-3 divide-y divide-grey-200 border-y border-grey-200">
             {data.children.map((child) => (
               <li key={child.id} className="py-1.5 text-sm">
                 <NavLink className="underline" to={`/w/${slug}/issues/${child.key}`}>
@@ -340,66 +515,22 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
               </li>
             ))}
           </ul>
-        </section>
-      ) : null}
-
-      <section className="mt-4">
-        <h2 className="mb-2 text-sm tracking-wide text-grey-500 uppercase">Labels</h2>
-        {canWrite ? (
-          <>
-            <IssueLabels
-              labels={labels.data?.labels ?? []}
-              selected={(data.labels ?? []).map((label) => label.id)}
-              onChange={(ids) => setLabels.mutateAsync(ids)}
-            />
-            <form className="mt-2 flex max-w-sm gap-2" onSubmit={(event) => {
-              event.preventDefault()
-              if (newLabel.trim()) createLabel.mutate(newLabel.trim())
-            }}>
-              <label className="min-w-0 flex-1">
-                <span className="sr-only">New label name</span>
-                <input className="w-full border border-grey-300 bg-paper px-2 py-1 text-sm"
-                  placeholder="New label" value={newLabel}
-                  onChange={(event) => setNewLabel(event.target.value)} />
-              </label>
-              <Button type="submit" disabled={!newLabel.trim() || createLabel.isPending}>Add label</Button>
-            </form>
-          </>
-        ) : data.labels?.length ? (
-          <span className="text-sm">{data.labels.map((label) => label.name).join(', ')}</span>
         ) : (
-          <span className="text-sm text-grey-500">No labels.</span>
+          <EmptyState
+            title="No sub-issues yet."
+            message={data.parent_id
+              ? 'This issue is already nested.'
+              : canWrite
+                ? creatingSubIssue ? 'Use the form above to split this work.' : 'Split the work into a smaller, trackable task.'
+                : 'Ask a member to split this work.'}
+            action={canWrite && !data.parent_id && !creatingSubIssue
+              ? <Button onClick={() => setCreatingSubIssue(true)}>New sub-issue</Button>
+              : undefined}
+          />
         )}
-      </section>
-
-      {evidence.data && evidence.data.pull_requests.length > 0 ? (
-        <section className="mt-4">
-          <h2 className="mb-2 text-sm tracking-wide text-grey-500 uppercase">Evidence</h2>
-          <div className="space-y-1">
-            {evidence.data.pull_requests.map((pr) => (
-              <EvidenceCard
-                key={pr.id}
-                pr={pr}
-                issueStatus={data.status}
-                // The prompt runs the ordinary status mutation, and only when
-                // a person clicks it.
-                onMarkDone={canWrite ? () => setStatus.mutate('done') : undefined}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="mt-4">
-        <h2 className="mb-2 text-sm tracking-wide text-grey-500 uppercase">Timeline</h2>
-        <IssueTimeline
-          entries={entries}
-          onReply={canWrite
-            ? (parentId, body) => addReply.mutateAsync({ parentId, body })
-            : undefined}
-        />
-        {canWrite ? <CommentComposer onSubmit={(body) => addComment.mutateAsync(body)} /> : null}
       </section>
     </div>
   )
+
+  return <IssuePageLayout main={main} sidebar={sidebar} />
 }
