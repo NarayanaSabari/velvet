@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
 
 import { Button } from '../../ui/Button'
 
@@ -12,16 +12,20 @@ export function CommentComposer({
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
+  const draftVersion = useRef(0)
 
   async function submit() {
     if (!body.trim() || busy) return
+    const submittedDraftVersion = draftVersion.current
     setBusy(true)
     setFailed(false)
     try {
       await onSubmit(body)
       // Clearing only after the submission resolves is what stops a network
       // hiccup from destroying someone's long update.
-      setBody('')
+      if (draftVersion.current === submittedDraftVersion) {
+        setBody('')
+      }
     } catch {
       setFailed(true)
     } finally {
@@ -43,7 +47,10 @@ export function CommentComposer({
         rows={3}
         value={body}
         placeholder={placeholder}
-        onChange={(e) => setBody(e.target.value)}
+        onChange={(e) => {
+          draftVersion.current += 1
+          setBody(e.target.value)
+        }}
         onKeyDown={onKeyDown}
       />
       <div className="mt-1 flex items-center gap-2">
