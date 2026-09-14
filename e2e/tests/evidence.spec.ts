@@ -190,7 +190,7 @@ test('a redelivered webhook changes nothing', async ({ request }) => {
   expect(snapshot()).toEqual(before)
 })
 
-test('merging a PR prompts a human instead of completing the issue', async ({
+test('merging a PR leaves completion to a human status choice', async ({
   signedIn: page,
   request,
 }) => {
@@ -201,12 +201,13 @@ test('merging a PR prompts a human instead of completing the issue', async ({
   expect(issue.status).toBe('backlog')
 
   await page.goto('/w/lab/issues/ENG-1')
-  await expect(page.getByText(/PR merged - is this issue done\?/)).toBeVisible()
+  await expect(page.getByText('PR #42 merged', { exact: true })).toBeVisible()
+  const status = page.getByRole('button', { name: 'Status' })
+  await expect(status).toHaveAttribute('data-current-status', 'backlog')
 
-  const markDone = page.getByRole('button', { name: /mark issue done/i })
-  await expect(markDone).toBeVisible()
-
-  // Only the click completes it. The record says what the person decided.
-  await markDone.click()
-  await expect(page.getByRole('combobox', { name: 'Status' })).toHaveValue('done')
+  // The merged event is evidence only. The redesigned status control records
+  // the separate human decision to mark the issue done.
+  await status.click()
+  await page.getByRole('option', { name: 'Done', exact: true }).click()
+  await expect(status).toHaveAttribute('data-current-status', 'done')
 })

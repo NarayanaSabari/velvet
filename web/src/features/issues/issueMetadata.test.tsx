@@ -37,6 +37,30 @@ it('reports a failed metadata update', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Could not update issue')
 })
 
+it('offers P0 through P4 and shows the selected member avatar', async () => {
+  const onPatch = vi.fn().mockResolvedValue(undefined)
+  const user = userEvent.setup()
+  render(<IssueMetadata
+    priority={2}
+    assigneeId="u1"
+    milestoneId={null}
+    members={[{
+      id: 'u1',
+      label: 'sabari',
+      user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: 'avatar.png' },
+    }]}
+    milestones={[]}
+    onPatch={onPatch}
+  />)
+
+  expect(screen.getByRole('option', { name: 'P0' })).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'P4' })).toBeInTheDocument()
+  expect(screen.getByRole('img', { name: 'Sabari' })).toBeInTheDocument()
+
+  await user.selectOptions(screen.getByLabelText('Priority'), '4')
+  expect(onPatch).toHaveBeenCalledWith({ priority: 4 })
+})
+
 it('renders issue metadata without controls for a viewer', () => {
   render(<ReadOnlyIssueMetadata
     priority={3}

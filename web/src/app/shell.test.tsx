@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -17,7 +17,11 @@ function renderShell(slug?: string) {
   )
 }
 
-beforeEach(() => vi.unstubAllGlobals())
+beforeEach(() => {
+  vi.unstubAllGlobals()
+  window.history.replaceState({}, '', '/')
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 })
+})
 
 describe('Shell', () => {
   it('shows the sign-in prompt when unauthenticated', async () => {
@@ -42,7 +46,7 @@ describe('Shell', () => {
     } as Response))
 
     renderShell()
-    await waitFor(() => expect(screen.getByText('Lab')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
     expect(screen.getByText('content')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Administration' })).toHaveAttribute(
       'href',
@@ -67,11 +71,63 @@ describe('Shell', () => {
     } as Response))
 
     renderShell('lab')
-    await screen.findByText('Lab')
+    await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
     expect(screen.queryByRole('link', { name: 'Administration' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Open account menu' }))
     expect(screen.getByRole('link', { name: 'New organisation' })).toHaveAttribute('href', '/orgs/new')
     expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/w/lab/settings/profile')
     expect(screen.getByRole('button', { name: 'Leave organisation' })).toBeInTheDocument()
+  })
+
+  it('marks the current desktop navigation item as active', async () => {
+    window.history.replaceState({}, '', '/w/lab/sprints')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
+        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', role: 'member' }],
+      }),
+    } as Response))
+
+    renderShell('lab')
+    await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
+
+    const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    const sprints = within(navigation).getByRole('link', { name: 'Sprints' })
+    expect(sprints).toHaveAttribute('aria-current', 'page')
+    expect(sprints).toHaveClass('bg-grey-100', 'border-l-ink')
+  })
+
+  it('renders the compact mobile tab bar and reveals More items', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
+        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', role: 'admin' }],
+      }),
+    } as Response))
+
+    renderShell('lab')
+    await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
+
+    const mobileNavigation = screen.getByRole('navigation', { name: 'Mobile navigation' })
+    expect(within(mobileNavigation).getByRole('link', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(within(mobileNavigation).getByRole('link', { name: 'Feed' })).toBeInTheDocument()
+    expect(within(mobileNavigation).getByRole('link', { name: 'Sprints' })).toBeInTheDocument()
+    expect(within(mobileNavigation).getByRole('link', { name: 'Mentions' })).toBeInTheDocument()
+
+    await userEvent.click(within(mobileNavigation).getByRole('button', { name: 'More' }))
+    const moreMenu = document.getElementById('mobile-more-menu')
+    expect(moreMenu).not.toBeNull()
+    if (!moreMenu) return
+    expect(within(moreMenu).getByRole('link', { name: 'Unlinked PRs' })).toBeInTheDocument()
+    expect(within(moreMenu).getByRole('link', { name: 'Reports' })).toBeInTheDocument()
+    expect(within(moreMenu).getByRole('link', { name: 'Administration' })).toBeInTheDocument()
+    expect(within(moreMenu).getByRole('link', { name: 'Profile' })).toBeInTheDocument()
+    expect(within(moreMenu).getByRole('link', { name: 'New organisation' })).toBeInTheDocument()
   })
 
   it('signs out with POST, clears the cached session, and navigates to sign-in', async () => {
