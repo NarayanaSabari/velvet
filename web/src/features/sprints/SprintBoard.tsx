@@ -183,7 +183,7 @@ function activityTimestamp(issue: SprintIssue): string | null {
 function mergeSprintIssues(sprintIssues: SprintIssue[], unfiledIssues: SprintIssue[]): SprintIssue[] {
   const merged = new Map(sprintIssues.map((issue) => [issue.id, issue]))
   for (const issue of unfiledIssues) {
-    if (issue.milestone_id === null) merged.set(issue.id, issue)
+    if (!issue.milestone_id) merged.set(issue.id, issue)
   }
   return [...merged.values()]
 }
@@ -465,6 +465,16 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
   )
   const canCreateMilestone = canWrite && sprintData.state !== 'completed'
   const milestoneAction = () => setMilestoneFormOpen(true)
+  const issueGroups = (
+    <IssueGroups
+      issues={issueRows}
+      members={members.data?.members ?? []}
+      slug={slug}
+      onOpen={(issue) => {
+        void navigate({ href: `/w/${slug}/issues/${issue.key}` })
+      }}
+    />
+  )
 
   return (
     <div className="max-w-5xl space-y-8">
@@ -540,16 +550,7 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
         ) : unfiledIssues.error && issueRows.length > 0 ? (
           <>
             <p className="mb-2 text-sm text-grey-500">Unfiled issues could not be loaded.</p>
-            {issueRows.length > 0 ? (
-              <IssueGroups
-                issues={issueRows}
-                members={members.data?.members ?? []}
-                slug={slug}
-                onOpen={(issue) => {
-                  void navigate({ href: `/w/${slug}/issues/${issue.key}` })
-                }}
-              />
-            ) : null}
+            {issueGroups}
           </>
         ) : issueRows.length === 0 ? (
           <EmptyState
@@ -558,14 +559,7 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
             action={<NavLink to={`/w/${slug}/sprints`} className="text-sm underline">Back to sprints</NavLink>}
           />
         ) : (
-          <IssueGroups
-            issues={issueRows}
-            members={members.data?.members ?? []}
-            slug={slug}
-            onOpen={(issue) => {
-              void navigate({ href: `/w/${slug}/issues/${issue.key}` })
-            }}
-          />
+          issueGroups
         )}
       </section>
     </div>
