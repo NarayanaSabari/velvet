@@ -73,7 +73,7 @@ describe('Shell', () => {
     renderShell('lab')
     await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
     expect(screen.queryByRole('link', { name: 'Administration' })).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: /Sabari account menu/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Open account menu' }))
     expect(screen.getByRole('link', { name: 'New organisation' })).toHaveAttribute('href', '/orgs/new')
     expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/w/lab/settings/profile')
     expect(screen.getByRole('button', { name: 'Leave organisation' })).toBeInTheDocument()

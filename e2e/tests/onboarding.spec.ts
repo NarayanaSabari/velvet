@@ -185,7 +185,10 @@ test('owner-verified GitHub setup discovers evidence, retries sync, removes and 
   await deliver(page.request, 'pull_request', payload)
   await page.goto(`/w/${slug}/issues/${issue.key}`)
   await expect(page.getByRole('link', { name: '#71', exact: true }).first()).toBeVisible()
-  await expect(page.getByRole('combobox', { name: 'Status' })).toHaveValue('backlog')
+  await expect(page.getByRole('button', { name: 'Status' })).toHaveAttribute(
+    'data-current-status',
+    'backlog',
+  )
 
   await control(page.request, { failListing: true })
   await page.goto(`/w/${slug}/admin`)

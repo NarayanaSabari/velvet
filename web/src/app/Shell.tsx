@@ -93,7 +93,7 @@ function AccountMenu({
       <button
         type="button"
         className="flex w-full items-center gap-2 rounded-[6px] px-1 py-1.5 text-left text-sm hover:bg-grey-100 focus-visible:bg-grey-100"
-        aria-label={`${label} account menu`}
+        aria-label="Open account menu"
         aria-expanded={open}
         aria-haspopup="menu"
         aria-controls="account-menu"
@@ -117,8 +117,8 @@ function AccountMenu({
           openedByKeyboard ? 'transition-none' : 'transition-[opacity,transform] duration-[150ms] ease-[var(--ease-out)]'
         } ${
           open
-            ? 'pointer-events-auto scale-100 opacity-100'
-            : 'pointer-events-none scale-[0.97] opacity-0'
+            ? 'pointer-events-auto visible scale-100 opacity-100'
+            : 'pointer-events-none invisible scale-[0.97] opacity-0'
         }`}
       >
         <MenuLink to={`${base}/settings/profile`}>Profile</MenuLink>
@@ -174,8 +174,8 @@ function MoreMenu({
           openedByKeyboard ? 'transition-none' : 'transition-[opacity,transform] duration-[150ms] ease-[var(--ease-out)]'
         } ${
           open
-            ? 'pointer-events-auto scale-100 opacity-100'
-            : 'pointer-events-none scale-[0.97] opacity-0'
+            ? 'pointer-events-auto visible scale-100 opacity-100'
+            : 'pointer-events-none invisible scale-[0.97] opacity-0'
         }`}
       >
         <MenuLink to={`${base}/unlinked`}>Unlinked PRs</MenuLink>

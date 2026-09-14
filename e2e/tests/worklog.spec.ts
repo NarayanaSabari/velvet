@@ -45,6 +45,8 @@ test('sign out ends the server session and returns to sign in', async ({ browser
   await context.addCookies([{ name: 'ticket_session', value: token, domain: url.hostname, path: '/' }])
 
   await page.goto('/w/lab')
+  await expect(page.getByRole('button', { name: 'Sign out' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Open account menu' }).click()
   await page.getByRole('button', { name: 'Sign out' }).click()
   await expect(page).toHaveURL(/\/signin$/)
   await expect(page.getByRole('button', { name: 'Send sign-in link' })).toBeVisible()
@@ -64,7 +66,7 @@ test('a signed-in member lands on their dashboard', async ({ signedIn: page }) =
 
   await expect(page).toHaveURL(/\/w\/lab$/)
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
-  await expect(page.getByRole('navigation').getByText('Lab')).toBeVisible()
+  await expect(page.getByText('Lab').first()).toBeVisible()
 })
 
 test('sprint, milestone, and issue can be created through the UI', async ({ signedIn: page }) => {
@@ -81,8 +83,8 @@ test('sprint, milestone, and issue can be created through the UI', async ({ sign
   await page.getByLabel('Milestone name').fill('Ship auth')
   await page.getByRole('button', { name: 'Create milestone' }).click()
 
-  await page.getByRole('link', { name: 'Ship auth' }).click()
-  await page.getByText('New issue').click()
+  await page.getByRole('heading', { name: 'Ship auth', exact: true }).click()
+  await page.getByTestId('milestone-issues').getByRole('button', { name: 'New issue' }).first().click()
   await page.getByLabel('Issue title').fill('Implement GitHub OAuth')
   await page.getByRole('button', { name: 'Create issue' }).click()
 
@@ -144,11 +146,18 @@ test('timestamps render as relative time, not raw database strings', async ({
 test('a status change made in the UI survives a reload', async ({ signedIn: page }) => {
   await page.goto('/w/lab/issues/ENG-1')
 
-  await page.getByRole('combobox', { name: 'Status' }).selectOption('in_progress')
-  await expect(page.getByRole('combobox', { name: 'Status' })).toHaveValue('in_progress')
+  await page.getByRole('button', { name: 'Status' }).click()
+  await page.getByRole('option', { name: 'In progress', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Status' })).toHaveAttribute(
+    'data-current-status',
+    'in_progress',
+  )
 
   await page.reload()
-  await expect(page.getByRole('combobox', { name: 'Status' })).toHaveValue('in_progress')
+  await expect(page.getByRole('button', { name: 'Status' })).toHaveAttribute(
+    'data-current-status',
+    'in_progress',
+  )
 })
 
 test('the sprint board shows progress and the latest milestone comment', async ({
