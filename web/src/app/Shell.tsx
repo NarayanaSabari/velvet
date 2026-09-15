@@ -5,6 +5,8 @@ import { SignIn } from '../features/auth/SignIn'
 import { NewOrganisation } from '../features/orgs/NewOrganisation'
 import { LeaveOrganisation } from '../features/orgs/LeaveOrganisation'
 import { SignOutButton } from '../features/auth/SignOutButton'
+import { CommandPalette } from '../features/palette/CommandPalette'
+import { COMMAND_PALETTE_TEST_IDS } from '../features/palette/paletteTestIds'
 import { Avatar } from '../ui/Avatar'
 import { userLabel } from '../lib/userLabel'
 import { NavLink } from './nav'
@@ -195,9 +197,18 @@ function MoreMenu({
   )
 }
 
-export function Shell({ slug, children }: { slug?: string; children: ReactNode }) {
+export function Shell({
+  slug,
+  children,
+  navigate,
+}: {
+  slug?: string
+  children: ReactNode
+  navigate?: (to: string) => void
+}) {
   const { user, memberships, workspace, isLoading, isSignedIn } =
     useSession(slug)
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   // Rendering nothing session-dependent while loading is what stops the
   // sign-in prompt flashing on every refresh.
@@ -216,6 +227,12 @@ export function Shell({ slug, children }: { slug?: string; children: ReactNode }
   }
 
   const base = `/w/${workspace.workspace_slug}`
+  const navigateTo = navigate ?? ((to: string) => {
+    // Shell is also rendered directly in unit tests without a router provider.
+    // Keep that harness navigable without forcing a full-page reload.
+    window.history.pushState({}, '', to)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  })
 
   return (
     <div className="min-h-screen bg-paper sm:flex">
@@ -256,6 +273,16 @@ export function Shell({ slug, children }: { slug?: string; children: ReactNode }
         </nav>
 
         <div className="mt-auto border-t border-grey-200 pt-3">
+          <button
+            type="button"
+            data-testid={COMMAND_PALETTE_TEST_IDS.trigger}
+            aria-label="Open command palette (⌘K)"
+            className="mb-2 flex w-full items-center justify-between rounded-[6px] px-2 py-1.5 text-left text-xs text-grey-500 hover:bg-grey-100 hover:text-ink"
+            onClick={() => setPaletteOpen(true)}
+          >
+            <span>Command palette</span>
+            <kbd className="rounded border border-grey-300 px-1 py-0.5 font-mono text-[0.6875rem]">⌘K</kbd>
+          </button>
           <AccountMenu
             base={base}
             user={user}
@@ -296,6 +323,15 @@ export function Shell({ slug, children }: { slug?: string; children: ReactNode }
           />
         </div>
       </nav>
+
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        slug={workspace.workspace_slug}
+        role={workspace.role}
+        memberships={memberships}
+        navigate={navigateTo}
+      />
     </div>
   )
 }
