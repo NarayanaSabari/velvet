@@ -52,7 +52,7 @@ export function Admin({ slug }: { slug: string }) {
   if (!isAdmin) return <EmptyState title="Admin access required" message="Only organisation admins can manage members and repository connections." />
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-[80rem]">
       <h1 className="mb-1 text-lg">Administration</h1>
       <p className="mb-6 text-grey-500">Manage who can enter this organisation and which GitHub repositories supply work evidence.</p>
       <InvitePanel slug={slug} />

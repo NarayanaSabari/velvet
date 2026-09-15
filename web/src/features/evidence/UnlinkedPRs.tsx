@@ -26,7 +26,7 @@ export function UnlinkedPRs({ slug }: { slug: string }) {
   const prs = query.data.pull_requests ?? []
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-[80rem]">
       <h1 className="mb-1 text-lg">Unlinked PRs</h1>
       <p className="mb-4 text-grey-500">
         Pull requests with no matching issue. Name the branch after an issue key, such as{' '}

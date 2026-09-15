@@ -9,7 +9,7 @@ export function Markdown({ source }: { source: string }) {
   )
   return (
     <div
-      className="prose-none [&_a]:underline [&_code]:bg-grey-100 [&_code]:px-1"
+      className="max-w-[46rem] prose-none [&_a]:underline [&_code]:bg-grey-100 [&_code]:px-1"
       dangerouslySetInnerHTML={{ __html: html }}
     />
   )

@@ -156,7 +156,7 @@ export function Reports({ slug }: { slug: string }) {
   const failed = people.error || milestones.error || closed.error || stale.error
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-[80rem]">
       <h1 className="mb-4 text-lg">Reports</h1>
       {failed ? <p className="mb-4 text-blocked">Some reports could not be loaded.</p> : null}
 

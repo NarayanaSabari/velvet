@@ -28,7 +28,7 @@ export function Mentions({ slug }: { slug: string }) {
   const mentions = query.data.mentions
   const unread = mentions.some((mention) => !mention.read_at)
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-[80rem]">
       <div className="mb-4 flex items-center gap-3">
         <h1 className="text-lg">Mentions</h1>
         {unread ? (

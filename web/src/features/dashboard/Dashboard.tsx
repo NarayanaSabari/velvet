@@ -85,7 +85,7 @@ export function Dashboard({ slug }: { slug: string }) {
   const groups = groupByMilestone(data.my_issues, data.milestones)
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-[80rem]">
       <h1 className="mb-4 text-lg">Dashboard</h1>
 
       {canWrite ? (
@@ -106,48 +106,54 @@ export function Dashboard({ slug }: { slug: string }) {
         </p>
       ) : null}
 
-      <Section title={data.active_sprint ? `Sprint ${data.active_sprint.name}` : 'Sprint'}>
-        {data.milestones.length === 0 ? (
-          <EmptyState title="No milestones in the current sprint" />
-        ) : (
-          <div className="divide-y divide-grey-200 border-y border-grey-200">
-            {data.milestones.map((m) => (
-              <MilestoneSummary key={m.id} slug={slug} milestone={m} />
-            ))}
-          </div>
-        )}
-      </Section>
-
-      <Section title="My open issues">
-        {groups.length === 0 ? (
-          <EmptyState title="Nothing assigned to you" message="Enjoy the quiet." />
-        ) : (
-          groups.map(([id, group]) => (
-            <div key={id} className="mb-3">
-              <h3 className="text-sm text-grey-500">{group.name}</h3>
+      <div className="grid gap-x-8 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,30rem)]">
+        <div>
+          <Section title={data.active_sprint ? `Sprint ${data.active_sprint.name}` : 'Sprint'}>
+            {data.milestones.length === 0 ? (
+              <EmptyState title="No milestones in the current sprint" />
+            ) : (
               <div className="divide-y divide-grey-200 border-y border-grey-200">
-                {group.issues.map((issue) => (
-                  <IssueLine key={issue.id} slug={slug} issue={issue} />
+                {data.milestones.map((m) => (
+                  <MilestoneSummary key={m.id} slug={slug} milestone={m} />
                 ))}
               </div>
-            </div>
-          ))
-        )}
-      </Section>
+            )}
+          </Section>
 
-      <Section title="My recent activity">
-        {data.activity.length === 0 ? (
-          <EmptyState title="No activity yet" />
-        ) : (
-          <div className="divide-y divide-grey-200 border-y border-grey-200">
-            {data.activity.map((a) => (
-              <div key={a.id} className="py-1.5">
-                <ActivityRow activity={a} />
+          <Section title="My open issues">
+            {groups.length === 0 ? (
+              <EmptyState title="Nothing assigned to you" message="Enjoy the quiet." />
+            ) : (
+              groups.map(([id, group]) => (
+                <div key={id} className="mb-3">
+                  <h3 className="text-sm text-grey-500">{group.name}</h3>
+                  <div className="divide-y divide-grey-200 border-y border-grey-200">
+                    {group.issues.map((issue) => (
+                      <IssueLine key={issue.id} slug={slug} issue={issue} />
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </Section>
+        </div>
+
+        <div>
+          <Section title="My recent activity">
+            {data.activity.length === 0 ? (
+              <EmptyState title="No activity yet" />
+            ) : (
+              <div className="divide-y divide-grey-200 border-y border-grey-200">
+                {data.activity.map((a) => (
+                  <div key={a.id} className="py-1.5">
+                    <ActivityRow activity={a} />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </Section>
+            )}
+          </Section>
+        </div>
+      </div>
     </div>
   )
 }
