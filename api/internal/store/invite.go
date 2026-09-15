@@ -220,7 +220,7 @@ func AcceptInviteTx(ctx context.Context, tx pgx.Tx, inviteID, userID uuid.UUID) 
 	if err != nil {
 		return m, err
 	}
-	err = tx.QueryRow(ctx, `SELECT m.id,m.workspace_id,w.slug,w.name,m.role::text FROM membership m JOIN workspace w ON w.id=m.workspace_id WHERE m.workspace_id=$1 AND m.user_id=$2`, i.WorkspaceID, userID).Scan(&m.ID, &m.WorkspaceID, &m.Slug, &m.Name, &m.Role)
+	err = tx.QueryRow(ctx, `SELECT m.id,m.workspace_id,w.slug,w.name,w.issue_prefix,m.role::text FROM membership m JOIN workspace w ON w.id=m.workspace_id WHERE m.workspace_id=$1 AND m.user_id=$2`, i.WorkspaceID, userID).Scan(&m.ID, &m.WorkspaceID, &m.Slug, &m.Name, &m.IssuePrefix, &m.Role)
 	if err != nil {
 		return m, err
 	}

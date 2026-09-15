@@ -43,6 +43,7 @@ type Membership struct {
 	WorkspaceID uuid.UUID `json:"workspace_id"`
 	Slug        string    `json:"workspace_slug"`
 	Name        string    `json:"workspace_name"`
+	IssuePrefix string    `json:"issue_prefix"`
 	Role        string    `json:"role"`
 }
 
@@ -191,7 +192,7 @@ func (s *Store) UpsertUserByEmail(ctx context.Context, email string) (User, erro
 
 func (s *Store) MembershipsForUser(ctx context.Context, userID uuid.UUID) ([]Membership, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT m.id, m.workspace_id, w.slug, w.name, m.role::text
+		SELECT m.id, m.workspace_id, w.slug, w.name, w.issue_prefix, m.role::text
 		FROM membership m JOIN workspace w ON w.id = m.workspace_id
 		WHERE m.user_id = $1 ORDER BY w.created_at,w.id`, userID)
 	if err != nil {
@@ -202,7 +203,7 @@ func (s *Store) MembershipsForUser(ctx context.Context, userID uuid.UUID) ([]Mem
 	out := []Membership{}
 	for rows.Next() {
 		var m Membership
-		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.Slug, &m.Name, &m.Role); err != nil {
+		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.Slug, &m.Name, &m.IssuePrefix, &m.Role); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -213,10 +214,10 @@ func (s *Store) MembershipsForUser(ctx context.Context, userID uuid.UUID) ([]Mem
 func (s *Store) MembershipForSlug(ctx context.Context, userID uuid.UUID, slug string) (Membership, error) {
 	var m Membership
 	err := s.pool.QueryRow(ctx, `
-		SELECT m.id, m.workspace_id, w.slug, w.name, m.role::text
+		SELECT m.id, m.workspace_id, w.slug, w.name, w.issue_prefix, m.role::text
 		FROM membership m JOIN workspace w ON w.id = m.workspace_id
 		WHERE m.user_id = $1 AND w.slug = $2`, userID, slug).
-		Scan(&m.ID, &m.WorkspaceID, &m.Slug, &m.Name, &m.Role)
+		Scan(&m.ID, &m.WorkspaceID, &m.Slug, &m.Name, &m.IssuePrefix, &m.Role)
 	return m, mapErr(err)
 }
 

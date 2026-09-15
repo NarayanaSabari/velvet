@@ -29,7 +29,15 @@ export interface Membership {
   workspace_id: string
   workspace_slug: string
   workspace_name: string
+  issue_prefix: string
   role: Role
+}
+
+export interface Workspace {
+  id: string
+  name: string
+  slug: string
+  issue_prefix: string
 }
 
 export interface WorkspaceMembership {

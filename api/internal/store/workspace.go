@@ -7,15 +7,58 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type Workspace struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Slug        string    `json:"slug"`
+	IssuePrefix string    `json:"issue_prefix"`
+}
+
+const VerbRenamedOrganisation = "renamed_organisation"
+
 func (s *Store) CreateWorkspace(ctx context.Context, actorID uuid.UUID, name, slug, prefix string) (Membership, error) {
 	var m Membership
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `INSERT INTO workspace(name,slug,issue_prefix) VALUES ($1,$2,$3) RETURNING id,name,slug`, name, slug, prefix).Scan(&m.WorkspaceID, &m.Name, &m.Slug); err != nil {
+		if err := tx.QueryRow(ctx, `INSERT INTO workspace(name,slug,issue_prefix) VALUES ($1,$2,$3) RETURNING id,name,slug,issue_prefix`, name, slug, prefix).Scan(&m.WorkspaceID, &m.Name, &m.Slug, &m.IssuePrefix); err != nil {
 			return mapErr(err)
 		}
 		return mapErr(tx.QueryRow(ctx, `INSERT INTO membership(workspace_id,user_id,role) VALUES ($1,$2,'admin') RETURNING id,role::text`, m.WorkspaceID, actorID).Scan(&m.ID, &m.Role))
 	})
 	return m, err
+}
+
+// UpdateWorkspaceName locks the workspace and rechecks the actor's admin role
+// before changing its name, so a demoted admin cannot win a race with the
+// request that removed their access.
+func (s *Store) UpdateWorkspaceName(ctx context.Context, workspaceID, actorID uuid.UUID, name string) (Workspace, error) {
+	var out Workspace
+	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceAdminTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
+		var previousName string
+		if err := tx.QueryRow(ctx, `SELECT name FROM workspace WHERE id=$1`, workspaceID).Scan(&previousName); err != nil {
+			return mapErr(err)
+		}
+		if err := tx.QueryRow(ctx, `
+			UPDATE workspace SET name=$1 WHERE id=$2
+			RETURNING id,name,slug,issue_prefix`, name, workspaceID).
+			Scan(&out.ID, &out.Name, &out.Slug, &out.IssuePrefix); err != nil {
+			return mapErr(err)
+		}
+		if previousName == name {
+			return nil
+		}
+		return RecordActivity(ctx, tx, ActivityInput{
+			WorkspaceID: workspaceID,
+			ActorID:     actorID,
+			Verb:        VerbRenamedOrganisation,
+			TargetType:  "workspace",
+			TargetID:    workspaceID,
+			Metadata:    map[string]any{"from": previousName, "to": name},
+		})
+	})
+	return out, err
 }
 
 func lockWorkspaceActorTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID uuid.UUID) (string, error) {

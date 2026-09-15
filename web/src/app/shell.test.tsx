@@ -41,7 +41,7 @@ describe('Shell', () => {
       status: 200,
       json: async () => ({
         user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
-        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', role: 'admin' }],
+        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'admin' }],
       }),
     } as Response))
 
@@ -66,7 +66,7 @@ describe('Shell', () => {
       status: 200,
       json: async () => ({
         user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
-        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', role: 'member' }],
+        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'member' }],
       }),
     } as Response))
 
@@ -86,7 +86,7 @@ describe('Shell', () => {
       status: 200,
       json: async () => ({
         user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
-        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', role: 'member' }],
+        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'member' }],
       }),
     } as Response))
 
@@ -106,7 +106,7 @@ describe('Shell', () => {
       status: 200,
       json: async () => ({
         user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
-        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', role: 'admin' }],
+        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'admin' }],
       }),
     } as Response))
 
@@ -182,7 +182,7 @@ describe('Shell', () => {
       status: 200,
       json: async () => ({
         user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
-        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', role: 'admin' }],
+        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'admin' }],
       }),
     } as Response))
 
