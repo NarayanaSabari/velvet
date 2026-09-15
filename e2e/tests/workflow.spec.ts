@@ -73,6 +73,21 @@ test('the reports page renders all four tables', async ({ signedIn: page }) => {
   await expect(page.getByText(/issues closed per sprint/i)).toBeVisible()
 })
 
+test('the command palette searches an issue title and opens the issue', async ({ signedIn: page }) => {
+  await page.goto('/w/lab')
+
+  await page.keyboard.press('Meta+K')
+  await expect(page.getByTestId('command-palette')).toBeVisible()
+
+  const input = page.getByTestId('command-palette-input')
+  await input.fill('Implement GitHub OAuth')
+  await expect(page.getByRole('option', { name: /ENG-1 Implement GitHub OAuth/ })).toBeVisible()
+
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/w\/lab\/issues\/ENG-1$/)
+  await expect(page.getByText('Implement GitHub OAuth')).toBeVisible()
+})
+
 test('lists are keyboard navigable with j, k, and Enter', async ({ signedIn: page }) => {
   await page.goto('/w/lab/sprints')
 
