@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "velvet": {
+      "command": "/Users/sabari/Developer/narayana/velvet-otter-lab/mcp/run.sh",
+      "args": [],
+      "env": { "VELVET_WORKSPACE": "personal" }
+    }
+  }
+}
