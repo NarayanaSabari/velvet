@@ -194,7 +194,7 @@ function IssueAssignee({ issue, members }: { issue: SprintIssue; members: Map<st
 
   return (
     <span
-      className="inline-flex h-4 w-4 shrink-0 items-center justify-center border border-grey-300 text-[9px] text-grey-500"
+      className="inline-flex h-4 w-4 shrink-0 items-center justify-center border border-grey-300 text-xs text-grey-500"
       title="Unassigned"
       aria-label="Unassigned"
     >
@@ -380,7 +380,7 @@ function SprintHeader({
       <div className="flex flex-wrap items-start gap-4">
         <div className="min-w-0 flex-1">
           <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase">Sprint</p>
-          <h1 className="text-xl font-medium">{sprint.name}</h1>
+          <h1 className="text-lg font-medium">{sprint.name}</h1>
           <p className="mt-1 text-sm text-grey-500">
             {sprint.starts_on} to {sprint.ends_on} · {sprint.state}
           </p>

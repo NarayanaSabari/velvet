@@ -19,10 +19,16 @@
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  --text-xs: 0.75rem;
-  --text-sm: 0.8125rem;
-  --text-base: 0.875rem;
-  --text-lg: 1.125rem;
+  /* The app is read at 100% browser zoom, so even supporting copy remains
+     comfortably legible without relying on per-component overrides. */
+  --text-xs: 0.875rem;
+  --text-xs--line-height: 1.5;
+  --text-sm: 1rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5;
+  --text-lg: 1.5rem;
+  --text-lg--line-height: 1.25;
 }
 
 :root {

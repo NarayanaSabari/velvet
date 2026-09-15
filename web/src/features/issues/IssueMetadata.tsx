@@ -22,7 +22,7 @@ function ChoiceAvatar({ choice }: { choice?: Choice }) {
   return (
     <span
       aria-hidden="true"
-      className="inline-flex h-4 w-4 shrink-0 items-center justify-center border border-grey-300 bg-grey-100 text-[9px]"
+      className="inline-flex h-4 w-4 shrink-0 items-center justify-center border border-grey-300 bg-grey-100 text-xs"
     >
       {choice.label.slice(0, 1).toUpperCase()}
     </span>
