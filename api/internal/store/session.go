@@ -20,7 +20,7 @@ func (s *Store) RememberWorkspace(ctx context.Context, token string, workspaceID
 // earliest workspace. An inaccessible remembered id never reaches the client.
 func (s *Store) LastWorkspace(ctx context.Context, token string) (*Membership, error) {
 	var m Membership
-	err := s.pool.QueryRow(ctx, `SELECT m.id,m.workspace_id,w.slug,w.name,m.role::text FROM session s JOIN membership m ON m.user_id=s.user_id JOIN workspace w ON w.id=m.workspace_id WHERE s.id=$1 ORDER BY (w.id=s.last_workspace_id) DESC NULLS LAST,w.created_at,w.id LIMIT 1`, HashToken(token)).Scan(&m.ID, &m.WorkspaceID, &m.Slug, &m.Name, &m.Role)
+	err := s.pool.QueryRow(ctx, `SELECT m.id,m.workspace_id,w.slug,w.name,w.issue_prefix,m.role::text FROM session s JOIN membership m ON m.user_id=s.user_id JOIN workspace w ON w.id=m.workspace_id WHERE s.id=$1 ORDER BY (w.id=s.last_workspace_id) DESC NULLS LAST,w.created_at,w.id LIMIT 1`, HashToken(token)).Scan(&m.ID, &m.WorkspaceID, &m.Slug, &m.Name, &m.IssuePrefix, &m.Role)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}

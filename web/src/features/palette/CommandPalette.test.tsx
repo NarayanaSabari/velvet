@@ -14,6 +14,7 @@ const membership: Membership = {
   workspace_id: 'w1',
   workspace_slug: 'lab',
   workspace_name: 'Lab',
+  issue_prefix: 'ENG',
   role: 'admin' as const,
 }
 

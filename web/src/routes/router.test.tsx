@@ -28,8 +28,8 @@ describe('public auth routes', () => {
   })
 })
 
-const first = { id: 'm1', workspace_id: 'w1', workspace_slug: 'first', workspace_name: 'First', role: 'member' }
-const last = { id: 'm2', workspace_id: 'w2', workspace_slug: 'last', workspace_name: 'Last', role: 'viewer' }
+const first = { id: 'm1', workspace_id: 'w1', workspace_slug: 'first', workspace_name: 'First', issue_prefix: 'ONE', role: 'member' }
+const last = { id: 'm2', workspace_id: 'w2', workspace_slug: 'last', workspace_name: 'Last', issue_prefix: 'TWO', role: 'viewer' }
 function show(path: string, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   vi.stubGlobal('scrollTo', vi.fn())
   const router = createAppRouter(createMemoryHistory({ initialEntries: [path] }), client)

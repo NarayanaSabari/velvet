@@ -65,6 +65,22 @@ func TestOrganisationCreationRollsBackWithoutCreator(t *testing.T) {
 	require.Zero(t, count)
 }
 
+func TestUpdateWorkspaceNameReturnsTheUpdatedWorkspaceAndRecordsActivity(t *testing.T) {
+	f := testutil.NewFixture(t)
+
+	workspace, err := f.Store.UpdateWorkspaceName(t.Context(), f.WorkspaceID, f.User.ID, "Velvet Otter")
+	require.NoError(t, err)
+	require.Equal(t, f.WorkspaceID, workspace.ID)
+	require.Equal(t, "Velvet Otter", workspace.Name)
+	require.Equal(t, "lab", workspace.Slug)
+	require.Equal(t, "ENG", workspace.IssuePrefix)
+
+	var verb, targetType string
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT verb,target_type FROM activity WHERE workspace_id=$1 ORDER BY id DESC LIMIT 1`, f.WorkspaceID).Scan(&verb, &targetType))
+	require.Equal(t, store.VerbRenamedOrganisation, verb)
+	require.Equal(t, "workspace", targetType)
+}
+
 func TestOrganisationRemovedActorCannotMutateOrLeave(t *testing.T) {
 	f := testutil.NewFixture(t)
 	var id uuid.UUID

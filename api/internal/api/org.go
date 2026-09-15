@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 )
@@ -19,8 +20,34 @@ var reservedOrganisationSlugs = map[string]bool{
 
 func (s *Server) registerOrganisationRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /api/v1/orgs", s.RequireAuth(http.HandlerFunc(s.handleCreateOrganisation)))
+	mux.Handle("PATCH /api/v1/w/{slug}", s.RequireWorkspace(RequireRole("admin")(http.HandlerFunc(s.handleUpdateOrganisation))))
 	mux.Handle("DELETE /api/v1/w/{slug}", s.RequireWorkspace(RequireRole("admin")(http.HandlerFunc(s.handleDeleteOrganisation))))
 	mux.Handle("POST /api/v1/w/{slug}/leave", s.RequireWorkspace(http.HandlerFunc(s.handleLeaveOrganisation)))
+}
+
+func (s *Server) handleUpdateOrganisation(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if !DecodeJSON(w, r, &body) {
+		return
+	}
+	body.Name = strings.TrimSpace(body.Name)
+	if body.Name == "" || utf8.RuneCountInString(body.Name) > 80 {
+		WriteError(w, http.StatusBadRequest, "invalid_request", "organisation name must be between 1 and 80 characters")
+		return
+	}
+
+	ws, _ := CurrentWorkspace(r.Context())
+	user, _ := CurrentUser(r.Context())
+	sinceID, _ := s.store.LatestActivityID(r.Context(), ws.WorkspaceID)
+	workspace, err := s.store.UpdateWorkspaceName(r.Context(), ws.WorkspaceID, user.ID, body.Name)
+	if err != nil {
+		writeOrganisationError(w, err, "could not rename the organisation")
+		return
+	}
+	s.publishRecent(r.Context(), ws.WorkspaceID, sinceID)
+	WriteJSON(w, http.StatusOK, workspace)
 }
 
 func (s *Server) handleCreateOrganisation(w http.ResponseWriter, r *http.Request) {

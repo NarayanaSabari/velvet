@@ -69,6 +69,27 @@ test('a signed-in member lands on their dashboard', async ({ signedIn: page }) =
   await expect(page.getByText('Lab').first()).toBeVisible()
 })
 
+test('an admin can rename the organisation and the sidebar persists it after reload', async ({ signedIn: page }) => {
+  await page.goto('/w/lab/admin')
+
+  const name = page.getByLabel('Organisation name')
+  await expect(name).toHaveValue('Lab')
+  await name.fill('Velvet Otter Lab')
+  const rename = page.waitForResponse((response) =>
+    response.url().endsWith('/api/v1/w/lab') && response.request().method() === 'PATCH',
+  )
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect((await rename).status()).toBe(200)
+  await expect(name).toHaveValue('Velvet Otter Lab')
+  await expect(page.getByText('Velvet Otter Lab').first()).toBeVisible()
+
+  await page.goto('/w/lab')
+  await expect(page.getByText('Velvet Otter Lab').first()).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByText('Velvet Otter Lab').first()).toBeVisible()
+})
+
 test('sprint, milestone, and issue can be created through the UI', async ({ signedIn: page }) => {
   await page.goto('/w/lab/sprints')
   await page.getByText('New sprint').click()

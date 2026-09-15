@@ -66,6 +66,41 @@ func TestOrganisationCreationDoesNotRequireExistingAdminRole(t *testing.T) {
 	}
 }
 
+func TestOrganisationRenameRequiresAdminAndRefreshesMe(t *testing.T) {
+	f := testutil.NewFixture(t)
+
+	r := f.Do("PATCH", "/api/v1/w/lab", map[string]string{"name": "  Velvet Otter  "})
+	require.Equal(t, http.StatusOK, r.Code, r.Body.String())
+	var workspace store.Workspace
+	f.DecodeInto(r, &workspace)
+	require.Equal(t, f.WorkspaceID, workspace.ID)
+	require.Equal(t, "Velvet Otter", workspace.Name)
+	require.Equal(t, "lab", workspace.Slug)
+	require.Equal(t, "ENG", workspace.IssuePrefix)
+
+	r = f.Do(http.MethodGet, "/api/v1/me", nil)
+	require.Equal(t, http.StatusOK, r.Code, r.Body.String())
+	require.Contains(t, r.Body.String(), `"workspace_name":"Velvet Otter"`)
+
+	member, err := f.Store.UpsertUserByEmail(t.Context(), "member@example.com")
+	require.NoError(t, err)
+	_, err = f.Pool.Exec(t.Context(), `INSERT INTO membership(workspace_id,user_id,role) VALUES ($1,$2,'member')`, f.WorkspaceID, member.ID)
+	require.NoError(t, err)
+	memberToken, err := f.Store.CreateSession(t.Context(), member.ID, time.Hour)
+	require.NoError(t, err)
+	memberFixture := *f
+	memberFixture.Token = memberToken
+	require.Equal(t, http.StatusForbidden, memberFixture.Do("PATCH", "/api/v1/w/lab", map[string]string{"name": "Nope"}).Code)
+}
+
+func TestOrganisationRenameRejectsBlankAndOverlongNames(t *testing.T) {
+	f := testutil.NewFixture(t)
+	for _, name := range []string{"", "   ", strings.Repeat("a", 81)} {
+		r := f.Do("PATCH", "/api/v1/w/lab", map[string]string{"name": name})
+		require.Equal(t, http.StatusBadRequest, r.Code, "%q: %s", name, r.Body.String())
+	}
+}
+
 // Concurrent self-removal, leave, and demotion must serialize on the workspace
 // so two admins cannot each rely on the other remaining an admin.
 func TestOrganisationConcurrentLastAdminMutations(t *testing.T) {

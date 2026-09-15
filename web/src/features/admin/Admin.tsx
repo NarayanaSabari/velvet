@@ -8,6 +8,7 @@ import type { Repo, Role, WorkspaceMembership } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { OrganisationPanel } from './OrganisationPanel'
 import { InvitePanel } from './InvitePanel'
 import { GitHubPanel } from './GitHubPanel'
 import { DangerPanel } from './DangerPanel'
@@ -55,6 +56,7 @@ export function Admin({ slug }: { slug: string }) {
     <div className="max-w-[80rem]">
       <h1 className="mb-1 text-lg">Administration</h1>
       <p className="mb-6 text-grey-500">Manage who can enter this organisation and which GitHub repositories supply work evidence.</p>
+      <OrganisationPanel slug={slug} workspace={session.workspace!} />
       <InvitePanel slug={slug} />
       <section className="mb-8" aria-labelledby="members-heading">
         <h2 id="members-heading" className="mb-3 border-b border-grey-200 pb-1 text-base">Members</h2>

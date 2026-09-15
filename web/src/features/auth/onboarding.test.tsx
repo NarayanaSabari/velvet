@@ -12,7 +12,7 @@ import { Profile } from '../profile/Profile'
 import { LeaveOrganisation } from '../orgs/LeaveOrganisation'
 import { DangerPanel } from '../admin/DangerPanel'
 
-const membership = { id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', role: 'viewer' }
+const membership = { id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'viewer' }
 const identity = { id: 'u1', email: 'person@example.com', name: '', github_id: null, github_login: null, avatar_url: '' }
 const invitation = { id: 'i1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', email: 'person@example.com', role: 'member', expires_at: '2026-09-15T00:00:00Z' }
 function response(body: unknown, status = 200) {
