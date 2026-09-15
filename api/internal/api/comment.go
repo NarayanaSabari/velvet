@@ -34,7 +34,7 @@ func (s *Server) registerCommentRoutes(mux *http.ServeMux) {
 // workspace answers 404 rather than commenting across the boundary.
 func (s *Server) issueTargetID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	ws, _ := CurrentWorkspace(r.Context())
-	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, r.PathValue("key"))
+	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, pathIssueKey(r))
 	if err != nil {
 		writeIssueError(w, err)
 		return uuid.Nil, false

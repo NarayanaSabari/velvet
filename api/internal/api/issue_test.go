@@ -28,6 +28,48 @@ func TestIssueKeysIncrementPerWorkspace(t *testing.T) {
 	require.Equal(t, "backlog", first.Status, "an issue starts in the backlog")
 }
 
+func TestIssueKeyPathsNormalizeCaseAndWhitespace(t *testing.T) {
+	f := testutil.NewFixture(t)
+	issue := createIssue(t, f, map[string]any{"title": "Ship it"})
+
+	for _, key := range []string{"eng-1", "eNg-1", "%20eNg-1%20"} {
+		rec := f.Do(http.MethodGet, "/api/v1/w/lab/issues/"+key, nil)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+		var got store.Issue
+		f.DecodeInto(rec, &got)
+		require.Equal(t, issue.ID, got.ID)
+		require.Equal(t, issue.Key, got.Key)
+	}
+
+	for _, key := range []string{"eng-1", "eNg-1"} {
+		rec := f.Do(http.MethodPatch, "/api/v1/w/lab/issues/"+key,
+			map[string]any{"title": "Updated " + key})
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+		var updated store.Issue
+		f.DecodeInto(rec, &updated)
+		require.Equal(t, issue.ID, updated.ID)
+
+		rec = f.Do(http.MethodPost, "/api/v1/w/lab/issues/"+key+"/comments",
+			map[string]any{"body": "A note for " + key})
+		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+		var comment store.Comment
+		f.DecodeInto(rec, &comment)
+		require.Equal(t, issue.ID, comment.TargetID)
+
+		rec = f.Do(http.MethodGet, "/api/v1/w/lab/issues/"+key+"/comments", nil)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var comments struct {
+			Comments []store.Comment `json:"comments"`
+		}
+		f.DecodeInto(rec, &comments)
+		require.NotEmpty(t, comments.Comments)
+		require.Equal(t, issue.ID, comments.Comments[len(comments.Comments)-1].TargetID)
+	}
+}
+
 func TestCreatingAnIssueRecordsActivity(t *testing.T) {
 	f := testutil.NewFixture(t)
 	issue := createIssue(t, f, map[string]any{"title": "Ship it"})

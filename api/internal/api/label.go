@@ -94,7 +94,7 @@ func (s *Server) handleSetIssueLabels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ws, _ := CurrentWorkspace(r.Context())
-	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, r.PathValue("key"))
+	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, pathIssueKey(r))
 	if err != nil {
 		writeIssueError(w, err)
 		return
