@@ -149,6 +149,7 @@ it('links a profile through the distinct authorization endpoint and clears ident
   let linked = true
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (url === '/api/v1/me/github' && init?.method === 'DELETE') { linked = false; return response(null, 204) }
+    if (url === '/api/v1/me/tokens') return response({ tokens: [] })
     return response({ user: { ...identity, github_login: linked ? 'octocat' : null }, memberships: [membership], last_workspace: membership })
   }))
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
