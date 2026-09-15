@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/auth"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 )
 
@@ -27,8 +26,11 @@ func (s *Server) handleGitHubLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := CurrentUser(r.Context())
-	cookie, _ := r.Cookie(auth.CookieName)
-	state, challenge, err := s.store.CreateGitHubLinkAuthorization(r.Context(), cookie.Value, user.ID)
+	session, ok := requireBrowserSession(w, r)
+	if !ok {
+		return
+	}
+	state, challenge, err := s.store.CreateGitHubLinkAuthorization(r.Context(), session, user.ID)
 	if err != nil {
 		writeGitHubAuthorizationError(w, err)
 		return
@@ -39,9 +41,12 @@ func (s *Server) handleGitHubLink(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGitHubAuthorizationCallback(w http.ResponseWriter, r *http.Request) {
 	githubPrivateResponse(w)
 	user, _ := CurrentUser(r.Context())
-	cookie, _ := r.Cookie(auth.CookieName)
+	session, ok := requireBrowserSession(w, r)
+	if !ok {
+		return
+	}
 	state := r.URL.Query().Get("state")
-	a, err := s.store.GetGitHubAuthorization(r.Context(), state, cookie.Value, user.ID)
+	a, err := s.store.GetGitHubAuthorization(r.Context(), state, session, user.ID)
 	if err != nil {
 		writeGitHubAuthorizationError(w, err)
 		return
@@ -54,7 +59,7 @@ func (s *Server) handleGitHubAuthorizationCallback(w http.ResponseWriter, r *htt
 		WriteError(w, 503, "unavailable", "GitHub authorization is unavailable")
 		return
 	}
-	a, err = s.store.ClaimGitHubAuthorization(r.Context(), state, cookie.Value, user.ID, a.Purpose)
+	a, err = s.store.ClaimGitHubAuthorization(r.Context(), state, session, user.ID, a.Purpose)
 	if err != nil {
 		writeGitHubAuthorizationError(w, err)
 		return
@@ -83,7 +88,7 @@ func (s *Server) handleGitHubAuthorizationCallback(w http.ResponseWriter, r *htt
 	}
 	// A completer must have committed a durable receipt. A nil return alone
 	// cannot cause an installation success redirect.
-	receipt, err := s.store.GetGitHubAuthorization(r.Context(), state, cookie.Value, user.ID)
+	receipt, err := s.store.GetGitHubAuthorization(r.Context(), state, session, user.ID)
 	if err != nil {
 		writeGitHubAuthorizationError(w, err)
 		return
@@ -106,8 +111,11 @@ func githubCompletionRedirect(w http.ResponseWriter, r *http.Request, a store.Gi
 func (s *Server) handleGitHubUnlink(w http.ResponseWriter, r *http.Request) {
 	githubPrivateResponse(w)
 	user, _ := CurrentUser(r.Context())
-	cookie, _ := r.Cookie(auth.CookieName)
-	if err := s.store.UnlinkGitHub(r.Context(), cookie.Value, user.ID); err != nil {
+	session, ok := requireBrowserSession(w, r)
+	if !ok {
+		return
+	}
+	if err := s.store.UnlinkGitHub(r.Context(), session, user.ID); err != nil {
 		writeGitHubAuthorizationError(w, err)
 		return
 	}

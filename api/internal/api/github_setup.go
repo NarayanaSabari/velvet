@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/auth"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 )
 
@@ -27,8 +26,11 @@ func (s *Server) handleGitHubConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	ws, _ := CurrentWorkspace(r.Context())
 	user, _ := CurrentUser(r.Context())
-	cookie, _ := r.Cookie(auth.CookieName)
-	state, err := s.store.CreateGitHubSetup(r.Context(), cookie.Value, user.ID, ws.WorkspaceID)
+	session, ok := requireBrowserSession(w, r)
+	if !ok {
+		return
+	}
+	state, err := s.store.CreateGitHubSetup(r.Context(), session, user.ID, ws.WorkspaceID)
 	if err != nil {
 		writeGitHubAuthorizationError(w, err)
 		return
@@ -79,9 +81,12 @@ func (s *Server) handleGitHubSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := CurrentUser(r.Context())
-	cookie, _ := r.Cookie(auth.CookieName)
+	session, ok := requireBrowserSession(w, r)
+	if !ok {
+		return
+	}
 	setup := r.URL.Query().Get("state")
-	slug, err := s.store.CompletedGitHubSetup(r.Context(), setup, cookie.Value, user.ID, candidate)
+	slug, err := s.store.CompletedGitHubSetup(r.Context(), setup, session, user.ID, candidate)
 	if err == nil {
 		http.Redirect(w, r, "/w/"+slug+"/admin", http.StatusFound)
 		return
@@ -90,7 +95,7 @@ func (s *Server) handleGitHubSetup(w http.ResponseWriter, r *http.Request) {
 		writeGitHubAuthorizationError(w, err)
 		return
 	}
-	state, challenge, err := s.store.StartGitHubInstallationAuthorization(r.Context(), setup, cookie.Value, user.ID, candidate)
+	state, challenge, err := s.store.StartGitHubInstallationAuthorization(r.Context(), setup, session, user.ID, candidate)
 	if err != nil {
 		writeGitHubAuthorizationError(w, err)
 		return

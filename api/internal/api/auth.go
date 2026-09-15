@@ -13,6 +13,14 @@ import (
 
 const userKey ctxKey = "user"
 const workspaceKey ctxKey = "workspace"
+const authMethodKey ctxKey = "auth_method"
+
+type authMethod string
+
+const (
+	authMethodCookie authMethod = "cookie"
+	authMethodBearer authMethod = "bearer"
+)
 
 func CurrentUser(ctx context.Context) (store.User, bool) {
 	u, ok := ctx.Value(userKey).(store.User)
@@ -22,6 +30,57 @@ func CurrentUser(ctx context.Context) (store.User, bool) {
 func CurrentWorkspace(ctx context.Context) (store.Membership, bool) {
 	m, ok := ctx.Value(workspaceKey).(store.Membership)
 	return m, ok
+}
+
+func isBearerAuth(ctx context.Context) bool {
+	return ctx.Value(authMethodKey) == authMethodBearer
+}
+
+// bearerTokenFromRequest recognizes the explicit bearer contract. A malformed
+// bearer value still counts as bearer auth so it cannot fall back to a browser
+// cookie supplied on the same request.
+func bearerTokenFromRequest(r *http.Request) (string, bool) {
+	values := r.Header.Values("Authorization")
+	if len(values) == 0 {
+		return "", false
+	}
+	if len(values) != 1 {
+		for _, value := range values {
+			scheme, _, ok := strings.Cut(strings.TrimSpace(value), " ")
+			if (ok || strings.EqualFold(strings.TrimSpace(value), "Bearer")) && strings.EqualFold(scheme, "Bearer") {
+				return "", true
+			}
+		}
+		return "", false
+	}
+	value := strings.TrimSpace(values[0])
+	scheme, token, ok := strings.Cut(value, " ")
+	if !ok {
+		return "", strings.EqualFold(value, "Bearer")
+	}
+	if !strings.EqualFold(scheme, "Bearer") {
+		return "", false
+	}
+	return strings.TrimSpace(token), true
+}
+
+func sessionTokenFromRequest(r *http.Request) (string, bool) {
+	if isBearerAuth(r.Context()) {
+		return "", false
+	}
+	cookie, err := r.Cookie(auth.CookieName)
+	if err != nil || cookie.Value == "" {
+		return "", false
+	}
+	return cookie.Value, true
+}
+
+func requireBrowserSession(w http.ResponseWriter, r *http.Request) (string, bool) {
+	if session, ok := sessionTokenFromRequest(r); ok {
+		return session, true
+	}
+	WriteError(w, http.StatusForbidden, "forbidden", "a browser session is required for this operation")
+	return "", false
 }
 
 func (s *Server) registerAuthRoutes(mux *http.ServeMux) {
@@ -56,11 +115,13 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not read membership")
 		return
 	}
-	cookie, _ := r.Cookie(auth.CookieName)
-	last, err := s.store.LastWorkspace(r.Context(), cookie.Value)
-	if err != nil {
-		WriteError(w, http.StatusInternalServerError, "internal", "could not read the last organisation")
-		return
+	var last *store.Membership
+	if session, ok := sessionTokenFromRequest(r); ok {
+		last, err = s.store.LastWorkspace(r.Context(), session)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "internal", "could not read the last organisation")
+			return
+		}
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{
 		"user":           user,
@@ -75,6 +136,21 @@ func (s *Server) secureCookies() bool {
 
 func (s *Server) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if token, ok := bearerTokenFromRequest(r); ok {
+			user, err := s.store.LookupAPIToken(r.Context(), token)
+			if err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					WriteError(w, http.StatusUnauthorized, "unauthenticated", "sign-in required")
+					return
+				}
+				WriteError(w, http.StatusInternalServerError, "internal", "could not read the API token")
+				return
+			}
+			ctx := context.WithValue(r.Context(), userKey, user)
+			ctx = context.WithValue(ctx, authMethodKey, authMethodBearer)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
 		c, err := r.Cookie(auth.CookieName)
 		if err != nil || c.Value == "" {
 			WriteError(w, http.StatusUnauthorized, "unauthenticated", "sign-in required")
@@ -89,7 +165,9 @@ func (s *Server) RequireAuth(next http.Handler) http.Handler {
 			WriteError(w, http.StatusInternalServerError, "internal", "could not read the session")
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey, user)))
+		ctx := context.WithValue(r.Context(), userKey, user)
+		ctx = context.WithValue(ctx, authMethodKey, authMethodCookie)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
@@ -103,14 +181,17 @@ func (s *Server) RequireWorkspace(next http.Handler) http.Handler {
 			WriteError(w, http.StatusNotFound, "not_found", "no such workspace")
 			return
 		}
-		cookie, _ := r.Cookie(auth.CookieName)
-		response := &workspaceResponseWriter{ResponseWriter: w, remember: func() {
-			if err := s.store.RememberWorkspace(r.Context(), cookie.Value, m.WorkspaceID); err != nil {
-				// The handler may already have committed a mutation. A failed
-				// preference update must not replace its successful response.
-				slog.Error("could not remember organisation", "request_id", r.Context().Value(requestIDKey))
+		remember := func() {}
+		if session, ok := sessionTokenFromRequest(r); ok {
+			remember = func() {
+				if err := s.store.RememberWorkspace(r.Context(), session, m.WorkspaceID); err != nil {
+					// The handler may already have committed a mutation. A failed
+					// preference update must not replace its successful response.
+					slog.Error("could not remember organisation", "request_id", r.Context().Value(requestIDKey))
+				}
 			}
-		}}
+		}
+		response := &workspaceResponseWriter{ResponseWriter: w, remember: remember}
 		next.ServeHTTP(response, r.WithContext(context.WithValue(r.Context(), workspaceKey, m)))
 		if !response.wroteHeader {
 			response.WriteHeader(http.StatusOK)
