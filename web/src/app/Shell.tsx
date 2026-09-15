@@ -235,9 +235,12 @@ export function Shell({
   })
 
   return (
-    <div className="min-h-screen bg-paper sm:flex">
-      <aside className="hidden w-full shrink-0 border-b border-grey-200 p-3 sm:flex sm:min-h-screen sm:w-48 sm:flex-col sm:border-r sm:border-b-0">
-        <div className="mb-4">
+    <div className="min-h-screen bg-paper sm:flex sm:items-start">
+      <aside
+        className="hidden w-full shrink-0 border-b border-grey-200 p-3 sm:sticky sm:top-0 sm:flex sm:h-screen sm:max-h-screen sm:w-48 sm:flex-col sm:overflow-hidden sm:border-r sm:border-b-0"
+        data-testid="desktop-sidebar"
+      >
+        <div className="mb-4 shrink-0" data-testid="desktop-sidebar-header">
           <WorkspaceSwitcher
             memberships={memberships}
             workspaceSlug={workspace.workspace_slug}
@@ -245,7 +248,11 @@ export function Shell({
           />
         </div>
 
-        <nav aria-label="Workspace navigation">
+        <nav
+          aria-label="Workspace navigation"
+          className="min-h-0 flex-1 overflow-y-auto"
+          data-testid="desktop-sidebar-nav"
+        >
           <ul className="space-y-1">
             {NAV.map((item) => (
               <li key={item.label}>
@@ -272,7 +279,7 @@ export function Shell({
           </ul>
         </nav>
 
-        <div className="mt-auto border-t border-grey-200 pt-3">
+        <div className="mt-auto shrink-0 border-t border-grey-200 pt-3" data-testid="desktop-sidebar-footer">
           <button
             type="button"
             data-testid={COMMAND_PALETTE_TEST_IDS.trigger}

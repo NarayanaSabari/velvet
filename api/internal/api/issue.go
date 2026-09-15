@@ -135,7 +135,7 @@ func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGetIssue(w http.ResponseWriter, r *http.Request) {
 	ws, _ := CurrentWorkspace(r.Context())
-	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, r.PathValue("key"))
+	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, pathIssueKey(r))
 	if err != nil {
 		writeIssueError(w, err)
 		return
@@ -206,7 +206,7 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 
 	ws, _ := CurrentWorkspace(r.Context())
 	user, _ := CurrentUser(r.Context())
-	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, r.PathValue("key"))
+	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, pathIssueKey(r))
 	if err != nil {
 		writeIssueError(w, err)
 		return

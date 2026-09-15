@@ -31,7 +31,7 @@ func (s *Server) registerGitHubRoutes(mux *http.ServeMux) {
 
 func (s *Server) handleIssueEvidence(w http.ResponseWriter, r *http.Request) {
 	ws, _ := CurrentWorkspace(r.Context())
-	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, r.PathValue("key"))
+	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, pathIssueKey(r))
 	if err != nil {
 		writeIssueError(w, err)
 		return
@@ -65,7 +65,7 @@ func (s *Server) handleAttachPR(w http.ResponseWriter, r *http.Request) {
 
 	ws, _ := CurrentWorkspace(r.Context())
 	user, _ := CurrentUser(r.Context())
-	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, r.PathValue("key"))
+	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, pathIssueKey(r))
 	if err != nil {
 		writeIssueError(w, err)
 		return
@@ -88,7 +88,7 @@ func (s *Server) handleDetachPR(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ws, _ := CurrentWorkspace(r.Context())
-	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, r.PathValue("key"))
+	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, pathIssueKey(r))
 	if err != nil {
 		writeIssueError(w, err)
 		return

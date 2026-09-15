@@ -159,6 +159,67 @@ test('the workspace navigation does not consume half a phone screen', async ({ s
   expect(main?.x).toBe(0)
 })
 
+test('the desktop sidebar stays contained at normal and short viewport heights', async ({ signedIn: page }) => {
+  for (const viewport of [
+    { width: 1024, height: 900 },
+    // A narrower viewport approximates the CSS viewport at increased browser zoom.
+    { width: 768, height: 640 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/w/lab')
+
+    const sidebar = page.getByTestId('desktop-sidebar')
+    await expect(sidebar).toBeVisible()
+    const metrics = await page.evaluate(() => {
+      const sidebar = document.querySelector<HTMLElement>('[data-testid="desktop-sidebar"]')
+      const header = document.querySelector<HTMLElement>('[data-testid="desktop-sidebar-header"]')
+      const nav = document.querySelector<HTMLElement>('[data-testid="desktop-sidebar-nav"]')
+      const footer = document.querySelector<HTMLElement>('[data-testid="desktop-sidebar-footer"]')
+      const main = document.querySelector<HTMLElement>('main')
+      if (!sidebar || !header || !nav || !footer || !main) return null
+
+      const sidebarRect = sidebar.getBoundingClientRect()
+      const headerRect = header.getBoundingClientRect()
+      const footerRect = footer.getBoundingClientRect()
+      const mainRect = main.getBoundingClientRect()
+      const navStyle = getComputedStyle(nav)
+      return {
+        viewportHeight: window.innerHeight,
+        viewportWidth: window.innerWidth,
+        sidebarTop: sidebarRect.top,
+        sidebarHeight: sidebarRect.height,
+        sidebarRight: sidebarRect.right,
+        headerTop: headerRect.top,
+        footerBottom: footerRect.bottom,
+        sidebarBottom: sidebarRect.bottom,
+        navOverflowY: navStyle.overflowY,
+        navFlexGrow: navStyle.flexGrow,
+        mainLeft: mainRect.left,
+        mainRight: mainRect.right,
+      }
+    })
+
+    expect(metrics).not.toBeNull()
+    expect(metrics?.viewportHeight).toBe(viewport.height)
+    expect(metrics?.viewportWidth).toBe(viewport.width)
+    expect(metrics?.sidebarTop).toBe(0)
+    expect(metrics?.sidebarHeight).toBe(viewport.height)
+    expect(metrics?.headerTop).toBeGreaterThanOrEqual(metrics?.sidebarTop ?? 0)
+    expect(metrics?.footerBottom).toBeLessThanOrEqual(metrics?.sidebarBottom ?? 0)
+    expect(metrics?.navOverflowY).toBe('auto')
+    expect(metrics?.navFlexGrow).toBe('1')
+    expect(metrics?.mainLeft).toBeGreaterThanOrEqual(metrics?.sidebarRight ?? 0)
+    expect(metrics?.mainRight).toBeLessThanOrEqual(metrics?.viewportWidth ?? 0)
+  }
+})
+
+test('a lowercase issue URL loads the canonical issue key', async ({ signedIn: page }) => {
+  const response = await page.goto('/w/lab/issues/eng-1')
+  expect(response?.status()).toBe(200)
+  await expect(page.getByTestId('issue-header')).toBeVisible()
+  await expect(page.getByTestId('issue-header').getByText('ENG-1', { exact: true })).toBeVisible()
+})
+
 test('a deep link survives a hard refresh', async ({ signedIn: page }) => {
   // Without try_files in the Caddyfile this 404s, which is a deployment bug no
   // client-side navigation would ever reveal.
