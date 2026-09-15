@@ -33,7 +33,7 @@ const NAV_ACTIVE = 'border-l-ink bg-grey-100 font-medium'
 const MENU_ITEM =
   'block rounded-[6px] px-2 py-1.5 text-sm hover:bg-grey-100 focus-visible:bg-grey-100'
 const TAB_ITEM =
-  'flex min-h-12 flex-col items-center justify-center rounded-[6px] px-1 py-1 text-[0.6875rem] leading-tight text-grey-700 hover:bg-grey-100 focus-visible:bg-grey-100'
+  'flex min-h-12 flex-col items-center justify-center rounded-[6px] px-1 py-1 text-xs leading-tight text-grey-700 hover:bg-grey-100 focus-visible:bg-grey-100'
 
 function WorkspaceSwitcher({
   memberships,
@@ -288,7 +288,7 @@ export function Shell({
             onClick={() => setPaletteOpen(true)}
           >
             <span>Command palette</span>
-            <kbd className="rounded border border-grey-300 px-1 py-0.5 font-mono text-[0.6875rem]">⌘K</kbd>
+            <kbd className="rounded border border-grey-300 px-1 py-0.5 font-mono text-xs">⌘K</kbd>
           </button>
           <AccountMenu
             base={base}

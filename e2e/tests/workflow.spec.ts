@@ -213,6 +213,112 @@ test('the desktop sidebar stays contained at normal and short viewport heights',
   }
 })
 
+test('uses readable type at 100% zoom without disturbing responsive layout', async ({ signedIn: page }) => {
+  for (const viewport of [
+    { width: 1720, height: 1040 },
+    { width: 1024, height: 640 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/w/lab')
+    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+
+    const metrics = await page.evaluate(() => {
+      const sidebar = document.querySelector<HTMLElement>('[data-testid="desktop-sidebar"]')
+      const footer = document.querySelector<HTMLElement>('[data-testid="desktop-sidebar-footer"]')
+      const nav = document.querySelector<HTMLElement>('[data-testid="desktop-sidebar-nav"]')
+      const size = (selector: string) => {
+        const element = document.querySelector<HTMLElement>(selector)
+        return element ? getComputedStyle(element).fontSize : null
+      }
+      const sidebarRect = sidebar?.getBoundingClientRect()
+      const footerRect = footer?.getBoundingClientRect()
+      const paddingBottom = sidebar ? Number.parseFloat(getComputedStyle(sidebar).paddingBottom) : null
+
+      return {
+        body: size('body'),
+        heading: size('h1'),
+        nav: size('[data-testid="desktop-sidebar-nav"] a'),
+        footerButton: size('[data-testid="desktop-sidebar-footer"] > button'),
+        formInput: size('details input'),
+        formButton: size('details button'),
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+        footerPinned: sidebarRect && footerRect && paddingBottom !== null
+          ? Math.abs(footerRect.bottom - (sidebarRect.bottom - paddingBottom)) < 1
+          : false,
+        navOverflowY: nav ? getComputedStyle(nav).overflowY : null,
+      }
+    })
+
+    expect(metrics.body).toBe('16px')
+    expect(metrics.heading).toBe('24px')
+    expect(Number.parseFloat(metrics.nav ?? '0')).toBeGreaterThanOrEqual(14)
+    expect(Number.parseFloat(metrics.footerButton ?? '0')).toBeGreaterThanOrEqual(14)
+    expect(metrics.formInput).toBe('16px')
+    expect(metrics.formButton).toBe('16px')
+    expect(metrics.documentWidth).toBeLessThanOrEqual(metrics.viewportWidth)
+    expect(metrics.footerPinned).toBe(true)
+    expect(metrics.navOverflowY).toBe('auto')
+  }
+
+  await page.setViewportSize({ width: 1720, height: 1040 })
+  await page.goto('/w/lab/issues/ENG-1')
+  await expect(page.getByTestId('issue-header')).toBeVisible()
+  const issueMetrics = await page.evaluate(() => {
+    const size = (selector: string) => {
+      const element = document.querySelector<HTMLElement>(selector)
+      return element ? getComputedStyle(element).fontSize : null
+    }
+    return {
+      key: size('[data-testid="issue-header"] p'),
+      heading: size('[data-testid="issue-main"] h1'),
+      commentInput: size('textarea'),
+      statusButton: size('[data-testid="issue-status-select"] button'),
+      select: size('[data-testid="issue-sidebar"] select'),
+      metadataLabel: size('[data-testid="issue-metadata"] label > span:first-child'),
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+    }
+  })
+
+  expect(issueMetrics.key).toBe('14px')
+  expect(issueMetrics.heading).toBe('24px')
+  expect(issueMetrics.commentInput).toBe('16px')
+  expect(issueMetrics.statusButton).toBe('16px')
+  expect(issueMetrics.select).toBe('16px')
+  expect(issueMetrics.metadataLabel).toBe('14px')
+  expect(issueMetrics.documentWidth).toBeLessThanOrEqual(issueMetrics.viewportWidth)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/w/lab')
+  await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible()
+  const mobileMetrics = await page.evaluate(() => {
+    const size = (selector: string) => {
+      const element = document.querySelector<HTMLElement>(selector)
+      return element ? getComputedStyle(element).fontSize : null
+    }
+    const main = document.querySelector<HTMLElement>('main')
+    const nav = document.querySelector<HTMLElement>('nav[aria-label="Mobile navigation"]')
+    return {
+      body: size('body'),
+      heading: size('h1'),
+      tab: size('nav[aria-label="Mobile navigation"] a'),
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+      mainLeft: main?.getBoundingClientRect().left ?? null,
+      navBottom: nav?.getBoundingClientRect().bottom ?? null,
+      viewportHeight: window.innerHeight,
+    }
+  })
+
+  expect(mobileMetrics.body).toBe('16px')
+  expect(mobileMetrics.heading).toBe('24px')
+  expect(mobileMetrics.tab).toBe('14px')
+  expect(mobileMetrics.documentWidth).toBeLessThanOrEqual(mobileMetrics.viewportWidth)
+  expect(mobileMetrics.mainLeft).toBe(0)
+  expect(mobileMetrics.navBottom).toBe(mobileMetrics.viewportHeight)
+})
+
 test('a lowercase issue URL loads the canonical issue key', async ({ signedIn: page }) => {
   const response = await page.goto('/w/lab/issues/eng-1')
   expect(response?.status()).toBe(200)

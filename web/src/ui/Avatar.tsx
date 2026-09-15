@@ -1,7 +1,7 @@
 import type { User } from '../lib/types'
 import { userLabel } from '../lib/userLabel'
 
-const SIZES = { sm: 'h-4 w-4 text-[9px]', md: 'h-6 w-6 text-xs' } as const
+const SIZES = { sm: 'h-4 w-4 text-xs', md: 'h-6 w-6 text-xs' } as const
 
 export function Avatar({ user, size = 'sm' }: { user: User | null; size?: 'sm' | 'md' }) {
   const label = userLabel(user)
