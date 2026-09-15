@@ -39,6 +39,11 @@ var (
 	ErrInvalidEmail = errors.New("invalid email")
 	// ErrInvalidIP reports an address that cannot be canonically represented.
 	ErrInvalidIP = errors.New("invalid IP address")
+	// ErrInvalidAPITokenName reports a token name that cannot be used.
+	ErrInvalidAPITokenName = errors.New("invalid API token name")
+	// ErrAPITokenLimit reports that a user already has the maximum number of
+	// personal API tokens.
+	ErrAPITokenLimit = errors.New("API token limit reached")
 )
 
 type Store struct {

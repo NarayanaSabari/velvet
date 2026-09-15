@@ -208,10 +208,11 @@ func (s *Server) handleAcceptMyInvite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) rememberAcceptedInvite(w http.ResponseWriter, r *http.Request, m store.Membership) {
-	cookie, _ := r.Cookie(auth.CookieName)
-	if err := s.store.RememberWorkspace(r.Context(), cookie.Value, m.WorkspaceID); err != nil {
-		writeInviteAcceptanceError(w, err)
-		return
+	if session, ok := sessionTokenFromRequest(r); ok {
+		if err := s.store.RememberWorkspace(r.Context(), session, m.WorkspaceID); err != nil {
+			writeInviteAcceptanceError(w, err)
+			return
+		}
 	}
 	WriteJSON(w, http.StatusOK, m)
 }

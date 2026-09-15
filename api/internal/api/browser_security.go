@@ -17,6 +17,13 @@ func (s *Server) browserMutations(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// An explicit bearer credential is not sent automatically by a browser,
+		// so it is not vulnerable to cookie CSRF. This middleware is browser-only,
+		// so bearer requests skip both its Origin and browser content-type checks.
+		if bearerRequest(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if origin == "" || canonicalOrigin(r.Header.Get("Origin"), false) != origin || len(r.Header.Values("Origin")) != 1 {
 			WriteError(w, http.StatusForbidden, "forbidden", "same-origin request required")
 			return
@@ -28,6 +35,11 @@ func (s *Server) browserMutations(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func bearerRequest(r *http.Request) bool {
+	_, ok := bearerTokenFromRequest(r)
+	return ok
 }
 
 // canonicalOrigin follows URL origin semantics for the two HTTP schemes this
