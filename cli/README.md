@@ -27,6 +27,12 @@ envkit run -- ./cli/velvet me
 
 Do not create a `.env` file for the token.
 
+## MCP server
+
+For coding agents, [`mcp/`](../mcp/) provides typed stdio tools for the same API, including work-log comments, ticket lookup, ticket creation, issue lists, status changes, and milestones.
+Prefer the MCP tools when the current agent exposes them, and use this CLI as the portable fallback.
+The MCP server uses the same `VELVET_URL`, `VELVET_TOKEN`, and `VELVET_WORKSPACE` environment variables, with envkit supplying the token.
+
 ## Commands
 
 ```text
