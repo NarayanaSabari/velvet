@@ -37,7 +37,7 @@ export function TeamFeed({ slug }: { slug: string }) {
   const rows = query.data?.pages.flatMap((page) => page.activity) ?? []
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-[80rem]">
       <h1 className="mb-4 text-lg">Team feed</h1>
 
       <div className="mb-3 flex gap-2 text-sm">

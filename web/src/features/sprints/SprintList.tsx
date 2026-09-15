@@ -27,7 +27,7 @@ export function SprintList({ slug }: { slug: string }) {
   const sprints = query.data.sprints
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-[80rem]">
       <h1 className="mb-4 text-lg">Sprints</h1>
       {workspace?.role === 'admin' ? (
         <details className="mb-4">
