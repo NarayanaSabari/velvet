@@ -1,0 +1,26 @@
+{
+  "name": "velvet-mcp",
+  "version": "0.1.0",
+  "description": "Typed stdio MCP tools for the Velvet work-log API",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "velvet-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
