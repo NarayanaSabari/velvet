@@ -48,6 +48,10 @@ describe('Shell', () => {
     renderShell()
     await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
     expect(screen.getByText('content')).toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Workspace navigation' })).getByRole('link', { name: 'Issues' })).toHaveAttribute(
+      'href',
+      '/w/lab/issues',
+    )
     expect(screen.getByRole('link', { name: 'Administration' })).toHaveAttribute(
       'href',
       '/w/lab/admin',
@@ -115,7 +119,7 @@ describe('Shell', () => {
 
     const mobileNavigation = screen.getByRole('navigation', { name: 'Mobile navigation' })
     expect(within(mobileNavigation).getByRole('link', { name: 'Dashboard' })).toBeInTheDocument()
-    expect(within(mobileNavigation).getByRole('link', { name: 'Feed' })).toBeInTheDocument()
+    expect(within(mobileNavigation).getByRole('link', { name: 'Issues' })).toBeInTheDocument()
     expect(within(mobileNavigation).getByRole('link', { name: 'Sprints' })).toBeInTheDocument()
     expect(within(mobileNavigation).getByRole('link', { name: 'Mentions' })).toBeInTheDocument()
 
@@ -123,11 +127,34 @@ describe('Shell', () => {
     const moreMenu = document.getElementById('mobile-more-menu')
     expect(moreMenu).not.toBeNull()
     if (!moreMenu) return
+    expect(within(moreMenu).getByRole('link', { name: 'Team feed' })).toBeInTheDocument()
     expect(within(moreMenu).getByRole('link', { name: 'Unlinked PRs' })).toBeInTheDocument()
     expect(within(moreMenu).getByRole('link', { name: 'Reports' })).toBeInTheDocument()
     expect(within(moreMenu).getByRole('link', { name: 'Administration' })).toBeInTheDocument()
     expect(within(moreMenu).getByRole('link', { name: 'Profile' })).toBeInTheDocument()
     expect(within(moreMenu).getByRole('link', { name: 'New organisation' })).toBeInTheDocument()
+  })
+
+  it('marks the Issues tab active on mobile without selecting Team feed', async () => {
+    window.history.replaceState({}, '', '/w/lab/issues')
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
+        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'admin' }],
+      }),
+    } as Response))
+
+    renderShell('lab')
+    await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
+
+    const mobileNavigation = screen.getByRole('navigation', { name: 'Mobile navigation' })
+    const issues = within(mobileNavigation).getByRole('link', { name: 'Issues' })
+    expect(issues).toHaveAttribute('aria-current', 'page')
+    expect(issues).toHaveClass('bg-grey-100', 'font-medium', 'text-ink')
+    expect(within(mobileNavigation).queryByRole('link', { name: 'Team feed' })).toBeNull()
   })
 
   it('signs out with POST, clears the cached session, and navigates to sign-in', async () => {

@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
 } from 'react'
 
-import { api } from '../../lib/api'
+import { api, listAllWorkspaceIssues } from '../../lib/api'
 import type { Issue, Membership, Milestone, Role } from '../../lib/types'
 import { COMMAND_PALETTE_TEST_IDS } from './paletteTestIds'
 
@@ -265,13 +265,12 @@ export function CommandPalette({
 
     let cancelled = false
     const timer = window.setTimeout(() => {
-      void api
-        .get<{ issues: Issue[] }>(`/w/${slug}/issues?limit=200`)
+      void listAllWorkspaceIssues(slug)
         .then((result) => {
           if (cancelled) return
-          const prefix = result.issues.find((issue) => issue.key.includes('-'))?.key.split('-')[0]
+          const prefix = result.find((issue) => issue.key.includes('-'))?.key.split('-')[0]
           if (prefix) setIssuePrefix(prefix)
-          setIssueResults(result.issues)
+          setIssueResults(result)
           setSelectedIndex(0)
         })
         .catch(() => {
@@ -292,6 +291,7 @@ export function CommandPalette({
     const base = `/w/${slug}`
     const items: PaletteCommand[] = [
       { id: 'dashboard', label: 'Dashboard', keywords: ['home'], run: () => navigate(base) },
+      { id: 'issues', label: 'Issues', keywords: ['tickets', 'work'], run: () => navigate(`${base}/issues`) },
       { id: 'feed', label: 'Team feed', keywords: ['activity'], run: () => navigate(`${base}/feed`) },
       { id: 'sprints', label: 'Sprints', keywords: ['iterations'], run: () => navigate(`${base}/sprints`) },
       { id: 'mentions', label: 'Mentions', keywords: ['notifications'], run: () => navigate(`${base}/mentions`) },

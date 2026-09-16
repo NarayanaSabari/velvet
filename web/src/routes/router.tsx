@@ -22,6 +22,7 @@ import { TeamFeed } from '../features/feed/TeamFeed'
 import { SprintList } from '../features/sprints/SprintList'
 import { SprintBoard } from '../features/sprints/SprintBoard'
 import { MilestonePage } from '../features/milestones/MilestonePage'
+import { IssuesPage } from '../features/issues/IssuesPage'
 import { IssuePage } from '../features/issues/IssuePage'
 import { UnlinkedPRs } from '../features/evidence/UnlinkedPRs'
 import { Reports } from '../features/reports/Reports'
@@ -100,6 +101,15 @@ const issueRoute = createRoute({
   },
 })
 
+const issuesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug/issues',
+  component: function IssuesRoute() {
+    const { slug } = issuesRoute.useParams()
+    return <IssuesPage slug={slug} />
+  },
+})
+
 const reportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/w/$slug/reports',
@@ -143,6 +153,7 @@ const routes = [
   sprintsRoute,
   sprintRoute,
   milestoneRoute,
+  issuesRoute,
   issueRoute,
   unlinkedRoute,
   mentionsRoute,

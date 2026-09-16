@@ -93,7 +93,7 @@ describe('CommandPalette', () => {
     await user.keyboard('{ArrowDown}')
     await user.keyboard('{Enter}')
 
-    expect(navigate).toHaveBeenCalledWith('/w/lab/feed')
+    expect(navigate).toHaveBeenCalledWith('/w/lab/issues')
     expect(screen.queryByTestId(COMMAND_PALETTE_TEST_IDS.root)).toBeNull()
     expect(input).not.toBeInTheDocument()
   })
