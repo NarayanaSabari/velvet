@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Issue, Membership, User } from '../../lib/types'
+import type { Issue, Membership, Milestone, User } from '../../lib/types'
 import { IssuesPage } from './IssuesPage'
 
 const member: User = {
@@ -20,6 +20,19 @@ const membership: Membership = {
   workspace_name: 'Lab',
   issue_prefix: 'ENG',
   role: 'admin',
+}
+const milestone: Milestone = {
+  id: 'm2',
+  workspace_id: 'w1',
+  sprint_id: 's1',
+  name: 'Ship the Issues layout',
+  description: '',
+  owner_id: null,
+  target_date: null,
+  status: 'planned',
+  position: 'a',
+  created_at: '',
+  updated_at: '',
 }
 
 function issue(overrides: Partial<Issue> = {}): Issue {
@@ -59,6 +72,9 @@ function setupFetch(initialIssues: Issue[]) {
     }
     if (input === '/api/v1/w/lab/members') {
       return Promise.resolve(response({ members: [member] }))
+    }
+    if (input === '/api/v1/w/lab/milestones') {
+      return Promise.resolve(response({ milestones: [milestone] }))
     }
     if (input.startsWith('/api/v1/w/lab/issues')) {
       if (init?.method === 'POST') {
@@ -102,6 +118,7 @@ describe('IssuesPage', () => {
     const fetchMock = vi.fn().mockImplementation((input: string) => {
       if (input === '/api/v1/me') return Promise.resolve(response({ user: member, memberships: [membership], last_workspace: membership }))
       if (input === '/api/v1/w/lab/members') return Promise.resolve(response({ members: [member] }))
+      if (input === '/api/v1/w/lab/milestones') return Promise.resolve(response({ milestones: [milestone] }))
       if (input === '/api/v1/w/lab/issues?limit=200') return Promise.resolve(response({ issues: [first], next_cursor: 'next' }))
       if (input === '/api/v1/w/lab/issues?limit=200&cursor=next') return Promise.resolve(response({ issues: [second], next_cursor: '' }))
       return Promise.resolve(response({}))
@@ -116,6 +133,10 @@ describe('IssuesPage', () => {
       'href',
       '/w/lab/issues/ENG-1',
     )
+    const filedRow = screen.getByTestId('issue-row-i2')
+    expect(filedRow).toHaveTextContent('Ship the Issues layout')
+    expect(filedRow).not.toHaveTextContent('Filed to milestone')
+    expect(screen.getByTestId('issues-list')).toHaveClass('divide-y', 'border-y')
     expect(screen.getByText('Filed work')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=200', expect.anything())
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=200&cursor=next', expect.anything())

@@ -3,6 +3,7 @@ import { test, expect, resetWorkspaceData, seededSessionToken, seedWorkspace, sq
 test.describe.configure({ mode: 'serial' })
 
 let assigneeId = ''
+const longTitle = 'A long issue title that wraps without widening the Issues page at narrow viewport widths'
 
 test.beforeAll(async ({ playwright, baseURL }) => {
   resetWorkspaceData()
@@ -36,6 +37,20 @@ test.beforeAll(async ({ playwright, baseURL }) => {
     data: { title: 'Done launch note', status: 'done', priority: 4 },
   })
   expect(done.status()).toBe(201)
+  const sprint = await api.post('/api/v1/w/lab/sprints', {
+    data: { name: 'Issues layout sprint', starts_on: '2026-09-01', ends_on: '2026-09-30' },
+  })
+  expect(sprint.status()).toBe(201)
+  const sprintData = await sprint.json() as { id: string }
+  const milestone = await api.post(`/api/v1/w/lab/sprints/${sprintData.id}/milestones`, {
+    data: { name: 'Ship the Issues layout' },
+  })
+  expect(milestone.status()).toBe(201)
+  const milestoneData = await milestone.json() as { id: string }
+  const filed = await api.post('/api/v1/w/lab/issues', {
+    data: { title: longTitle, milestone_id: milestoneData.id },
+  })
+  expect(filed.status()).toBe(201)
   const other = await api.post('/api/v1/w/other/issues', {
     data: { title: 'Other workspace secret issue', priority: 2 },
   })
@@ -55,11 +70,18 @@ test('navigates the workspace Issues page and completes the issue workflow', asy
   const desktopNavigation = page.getByRole('navigation', { name: 'Workspace navigation' })
   await expect(desktopNavigation.getByRole('link', { name: 'Issues' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByText('Unfiled accessibility audit')).toBeVisible()
+  await expect(page.getByText('Ship the Issues layout')).toBeVisible()
+  const issuesList = page.getByTestId('issues-list')
+  await expect(issuesList).toHaveClass(/divide-y/)
+  await expect(issuesList).toHaveClass(/border-y/)
+  await expect(issuesList).not.toHaveClass(/space-y/)
 
   const issueLink = page.getByRole('link', { name: /ENG-1/ })
   await expect(issueLink.getByText('Unfiled', { exact: true })).toBeVisible()
   await expect(issueLink).toHaveAttribute('href', '/w/lab/issues/ENG-1')
-  await issueLink.click()
+  await issueLink.focus()
+  await expect(issueLink).toBeFocused()
+  await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/w\/lab\/issues\/ENG-1$/)
   await expect(page.getByText('Unfiled accessibility audit')).toBeVisible()
   await page.goBack()
@@ -92,7 +114,47 @@ test('navigates the workspace Issues page and completes the issue workflow', asy
   await page.getByTestId('issues-clear-filters').click()
   await expect(page.getByText('Done launch note')).toBeVisible()
 
+  const issueIds = await page.locator('[data-testid^="issue-row-"]').evaluateAll((rows) =>
+    rows
+      .map((row) => row.getAttribute('data-testid')?.replace('issue-row-', ''))
+      .filter((id): id is string => Boolean(id)),
+  )
+  const columns = ['key', 'title', 'status', 'priority', 'assignee', 'milestone'] as const
+  for (const column of columns) {
+    const boxes = await Promise.all(
+      issueIds.map((id) => page.getByTestId(`issue-${column}-${id}`).boundingBox()),
+    )
+    const xPositions = boxes.flatMap((box) => box ? [box.x] : [])
+    expect(xPositions).toHaveLength(issueIds.length)
+    expect(Math.max(...xPositions) - Math.min(...xPositions)).toBeLessThanOrEqual(1)
+  }
+  const titleBox = await page.getByTestId(`issue-title-${issueIds[0]}`).boundingBox()
+  const assigneeBox = await page.getByTestId(`issue-assignee-${issueIds[0]}`).boundingBox()
+  expect(titleBox?.width ?? 0).toBeGreaterThan(assigneeBox?.width ?? 0)
+
   await page.screenshot({ path: 'test-results/issues-page-desktop.png', fullPage: true })
+  await page.screenshot({ path: 'test-results/issues-page-desktop-light.png', fullPage: true })
+  for (const width of [1024, 768] as const) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/w/lab/issues')
+    await expect(page.getByTestId('issues-list')).toBeVisible()
+    const metrics = await page.evaluate(() => ({
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+      mainWidth: document.querySelector('main')?.getBoundingClientRect().width ?? 0,
+    }))
+    expect(metrics.documentWidth).toBeLessThanOrEqual(metrics.viewportWidth)
+    expect(metrics.mainWidth).toBeLessThanOrEqual(metrics.viewportWidth)
+    await page.screenshot({ path: `test-results/issues-layout-after-${width}-light.png`, fullPage: true })
+  }
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto('/w/lab/issues')
+  await expect(page.getByTestId('issues-list')).toBeVisible()
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.reload()
+  await expect(page.getByText('Ship the Issues layout')).toBeVisible()
+  await page.screenshot({ path: 'test-results/issues-page-desktop-dark.png', fullPage: true })
+  await page.emulateMedia({ colorScheme: 'light' })
 
   await page.goto('/w/other/issues')
   await expect(page.getByText('Other workspace secret issue')).toBeVisible()
@@ -111,6 +173,7 @@ test('keeps the Issues page readable and contained on mobile', async ({ signedIn
   await expect(mobileNavigation.getByRole('link', { name: 'Feed' })).toHaveCount(0)
   await mobileNavigation.getByRole('button', { name: 'More' }).click()
   await expect(page.getByRole('menu').getByRole('link', { name: 'Team feed' })).toBeVisible()
+  await expect(page.getByText(longTitle)).toBeVisible()
 
   const metrics = await page.evaluate(() => ({
     documentWidth: document.documentElement.scrollWidth,
@@ -119,5 +182,13 @@ test('keeps the Issues page readable and contained on mobile', async ({ signedIn
   }))
   expect(metrics.documentWidth).toBeLessThanOrEqual(metrics.viewportWidth)
   expect(metrics.mainWidth).toBeLessThanOrEqual(metrics.viewportWidth)
+  const titleBox = await page.getByText(longTitle).boundingBox()
+  expect(titleBox?.width ?? 0).toBeLessThanOrEqual(metrics.mainWidth)
   await page.screenshot({ path: 'test-results/issues-page-mobile.png', fullPage: true })
+  await page.screenshot({ path: 'test-results/issues-page-mobile-light.png', fullPage: true })
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.reload()
+  await expect(page.getByText(longTitle)).toBeVisible()
+  await page.screenshot({ path: 'test-results/issues-page-mobile-dark.png', fullPage: true })
+  await page.emulateMedia({ colorScheme: 'light' })
 })
