@@ -13,7 +13,7 @@ import { IssueForm, type IssueInput } from '../work/CoreForms'
 
 const ISSUE_STATUSES = Object.keys(STATUS_LABELS) as IssueStatus[]
 const ISSUE_PRIORITIES = [0, 1, 2, 3, 4] as const
-const controlClass = 'min-h-10 w-full rounded-[6px] border border-grey-300 bg-paper px-2 py-1.5 text-sm text-ink'
+const controlClass = 'min-h-10 w-full border border-grey-300 bg-paper px-1 py-0.5 text-sm text-ink md:min-h-8'
 
 function issueMatchesSearch(issue: Issue, search: string) {
   if (!search) return true
@@ -162,14 +162,10 @@ export function IssuesPage({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[80rem]" data-testid="issues-page">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+    <div className="w-full max-w-[80rem]" data-testid="issues-page">
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs tracking-wide text-grey-500 uppercase">Workspace</p>
-          <h1 className="mt-1 text-lg">Issues</h1>
-          <p className="mt-1 max-w-prose text-sm text-grey-500">
-            Every issue in {workspace?.workspace_name ?? 'this workspace'}, including unfiled work.
-          </p>
+          <h1 className="text-lg">Issues</h1>
         </div>
         {canWrite && !creatingIssue ? (
           <Button variant="primary" onClick={() => setCreatingIssue(true)}>New issue</Button>
@@ -177,7 +173,7 @@ export function IssuesPage({ slug }: { slug: string }) {
       </header>
 
       {creatingIssue ? (
-        <section className="mt-5 border border-grey-200 p-3" aria-labelledby="new-issue-heading">
+        <section className="mb-4 border border-grey-200 p-3" aria-labelledby="new-issue-heading">
           <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
             <div>
               <h2 id="new-issue-heading" className="text-base">New issue</h2>
@@ -189,8 +185,8 @@ export function IssuesPage({ slug }: { slug: string }) {
         </section>
       ) : null}
 
-      <section className="mt-6 border-y border-grey-200 py-3" aria-label="Issue filters">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto]">
+      <section className="border-y border-grey-200 py-2" aria-label="Issue filters">
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto]">
           <label className="block min-w-0 text-sm">
             <span className="mb-1 block text-grey-500">Search issues</span>
             <input
@@ -257,7 +253,7 @@ export function IssuesPage({ slug }: { slug: string }) {
         </div>
       </section>
 
-      <section className="mt-6" aria-labelledby="all-issues-heading">
+      <section className="mt-4" aria-labelledby="all-issues-heading">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="all-issues-heading" className="text-xs tracking-wide text-grey-500 uppercase">All issues</h2>
           {!issues.isPending && !issues.error ? (

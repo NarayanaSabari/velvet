@@ -142,6 +142,29 @@ describe('IssuesPage', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=200&cursor=next', expect.anything())
   })
 
+  it('uses the sibling page alignment and compact, labeled filter controls', async () => {
+    setupFetch([issue()])
+    renderPage()
+
+    const page = await screen.findByTestId('issues-page')
+    expect(page).toHaveClass('w-full', 'max-w-[80rem]')
+    expect(page).not.toHaveClass('mx-auto')
+    expect(screen.queryByText('Workspace', { exact: true })).toBeNull()
+    expect(screen.queryByText(/Every issue in/)).toBeNull()
+
+    expect(screen.getByRole('region', { name: 'Issue filters' })).toBeInTheDocument()
+    for (const testId of [
+      'issues-search',
+      'issues-status-filter',
+      'issues-assignee-filter',
+      'issues-priority-filter',
+    ]) {
+      expect(screen.getByTestId(testId)).toHaveClass('min-h-10', 'md:min-h-8')
+    }
+    expect(screen.getByLabelText('Search issues')).toBe(screen.getByTestId('issues-search'))
+    expect(screen.getByLabelText('Filter by status')).toBe(screen.getByTestId('issues-status-filter'))
+  })
+
   it('filters by search, status, assignee, and priority, then clears them', async () => {
     const target = issue({
       id: 'target',

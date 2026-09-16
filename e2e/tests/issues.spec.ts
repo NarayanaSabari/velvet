@@ -1,14 +1,76 @@
 import { test, expect, resetWorkspaceData, seededSessionToken, seedWorkspace, sql } from './fixtures'
+import type { Page } from '@playwright/test'
 
 test.describe.configure({ mode: 'serial' })
 
 let assigneeId = ''
 const longTitle = 'A long issue title that wraps without widening the Issues page at narrow viewport widths'
 
+type PageGeometry = {
+  root: { left: number; right: number } | null
+  heading: { top: number; height: number } | null
+  controlHeights: number[]
+  documentWidth: number
+  viewportWidth: number
+  mainWidth: number
+}
+
+async function readPageGeometry(page: Page, kind: 'issues' | 'feed'): Promise<PageGeometry> {
+  return page.evaluate((pageKind) => {
+    const heading = document.querySelector('h1')
+    const root = pageKind === 'issues' ? document.querySelector('[data-testid="issues-page"]') : heading?.parentElement
+    const controls = pageKind === 'issues'
+      ? [
+          '[data-testid="issues-search"]',
+          '[data-testid="issues-status-filter"]',
+          '[data-testid="issues-assignee-filter"]',
+          '[data-testid="issues-priority-filter"]',
+        ].map((selector) => document.querySelector(selector))
+      : [...document.querySelectorAll('select')]
+    const rect = (element: Element | null) => {
+      const box = element?.getBoundingClientRect()
+      return box ? { left: box.left, right: box.right, top: box.top, height: box.height } : null
+    }
+    const rootBox = rect(root)
+    const headingBox = rect(heading)
+    return {
+      root: rootBox ? { left: rootBox.left, right: rootBox.right } : null,
+      heading: headingBox ? { top: headingBox.top, height: headingBox.height } : null,
+      controlHeights: controls.flatMap((control) => {
+        const box = rect(control)
+        return box ? [box.height] : []
+      }),
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+      mainWidth: document.querySelector('main')?.getBoundingClientRect().width ?? 0,
+    }
+  }, kind)
+}
+
+async function assertSiblingGeometry(issuePage: Page, feedPage: Page, expectedIssueControls: number) {
+  const [issues, feed] = await Promise.all([
+    readPageGeometry(issuePage, 'issues'),
+    readPageGeometry(feedPage, 'feed'),
+  ])
+  expect(issues.root).not.toBeNull()
+  expect(feed.root).not.toBeNull()
+  expect(issues.heading).not.toBeNull()
+  expect(feed.heading).not.toBeNull()
+  expect(issues.controlHeights).toHaveLength(expectedIssueControls)
+  expect(feed.controlHeights.length).toBeGreaterThan(0)
+  expect(Math.abs((issues.root?.left ?? 0) - (feed.root?.left ?? 0))).toBeLessThanOrEqual(1)
+  expect(Math.abs((issues.heading?.top ?? 0) - (feed.heading?.top ?? 0))).toBeLessThanOrEqual(1)
+  expect(Math.abs((issues.heading?.height ?? 0) - (feed.heading?.height ?? 0))).toBeLessThanOrEqual(1)
+  expect(Math.max(...issues.controlHeights)).toBeLessThanOrEqual(32)
+  expect(Math.max(...feed.controlHeights)).toBeLessThanOrEqual(32)
+  return { issues, feed }
+}
+
 test.beforeAll(async ({ playwright, baseURL }) => {
   resetWorkspaceData()
   const token = seededSessionToken()
   seedWorkspace(token, 'other')
+  seedWorkspace(token, 'empty')
   sql(`
     INSERT INTO workspace (name, slug, issue_prefix)
     VALUES ('Hidden', 'hidden', 'HID')
@@ -59,7 +121,7 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 })
 
 test.afterAll(() => {
-  sql(`DELETE FROM workspace WHERE slug IN ('other', 'hidden')`)
+  sql(`DELETE FROM workspace WHERE slug IN ('other', 'empty', 'hidden')`)
 })
 
 test('navigates the workspace Issues page and completes the issue workflow', async ({ signedIn: page, request }) => {
@@ -162,6 +224,54 @@ test('navigates the workspace Issues page and completes the issue workflow', asy
 
   const hiddenWorkspace = await request.get('/api/v1/w/hidden/issues')
   expect(hiddenWorkspace.status()).toBe(404)
+})
+
+test('matches Team feed alignment and control density at wide and responsive widths', async ({ signedIn: page }) => {
+  const feedPage = await page.context().newPage()
+
+  try {
+    for (const state of [
+      { name: 'populated', slug: 'lab' },
+      { name: 'empty', slug: 'empty' },
+    ] as const) {
+      await page.setViewportSize({ width: 1720, height: 1000 })
+      await feedPage.setViewportSize({ width: 1720, height: 1000 })
+      await Promise.all([
+        page.goto(`/w/${state.slug}/issues`),
+        feedPage.goto(`/w/${state.slug}/feed`),
+      ])
+      await expect(page.getByRole('heading', { name: 'Issues', exact: true })).toBeVisible()
+      await expect(feedPage.getByRole('heading', { name: 'Team feed', exact: true })).toBeVisible()
+      if (state.name === 'populated') {
+        await expect(page.getByTestId('issues-list')).toBeVisible()
+      } else {
+        await expect(page.getByTestId('issues-empty')).toBeVisible()
+        await expect(feedPage.getByText('Nothing here yet')).toBeVisible()
+      }
+
+      const geometry = await assertSiblingGeometry(page, feedPage, 4)
+      console.log(`[issues consistency] ${state.name} 1720: ${JSON.stringify(geometry)}`)
+      await page.screenshot({ path: `test-results/issues-sibling-${state.name}-1720.png`, fullPage: true })
+      await feedPage.screenshot({ path: `test-results/team-feed-sibling-${state.name}-1720.png`, fullPage: true })
+    }
+
+    for (const width of [768, 390] as const) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+      await page.goto('/w/lab/issues')
+      await expect(page.getByTestId('issues-list')).toBeVisible()
+      const issues = await readPageGeometry(page, 'issues')
+      expect(issues.documentWidth).toBeLessThanOrEqual(issues.viewportWidth)
+      expect(issues.mainWidth).toBeLessThanOrEqual(issues.viewportWidth)
+      expect(issues.controlHeights).toHaveLength(4)
+      if (width === 390) {
+        expect(Math.min(...issues.controlHeights)).toBeGreaterThanOrEqual(40)
+      }
+      console.log(`[issues consistency] ${width}: ${JSON.stringify(issues)}`)
+      await page.screenshot({ path: `test-results/issues-sibling-${width}.png`, fullPage: true })
+    }
+  } finally {
+    await feedPage.close()
+  }
 })
 
 test('keeps the Issues page readable and contained on mobile', async ({ signedIn: page }) => {
