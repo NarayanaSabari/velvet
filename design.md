@@ -103,6 +103,10 @@ Use the existing 4px spacing scale with 8px row insets, 12px control or card pad
 
 Keep the mobile bottom safe-area inset used by `Shell.tsx` and do not introduce horizontal overflow to recover hidden content.
 
+Workspace pages that share a shell must use the same left content edge and heading rhythm as their closest sibling pages rather than centering one page in isolation.
+
+For wide-layout work, compare the changed page and its closest sibling side by side at 1720x1000 in both empty and populated states, checking the page edge, heading baseline, and control density before finalizing the layout.
+
 ## Page archetypes
 
 ### Shared shell
