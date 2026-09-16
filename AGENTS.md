@@ -2,7 +2,7 @@
 
 Read [`design.md`](design.md) before any UI, layout, interaction, or visual review work.
 
-`design.md` is the source of truth for design rules, tokens, page archetypes, accessibility, responsive behavior, and the known Issues-page deviation.
+`design.md` is the source of truth for design rules, tokens, page archetypes, accessibility, responsive behavior, and UI review guidance.
 
 This file describes repository structure, safe working practice, and verified commands without duplicating the design system.
 

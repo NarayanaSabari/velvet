@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { NavLink } from '../../app/nav'
 import { useSession } from '../auth/useSession'
 import { api, listAllWorkspaceIssues } from '../../lib/api'
-import type { Issue, IssueStatus, User } from '../../lib/types'
+import type { Issue, IssueStatus, Milestone, User } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
@@ -28,23 +28,51 @@ function assigneeName(issue: Issue, members: Map<string, User>) {
     : `Assigned member (${issue.assignee_id.slice(0, 8)})`
 }
 
-function IssueRow({ issue, members, slug }: { issue: Issue; members: Map<string, User>; slug: string }) {
+function IssueRow({
+  issue,
+  members,
+  milestones,
+  slug,
+}: {
+  issue: Issue
+  members: Map<string, User>
+  milestones: Map<string, string>
+  slug: string
+}) {
+  const assignee = assigneeName(issue, members)
+  const milestone = issue.milestone_id
+    ? milestones.get(issue.milestone_id) ?? 'Milestone'
+    : 'Unfiled'
+
   return (
     <li data-testid={`issue-row-${issue.id}`}>
       <NavLink
         to={`/w/${slug}/issues/${issue.key}`}
-        className="block rounded-[8px] border border-grey-200 p-3 hover:bg-grey-100 focus-visible:bg-grey-100"
+        className="block px-2 py-3 hover:bg-grey-100 focus-visible:bg-grey-100"
       >
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-grey-500">
-          <span className="font-mono">{issue.key}</span>
-          <StatusBadge status={issue.status} />
-          <span aria-label={`Priority P${issue.priority}`}>P{issue.priority}</span>
-        </div>
-        <p className="mt-1 break-words text-sm font-medium text-ink">{issue.title}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-grey-500">
-          <span>{issue.milestone_id ? 'Filed to milestone' : 'Unfiled'}</span>
-          <span aria-hidden="true">·</span>
-          <span>{assigneeName(issue, members)}</span>
+        <div className="grid min-w-0 gap-2 md:grid-cols-[5rem_minmax(0,1fr)_auto_auto_minmax(8rem,1fr)_minmax(10rem,1.25fr)] md:items-center md:gap-x-4">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 md:contents">
+            <span className="shrink-0 font-mono text-xs text-grey-500">{issue.key}</span>
+            <span className="min-w-0 break-words text-sm font-medium text-ink">{issue.title}</span>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-grey-500 md:contents">
+            <StatusBadge status={issue.status} />
+            <span className="shrink-0" aria-label={`Priority P${issue.priority}`}>P{issue.priority}</span>
+            <span
+              className="min-w-0 max-w-full truncate"
+              aria-label={`Assignee: ${assignee}`}
+              title={`Assignee: ${assignee}`}
+            >
+              {assignee}
+            </span>
+            <span
+              className="min-w-0 max-w-full truncate"
+              aria-label={`Milestone: ${milestone}`}
+              title={`Milestone: ${milestone}`}
+            >
+              {milestone}
+            </span>
+          </div>
         </div>
       </NavLink>
     </li>
@@ -69,6 +97,10 @@ export function IssuesPage({ slug }: { slug: string }) {
     queryKey: ['members', slug],
     queryFn: async () => (await api.get<{ members: User[] }>(`/w/${slug}/members`)).members,
   })
+  const milestones = useQuery({
+    queryKey: ['milestones', slug, 'all'],
+    queryFn: () => api.get<{ milestones: Milestone[] }>(`/w/${slug}/milestones`),
+  })
   const createIssue = useMutation({
     mutationFn: (input: IssueInput) => api.post<Issue>(`/w/${slug}/issues`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['issues', slug] }),
@@ -78,6 +110,10 @@ export function IssuesPage({ slug }: { slug: string }) {
   const membersById = useMemo(
     () => new Map((members.data ?? []).map((member) => [member.id, member])),
     [members.data],
+  )
+  const milestonesById = useMemo(
+    () => new Map((milestones.data?.milestones ?? []).map((milestone) => [milestone.id, milestone.name])),
+    [milestones.data],
   )
   const assigneeOptions = useMemo(() => {
     const options = new Map<string, string>()
@@ -245,9 +281,19 @@ export function IssuesPage({ slug }: { slug: string }) {
             />
           </div>
         ) : (
-          <ul className="space-y-2" data-testid="issues-list">
+          <ul
+            className="divide-y divide-grey-200 border-y border-grey-200"
+            data-testid="issues-list"
+            aria-labelledby="all-issues-heading"
+          >
             {filteredIssues.map((issue) => (
-              <IssueRow key={issue.id} issue={issue} members={membersById} slug={slug} />
+              <IssueRow
+                key={issue.id}
+                issue={issue}
+                members={membersById}
+                milestones={milestonesById}
+                slug={slug}
+              />
             ))}
           </ul>
         )}

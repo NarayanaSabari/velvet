@@ -255,17 +255,13 @@ Typing an organisation slug is required for organisation deletion, and equivalen
 
 A pull request merge, evidence attachment, branch name, or deployment event never authorizes an automatic issue status change.
 
-## Known deviation: Issues page
+## Resolved deviation: Issues page
 
-The current `web/src/features/issues/IssuesPage.tsx` renders each `IssueRow` as a separate `rounded-[8px] border border-grey-200 p-3` link and wraps the collection in `space-y-2`.
+`web/src/features/issues/IssuesPage.tsx` now renders issues as a dense row-based list with shared top and bottom boundaries and dividers between rows.
 
-That is a card-like issue layout and it differs from the shared `List` treatment in `web/src/features/issues/IssueList.tsx` and the `divide-y border-y` rows in `web/src/features/sprints/SprintBoard.tsx`.
+The rows preserve the issue links, filtering behavior, count, create flow, loading state, error retry, empty state, no-results state, and accessible names while exposing status, priority, assignee, and milestone metadata responsively.
 
-The desired standard is a dense row-based issue list with shared boundaries and dividers, not a new card per issue.
-
-A future implementation may change the presentation while preserving the current route links, filtering behavior, count, create flow, loading state, error retry, empty state, no-results state, and accessible names.
-
-This documentation change does not implement that migration and does not claim that the Issues page is fixed.
+This resolves the Issues-page card-layout deviation only.
 
 ## Validation and review protocol
 

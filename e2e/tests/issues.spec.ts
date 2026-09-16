@@ -3,6 +3,7 @@ import { test, expect, resetWorkspaceData, seededSessionToken, seedWorkspace, sq
 test.describe.configure({ mode: 'serial' })
 
 let assigneeId = ''
+const longTitle = 'A long issue title that wraps without widening the Issues page at narrow viewport widths'
 
 test.beforeAll(async ({ playwright, baseURL }) => {
   resetWorkspaceData()
@@ -36,6 +37,20 @@ test.beforeAll(async ({ playwright, baseURL }) => {
     data: { title: 'Done launch note', status: 'done', priority: 4 },
   })
   expect(done.status()).toBe(201)
+  const sprint = await api.post('/api/v1/w/lab/sprints', {
+    data: { name: 'Issues layout sprint', starts_on: '2026-09-01', ends_on: '2026-09-30' },
+  })
+  expect(sprint.status()).toBe(201)
+  const sprintData = await sprint.json() as { id: string }
+  const milestone = await api.post(`/api/v1/w/lab/sprints/${sprintData.id}/milestones`, {
+    data: { name: 'Ship the Issues layout' },
+  })
+  expect(milestone.status()).toBe(201)
+  const milestoneData = await milestone.json() as { id: string }
+  const filed = await api.post('/api/v1/w/lab/issues', {
+    data: { title: longTitle, milestone_id: milestoneData.id },
+  })
+  expect(filed.status()).toBe(201)
   const other = await api.post('/api/v1/w/other/issues', {
     data: { title: 'Other workspace secret issue', priority: 2 },
   })
@@ -55,11 +70,16 @@ test('navigates the workspace Issues page and completes the issue workflow', asy
   const desktopNavigation = page.getByRole('navigation', { name: 'Workspace navigation' })
   await expect(desktopNavigation.getByRole('link', { name: 'Issues' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByText('Unfiled accessibility audit')).toBeVisible()
+  await expect(page.getByText('Ship the Issues layout')).toBeVisible()
+  await expect(page.getByTestId('issues-list')).toHaveClass(/divide-y/)
+  await expect(page.getByTestId('issues-list')).toHaveClass(/border-y/)
 
   const issueLink = page.getByRole('link', { name: /ENG-1/ })
   await expect(issueLink.getByText('Unfiled', { exact: true })).toBeVisible()
   await expect(issueLink).toHaveAttribute('href', '/w/lab/issues/ENG-1')
-  await issueLink.click()
+  await issueLink.focus()
+  await expect(issueLink).toBeFocused()
+  await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/w\/lab\/issues\/ENG-1$/)
   await expect(page.getByText('Unfiled accessibility audit')).toBeVisible()
   await page.goBack()
@@ -93,6 +113,12 @@ test('navigates the workspace Issues page and completes the issue workflow', asy
   await expect(page.getByText('Done launch note')).toBeVisible()
 
   await page.screenshot({ path: 'test-results/issues-page-desktop.png', fullPage: true })
+  await page.screenshot({ path: 'test-results/issues-page-desktop-light.png', fullPage: true })
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.reload()
+  await expect(page.getByText('Ship the Issues layout')).toBeVisible()
+  await page.screenshot({ path: 'test-results/issues-page-desktop-dark.png', fullPage: true })
+  await page.emulateMedia({ colorScheme: 'light' })
 
   await page.goto('/w/other/issues')
   await expect(page.getByText('Other workspace secret issue')).toBeVisible()
@@ -111,6 +137,7 @@ test('keeps the Issues page readable and contained on mobile', async ({ signedIn
   await expect(mobileNavigation.getByRole('link', { name: 'Feed' })).toHaveCount(0)
   await mobileNavigation.getByRole('button', { name: 'More' }).click()
   await expect(page.getByRole('menu').getByRole('link', { name: 'Team feed' })).toBeVisible()
+  await expect(page.getByText(longTitle)).toBeVisible()
 
   const metrics = await page.evaluate(() => ({
     documentWidth: document.documentElement.scrollWidth,
@@ -119,5 +146,13 @@ test('keeps the Issues page readable and contained on mobile', async ({ signedIn
   }))
   expect(metrics.documentWidth).toBeLessThanOrEqual(metrics.viewportWidth)
   expect(metrics.mainWidth).toBeLessThanOrEqual(metrics.viewportWidth)
+  const titleBox = await page.getByText(longTitle).boundingBox()
+  expect(titleBox?.width ?? 0).toBeLessThanOrEqual(metrics.mainWidth)
   await page.screenshot({ path: 'test-results/issues-page-mobile.png', fullPage: true })
+  await page.screenshot({ path: 'test-results/issues-page-mobile-light.png', fullPage: true })
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.reload()
+  await expect(page.getByText(longTitle)).toBeVisible()
+  await page.screenshot({ path: 'test-results/issues-page-mobile-dark.png', fullPage: true })
+  await page.emulateMedia({ colorScheme: 'light' })
 })
