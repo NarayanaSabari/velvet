@@ -71,8 +71,10 @@ test('navigates the workspace Issues page and completes the issue workflow', asy
   await expect(desktopNavigation.getByRole('link', { name: 'Issues' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByText('Unfiled accessibility audit')).toBeVisible()
   await expect(page.getByText('Ship the Issues layout')).toBeVisible()
-  await expect(page.getByTestId('issues-list')).toHaveClass(/divide-y/)
-  await expect(page.getByTestId('issues-list')).toHaveClass(/border-y/)
+  const issuesList = page.getByTestId('issues-list')
+  await expect(issuesList).toHaveClass(/divide-y/)
+  await expect(issuesList).toHaveClass(/border-y/)
+  await expect(issuesList).not.toHaveClass(/space-y/)
 
   const issueLink = page.getByRole('link', { name: /ENG-1/ })
   await expect(issueLink.getByText('Unfiled', { exact: true })).toBeVisible()
@@ -112,8 +114,42 @@ test('navigates the workspace Issues page and completes the issue workflow', asy
   await page.getByTestId('issues-clear-filters').click()
   await expect(page.getByText('Done launch note')).toBeVisible()
 
+  const issueIds = await page.locator('[data-testid^="issue-row-"]').evaluateAll((rows) =>
+    rows
+      .map((row) => row.getAttribute('data-testid')?.replace('issue-row-', ''))
+      .filter((id): id is string => Boolean(id)),
+  )
+  const columns = ['key', 'title', 'status', 'priority', 'assignee', 'milestone'] as const
+  for (const column of columns) {
+    const boxes = await Promise.all(
+      issueIds.map((id) => page.getByTestId(`issue-${column}-${id}`).boundingBox()),
+    )
+    const xPositions = boxes.flatMap((box) => box ? [box.x] : [])
+    expect(xPositions).toHaveLength(issueIds.length)
+    expect(Math.max(...xPositions) - Math.min(...xPositions)).toBeLessThanOrEqual(1)
+  }
+  const titleBox = await page.getByTestId(`issue-title-${issueIds[0]}`).boundingBox()
+  const assigneeBox = await page.getByTestId(`issue-assignee-${issueIds[0]}`).boundingBox()
+  expect(titleBox?.width ?? 0).toBeGreaterThan(assigneeBox?.width ?? 0)
+
   await page.screenshot({ path: 'test-results/issues-page-desktop.png', fullPage: true })
   await page.screenshot({ path: 'test-results/issues-page-desktop-light.png', fullPage: true })
+  for (const width of [1024, 768] as const) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/w/lab/issues')
+    await expect(page.getByTestId('issues-list')).toBeVisible()
+    const metrics = await page.evaluate(() => ({
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+      mainWidth: document.querySelector('main')?.getBoundingClientRect().width ?? 0,
+    }))
+    expect(metrics.documentWidth).toBeLessThanOrEqual(metrics.viewportWidth)
+    expect(metrics.mainWidth).toBeLessThanOrEqual(metrics.viewportWidth)
+    await page.screenshot({ path: `test-results/issues-layout-after-${width}-light.png`, fullPage: true })
+  }
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto('/w/lab/issues')
+  await expect(page.getByTestId('issues-list')).toBeVisible()
   await page.emulateMedia({ colorScheme: 'dark' })
   await page.reload()
   await expect(page.getByText('Ship the Issues layout')).toBeVisible()

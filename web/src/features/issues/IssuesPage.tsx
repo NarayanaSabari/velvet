@@ -50,18 +50,27 @@ function IssueRow({
         to={`/w/${slug}/issues/${issue.key}`}
         className="block px-2 py-3 hover:bg-grey-100 focus-visible:bg-grey-100"
       >
-        <div className="grid min-w-0 gap-2 md:grid-cols-[5rem_minmax(0,1fr)_auto_auto_minmax(8rem,1fr)_minmax(10rem,1.25fr)] md:items-center md:gap-x-4">
+        <div className="grid min-w-0 gap-2 md:grid-cols-[5rem_minmax(0,1fr)] md:items-center xl:grid-cols-[5rem_minmax(0,1fr)_8rem_4rem_12rem_14rem] xl:gap-x-4">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 md:contents">
-            <span className="shrink-0 font-mono text-xs text-grey-500">{issue.key}</span>
-            <span className="min-w-0 break-words text-sm font-medium text-ink">{issue.title}</span>
+            <span className="shrink-0 font-mono text-xs text-grey-500" data-testid={`issue-key-${issue.id}`}>
+              {issue.key}
+            </span>
+            <span className="min-w-0 break-words text-sm font-medium text-ink" data-testid={`issue-title-${issue.id}`}>
+              {issue.title}
+            </span>
           </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-grey-500 md:contents">
-            <StatusBadge status={issue.status} />
-            <span className="shrink-0" aria-label={`Priority P${issue.priority}`}>P{issue.priority}</span>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-grey-500 md:col-span-2 xl:contents">
+            <span className="min-w-0" data-testid={`issue-status-${issue.id}`}>
+              <StatusBadge status={issue.status} />
+            </span>
+            <span className="shrink-0" aria-label={`Priority P${issue.priority}`} data-testid={`issue-priority-${issue.id}`}>
+              P{issue.priority}
+            </span>
             <span
               className="min-w-0 max-w-full truncate"
               aria-label={`Assignee: ${assignee}`}
               title={`Assignee: ${assignee}`}
+              data-testid={`issue-assignee-${issue.id}`}
             >
               {assignee}
             </span>
@@ -69,6 +78,7 @@ function IssueRow({
               className="min-w-0 max-w-full truncate"
               aria-label={`Milestone: ${milestone}`}
               title={`Milestone: ${milestone}`}
+              data-testid={`issue-milestone-${issue.id}`}
             >
               {milestone}
             </span>
