@@ -13,6 +13,7 @@ import { NavLink } from './nav'
 
 const NAV = [
   { label: 'Dashboard', path: '' },
+  { label: 'Issues', path: '/issues' },
   { label: 'Team feed', path: '/feed' },
   { label: 'Sprints', path: '/sprints' },
   { label: 'Mentions', path: '/mentions' },
@@ -22,7 +23,7 @@ const NAV = [
 
 const MOBILE_NAV = [
   { label: 'Dashboard', path: '' },
-  { label: 'Feed', path: '/feed' },
+  { label: 'Issues', path: '/issues' },
   { label: 'Sprints', path: '/sprints' },
   { label: 'Mentions', path: '/mentions' },
 ] as const
@@ -180,6 +181,7 @@ function MoreMenu({
             : 'pointer-events-none invisible scale-[0.97] opacity-0'
         }`}
       >
+        <MenuLink to={`${base}/feed`}>Team feed</MenuLink>
         <MenuLink to={`${base}/unlinked`}>Unlinked PRs</MenuLink>
         <MenuLink to={`${base}/reports`}>Reports</MenuLink>
         {isAdmin ? <MenuLink to={`${base}/admin`}>Administration</MenuLink> : null}

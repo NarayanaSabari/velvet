@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { api, ApiError } from './api'
+import { api, ApiError, listAllWorkspaceIssues } from './api'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -61,5 +61,46 @@ describe('api', () => {
   it('returns undefined for a 204 rather than parsing an empty body', async () => {
     stubFetch(204, undefined)
     await expect(api.del('/w/lab/comments/1')).resolves.toBeUndefined()
+  })
+
+  it('walks every cursor page when loading all workspace issues', async () => {
+    const issue = (id: string, number: number) => ({
+      id,
+      workspace_id: 'w1',
+      key: `ENG-${number}`,
+      number,
+      title: `Issue ${number}`,
+      description: '',
+      status: 'backlog',
+      priority: 0,
+      assignee_id: null,
+      milestone_id: null,
+      parent_id: null,
+      position: String.fromCharCode(96 + number),
+      created_by: null,
+      created_at: '',
+      updated_at: '',
+    })
+    const first = issue('i1', 1)
+    const second = issue('i2', 2)
+    const firstResponse = {
+      ok: true,
+      status: 200,
+      json: async () => ({ issues: [first], next_cursor: 'next' }),
+    } as unknown as Response
+    const secondResponse = {
+      ok: true,
+      status: 200,
+      json: async () => ({ issues: [second], next_cursor: '' }),
+    } as unknown as Response
+    const spy = vi.fn().mockImplementation((path: string) =>
+      Promise.resolve(path.includes('cursor=next') ? secondResponse : firstResponse))
+    vi.stubGlobal('fetch', spy)
+
+    await expect(listAllWorkspaceIssues('lab')).resolves.toEqual([first, second])
+    expect(spy.mock.calls.map(([path]) => path)).toEqual([
+      '/api/v1/w/lab/issues?limit=200',
+      '/api/v1/w/lab/issues?limit=200&cursor=next',
+    ])
   })
 })

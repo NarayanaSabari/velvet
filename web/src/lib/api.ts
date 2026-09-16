@@ -1,3 +1,5 @@
+import type { Issue } from './types'
+
 const BASE = '/api/v1'
 
 export class ApiError extends Error {
@@ -46,4 +48,34 @@ export const api = {
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   del: (path: string, body?: unknown) => request<void>('DELETE', path, body),
+}
+
+interface IssueListPage {
+  issues: Issue[]
+  next_cursor?: string | null
+}
+
+/**
+ * The issue endpoint is cursor-paginated for bounded server work.
+ * Consumers that need a workspace-wide view must explicitly walk every page
+ * rather than assuming the default or maximum limit is the complete result.
+ */
+export async function listAllWorkspaceIssues(slug: string): Promise<Issue[]> {
+  const issues: Issue[] = []
+  let cursor = ''
+
+  for (;;) {
+    const params = new URLSearchParams({ limit: '200' })
+    if (cursor) params.set('cursor', cursor)
+
+    const page = await api.get<IssueListPage>(`/w/${slug}/issues?${params.toString()}`)
+    issues.push(...page.issues)
+
+    const nextCursor = page.next_cursor ?? ''
+    if (!nextCursor || page.issues.length === 0) return issues
+    if (nextCursor === cursor) {
+      throw new Error('issue pagination did not advance')
+    }
+    cursor = nextCursor
+  }
 }
