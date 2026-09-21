@@ -11,6 +11,8 @@ import type {
   Project,
   ProjectsResponse,
   RepoResolution,
+  Sprint,
+  SprintsResponse,
   TicketDetails,
   UpdateIssueInput,
   VelvetConfig,
@@ -254,6 +256,38 @@ export class VelvetApi {
     )
     const milestones = Array.isArray(response) ? response : response.milestones
     return Array.isArray(milestones) ? milestones : []
+  }
+
+  async listSprints(): Promise<Sprint[]> {
+    const response = await this.request<SprintsResponse | Sprint[]>(
+      'GET',
+      `/w/${encodePath(this.workspace)}/sprints`,
+      undefined,
+      `no such workspace ${this.workspace}`,
+    )
+    const sprints = Array.isArray(response) ? response : response.sprints
+    return Array.isArray(sprints) ? sprints : []
+  }
+
+  async createSprint(input: { name: string; starts_on: string; ends_on: string }): Promise<Sprint> {
+    return this.request<Sprint>(
+      'POST',
+      `/w/${encodePath(this.workspace)}/sprints`,
+      input,
+      `no such workspace ${this.workspace}`,
+    )
+  }
+
+  async createMilestone(
+    sprintID: string,
+    input: { name: string; description?: string; target_date?: string },
+  ): Promise<Milestone> {
+    return this.request<Milestone>(
+      'POST',
+      `/w/${encodePath(this.workspace)}/sprints/${encodePath(sprintID)}/milestones`,
+      input,
+      `no such sprint in workspace ${this.workspace}`,
+    )
   }
 
   private async request<T>(

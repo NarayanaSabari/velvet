@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -168,17 +169,17 @@ func (s *Server) handleGetIssue(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Title       *string `json:"title"`
-		Description *string `json:"description"`
-		Status      *string `json:"status"`
-		Priority    *int    `json:"priority"`
-		AssigneeID  *string `json:"assignee_id"`
-		MilestoneID *string `json:"milestone_id"`
-		ProjectID   *string `json:"project_id"`
-		Project     *string `json:"project"`
-		ParentID    *string `json:"parent_id"`
-		AfterID     *string `json:"after_id"`
-		BeforeID    *string `json:"before_id"`
+		Title       *string         `json:"title"`
+		Description *string         `json:"description"`
+		Status      *string         `json:"status"`
+		Priority    *int            `json:"priority"`
+		AssigneeID  json.RawMessage `json:"assignee_id"`
+		MilestoneID json.RawMessage `json:"milestone_id"`
+		ProjectID   json.RawMessage `json:"project_id"`
+		Project     *string         `json:"project"`
+		ParentID    json.RawMessage `json:"parent_id"`
+		AfterID     *string         `json:"after_id"`
+		BeforeID    *string         `json:"before_id"`
 	}
 	if !DecodeJSON(w, r, &body) {
 		return
@@ -198,9 +199,10 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 		Status: body.Status, Priority: body.Priority,
 	}
 	// An explicit null clears the reference, while omitting the field leaves
-	// it alone, which is why these patch fields are double pointers.
+	// it alone. json.RawMessage is what makes the two distinguishable: a *string
+	// decodes both to nil, so "unschedule this ticket" was silently a no-op.
 	for _, f := range []struct {
-		raw *string
+		raw json.RawMessage
 		dst ***uuid.UUID
 		key string
 	}{
@@ -209,14 +211,13 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 		{body.ProjectID, &patch.ProjectID, "project_id"},
 		{body.ParentID, &patch.ParentID, "parent_id"},
 	} {
-		if f.raw == nil {
-			continue
-		}
-		id, ok := parseOptionalUUID(w, f.raw, f.key)
+		id, present, ok := parseNullableUUID(w, f.raw, f.key)
 		if !ok {
 			return
 		}
-		*f.dst = &id
+		if present {
+			*f.dst = &id
+		}
 	}
 	for _, f := range []struct {
 		raw *string

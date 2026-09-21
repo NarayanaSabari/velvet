@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -189,4 +190,34 @@ func parseOptionalUUID(w http.ResponseWriter, raw *string, name string) (*uuid.U
 		return nil, false
 	}
 	return &id, true
+}
+
+// parseNullableUUID distinguishes the three states a PATCH field can be in:
+// absent (leave it alone), null (clear it), or a UUID (set it). A *string
+// collapses the first two into nil, which silently turned "clear this
+// reference" into a no-op.
+//
+// present reports whether the caller mentioned the field at all.
+func parseNullableUUID(w http.ResponseWriter, raw json.RawMessage, name string) (id *uuid.UUID, present, ok bool) {
+	if len(raw) == 0 {
+		return nil, false, true
+	}
+
+	var value *string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		WriteError(w, http.StatusBadRequest, "invalid_request", name+" must be a UUID or null")
+		return nil, false, false
+	}
+	// Both null and "" mean clear, because an empty form field is the same
+	// intent expressed by a browser.
+	if value == nil || *value == "" {
+		return nil, true, true
+	}
+
+	parsed, err := uuid.Parse(*value)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "invalid_request", name+" must be a UUID")
+		return nil, false, false
+	}
+	return &parsed, true, true
 }

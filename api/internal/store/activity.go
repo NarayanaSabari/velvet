@@ -17,6 +17,7 @@ const (
 	VerbAssigned           = "assigned"
 	VerbAttachedPR         = "attached_pr"
 	VerbCompletedMilestone = "completed_milestone"
+	VerbCreatedMilestone   = "created_milestone"
 	VerbClosedSprint       = "closed_sprint"
 	VerbCreatedSprint      = "created_sprint"
 	VerbActivatedSprint    = "activated_sprint"

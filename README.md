@@ -52,6 +52,18 @@ Nothing is ever created to satisfy a reference: an unsynced pull request is a 40
 Without it, the organisation and project are resolved from the checkout's git remote, so one agent configuration serves every repository.
 A remote that matches no connected repository, or matches two organisations, is refused rather than guessed at.
 
+## Being told what to work on
+
+A manager names a sprint and a goal. Neither has to exist yet, and none of it requires administration: running a sprint is the work, not administration of it, so a member can do it and every change names who made it.
+
+```bash
+velvet sprints new "September 2026" 2026-09-01 2026-09-30
+velvet milestones new "$SPRINT_ID" "Ship the billing rewrite"
+velvet new "Migrate the invoice schema" --milestone "$MILESTONE_ID"
+```
+
+A new sprint starts `upcoming` rather than activating itself, because activating one completes whichever sprint was active and that is a decision, not a side effect.
+
 ## What did I work on last week
 
 ```bash

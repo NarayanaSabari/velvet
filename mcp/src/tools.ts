@@ -5,6 +5,8 @@ import { z } from 'zod'
 
 import { VelvetApi, type FetchLike } from './api.js'
 import {
+  formatCreatedMilestone,
+  formatCreatedSprint,
   formatCreatedTicket,
   formatEvidence,
   formatIssueList,
@@ -12,6 +14,7 @@ import {
   formatMilestones,
   formatProjectNote,
   formatProjects,
+  formatSprints,
   formatStatusUpdate,
   formatTicket,
   formatWorklog,
@@ -23,6 +26,10 @@ import { WorkspaceResolver } from './workspace.js'
 const execFileAsync = promisify(execFile)
 
 const NOTE_KINDS = ['progress', 'decision', 'blocker', 'note'] as const
+
+// Matches the API's own date contract, so a malformed date is rejected before
+// a round trip rather than after one.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 const toolResult = (text: string) => ({
   content: [{ type: 'text' as const, text }],
@@ -312,9 +319,13 @@ export function createMcpServer(config: VelvetConfig, options: ToolServerOptions
         description: z.string().optional(),
         priority: z.number().int().min(0).max(4).optional(),
         project: z.string().optional().describe('Project key, or an empty string to unfile it'),
+        milestone_id: z
+          .string()
+          .optional()
+          .describe('Milestone UUID to schedule this into, or an empty string to unschedule it'),
       },
     },
-    async ({ key, title, description, priority, project }) => {
+    async ({ key, title, description, priority, project, milestone_id }) => {
       try {
         await scoped()
         const normalizedKey = keyInput(key)
@@ -323,6 +334,7 @@ export function createMcpServer(config: VelvetConfig, options: ToolServerOptions
           ...(description === undefined ? {} : { description }),
           ...(priority === undefined ? {} : { priority }),
           ...(project === undefined ? {} : { project }),
+          ...(milestone_id === undefined ? {} : { milestone_id: milestone_id || null }),
         })
         return toolResult(`Updated ${issue.key}: ${issue.title}`)
       } catch (error) {
@@ -364,6 +376,76 @@ export function createMcpServer(config: VelvetConfig, options: ToolServerOptions
         const resolved = await scoped()
         const projects = await api.listProjects()
         return toolResult(formatProjects(projects, resolved.workspace))
+      } catch (error) {
+        return toolError(error)
+      }
+    },
+  )
+
+  server.registerTool(
+    'velvet_list_sprints',
+    {
+      description:
+        'List the sprints in the current workspace with their state and dates, so work can be scheduled ' +
+        'into the month it belongs to.',
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        const resolved = await scoped()
+        const sprints = await api.listSprints()
+        return toolResult(formatSprints(sprints, resolved.workspace))
+      } catch (error) {
+        return toolError(error)
+      }
+    },
+  )
+
+  server.registerTool(
+    'velvet_create_sprint',
+    {
+      description:
+        'Create a sprint, the calendar window work is scheduled into. Use this when told to work in a ' +
+        'sprint that does not exist yet. A new sprint starts upcoming and is not activated automatically.',
+      inputSchema: {
+        name: z.string().min(1).describe('Sprint name, such as "September 2026"'),
+        starts_on: z.string().regex(DATE_RE).describe('First day, YYYY-MM-DD'),
+        ends_on: z.string().regex(DATE_RE).describe('Last day, YYYY-MM-DD'),
+      },
+    },
+    async ({ name, starts_on, ends_on }) => {
+      try {
+        await scoped()
+        const sprint = await api.createSprint({ name, starts_on, ends_on })
+        return toolResult(formatCreatedSprint(sprint))
+      } catch (error) {
+        return toolError(error)
+      }
+    },
+  )
+
+  server.registerTool(
+    'velvet_create_milestone',
+    {
+      description:
+        'Create a milestone inside a sprint. A milestone is the goal a manager names; tickets are filed ' +
+        'under it with milestone_id.',
+      inputSchema: {
+        sprint_id: z.string().min(1).describe('Sprint UUID from velvet_list_sprints'),
+        name: z.string().min(1).describe('What this milestone is'),
+        description: z.string().optional(),
+        target_date: z.string().regex(DATE_RE).optional().describe('Target date, YYYY-MM-DD'),
+      },
+    },
+    async ({ sprint_id, name, description, target_date }) => {
+      try {
+        await scoped()
+        const milestone = await api.createMilestone(sprint_id, {
+          name,
+          ...(description === undefined ? {} : { description }),
+          ...(target_date === undefined ? {} : { target_date }),
+        })
+        return toolResult(formatCreatedMilestone(milestone))
       } catch (error) {
         return toolError(error)
       }

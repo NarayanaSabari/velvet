@@ -4,6 +4,7 @@ import type {
   Issue,
   Milestone,
   Project,
+  Sprint,
   TicketDetails,
   User,
   WorklogEntry,
@@ -114,6 +115,35 @@ export function formatProjects(projects: Project[], workspace: string): string {
         .join(', ')
       return `${text(project.key)} | ${text(project.name, '(unnamed)')}${counts ? ` | ${counts}` : ''}`
     }),
+  ].join('\n')
+}
+
+export function formatSprints(sprints: Sprint[], workspace: string): string {
+  if (sprints.length === 0) {
+    return `No sprints found in workspace ${workspace}.`
+  }
+  return [
+    `Sprints in ${workspace}:`,
+    ...sprints.map(
+      (sprint) =>
+        `${text(sprint.id)} | ${text(sprint.name, '(unnamed)')} | ${text(sprint.state)} | ${text(sprint.starts_on)} to ${text(sprint.ends_on)}`,
+    ),
+  ].join('\n')
+}
+
+export function formatCreatedSprint(sprint: Sprint): string {
+  return [
+    `Created sprint ${text(sprint.name, '(unnamed)')} (${text(sprint.starts_on)} to ${text(sprint.ends_on)}).`,
+    `ID: ${text(sprint.id)}`,
+    `State: ${text(sprint.state)}. Activate it when work starts.`,
+  ].join('\n')
+}
+
+export function formatCreatedMilestone(milestone: Milestone): string {
+  return [
+    `Created milestone ${text(milestone.name, '(unnamed)')}.`,
+    `ID: ${text(milestone.id)}`,
+    'File tickets under it with milestone_id.',
   ].join('\n')
 }
 

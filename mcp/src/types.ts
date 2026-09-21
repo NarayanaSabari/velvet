@@ -126,6 +126,23 @@ export interface Milestone {
   name: string
   status?: string
   target_date?: string | null
+  sprint_id?: string
+  issue_counts?: Record<string, number>
+}
+
+export type SprintState = 'upcoming' | 'active' | 'completed'
+
+/** A sprint is a calendar month: the window work is scheduled into. */
+export interface Sprint {
+  id: string
+  name: string
+  starts_on: string
+  ends_on: string
+  state: SprintState
+}
+
+export interface SprintsResponse {
+  sprints?: Sprint[]
 }
 
 export interface MilestonesResponse {
@@ -147,6 +164,7 @@ export interface UpdateIssueInput {
   description?: string
   priority?: number
   project?: string
+  milestone_id?: string | null
 }
 
 export interface TicketDetails {
