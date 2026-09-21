@@ -23,6 +23,8 @@ import { SprintList } from '../features/sprints/SprintList'
 import { SprintBoard } from '../features/sprints/SprintBoard'
 import { MilestonePage } from '../features/milestones/MilestonePage'
 import { IssuesPage } from '../features/issues/IssuesPage'
+import { ProjectsPage } from '../features/projects/ProjectsPage'
+import { Recap } from '../features/recap/Recap'
 import { IssuePage } from '../features/issues/IssuePage'
 import { UnlinkedPRs } from '../features/evidence/UnlinkedPRs'
 import { Reports } from '../features/reports/Reports'
@@ -110,6 +112,23 @@ const issuesRoute = createRoute({
   },
 })
 
+const projectsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug/projects',
+  component: function ProjectsRoute() {
+    const { slug } = projectsRoute.useParams()
+    return <ProjectsPage slug={slug} />
+  },
+})
+
+// Outside /w/$slug on purpose: the work log spans every organisation, so
+// scoping it to one would answer a smaller question than the one people ask.
+const recapRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/me/worklog',
+  component: Recap,
+})
+
 const reportsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/w/$slug/reports',
@@ -155,6 +174,8 @@ const routes = [
   milestoneRoute,
   issuesRoute,
   issueRoute,
+  projectsRoute,
+  recapRoute,
   unlinkedRoute,
   mentionsRoute,
   adminRoute,

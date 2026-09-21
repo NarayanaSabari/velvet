@@ -287,6 +287,48 @@ func TestRecapCommitsFollowThePerOrganisationIdentity(t *testing.T) {
 	require.Equal(t, 1, after, "linking the client account surfaces its commits")
 }
 
+// Entries arrive interleaved in time across organisations. Sorting purely by
+// timestamp made a single day list one organisation twice with another in
+// between, which is not how anyone reads their own week.
+func TestRecapKeepsEachOrganisationTogetherWithinADay(t *testing.T) {
+	f := testutil.NewFixture(t)
+	ctx := t.Context()
+
+	clientWS := secondOrg(t, f, "client")
+
+	// Deliberately interleaved: home, then client, then home again.
+	createProject(t, f, map[string]any{"key": "velvet", "name": "Velvet"})
+	rec := f.Do(http.MethodPost, "/api/v1/w/lab/projects/velvet/comments",
+		map[string]any{"body": "First home entry."})
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+	_, err := f.Store.CreateIssue(ctx, store.CreateIssueInput{
+		WorkspaceID: clientWS, ActorID: f.User.ID,
+		Title: "Client ticket", AssigneeID: &f.User.ID})
+	require.NoError(t, err)
+
+	rec = f.Do(http.MethodPost, "/api/v1/w/lab/projects/velvet/comments",
+		map[string]any{"body": "Second home entry."})
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+	// Walk the result the way the reader groups it: a day, then organisations
+	// within it. No organisation may appear twice in one day.
+	seen := map[string]bool{}
+	day, workspace := "", ""
+	for _, e := range recap(t, f, "") {
+		if e.Day != day {
+			day, workspace = e.Day, ""
+			seen = map[string]bool{}
+		}
+		if e.WorkspaceSlug != workspace {
+			require.False(t, seen[e.WorkspaceSlug],
+				"%s appears twice within %s", e.WorkspaceSlug, e.Day)
+			seen[e.WorkspaceSlug] = true
+			workspace = e.WorkspaceSlug
+		}
+	}
+}
+
 func TestRecapRequiresAuthentication(t *testing.T) {
 	f := testutil.NewFixture(t)
 	for _, path := range []string{"/api/v1/me/worklog", "/api/v1/me/worklog.md"} {

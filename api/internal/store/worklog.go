@@ -95,8 +95,20 @@ func (s *Store) Worklog(ctx context.Context, userID uuid.UUID, f WorklogFilter) 
 		}
 	}
 
-	// Newest first, which is the order someone reads their own week in.
-	sort.SliceStable(out, func(i, j int) bool { return out[i].At > out[j].At })
+	// Newest day first, and within a day each organisation appears once.
+	// Sorting purely by timestamp interleaves organisations, so a day could
+	// list the same one twice with another in between, which is not how
+	// anyone reconstructs their own week.
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Day != b.Day {
+			return a.Day > b.Day
+		}
+		if a.WorkspaceSlug != b.WorkspaceSlug {
+			return a.WorkspaceSlug < b.WorkspaceSlug
+		}
+		return a.At > b.At
+	})
 	if len(out) > limit {
 		out = out[:limit]
 	}

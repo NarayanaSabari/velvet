@@ -9,7 +9,10 @@ The server requires these environment variables:
 
 - `VELVET_URL`: the Velvet server URL without `/api/v1`, such as `https://worklog.example.com`.
 - `VELVET_TOKEN`: a personal API token beginning with `velvet_`.
-- `VELVET_WORKSPACE`: the workspace slug for the current project.
+
+`VELVET_WORKSPACE` is optional.
+When it is unset, the organisation and project are resolved from the checkout's Git remote, so one
+configuration serves every repository instead of each needing its own hardcoded slug.
 
 `VELVET_DEFAULT_STATUS` is optional and supplies the status for `velvet_create_ticket` when the tool caller does not provide one.
 It must be one of `backlog`, `todo`, `in_progress`, `in_review`, `done`, or `cancelled`.
@@ -32,16 +35,18 @@ Startup configuration failures are written to stderr and list every missing requ
 ## MCP client setup
 
 The examples below use `envkit run --` as the configured command.
-That keeps the token out of the client configuration while still allowing project-specific workspace routing.
-Install the dependencies and build the server once, then use the same command in each project.
+That keeps the token out of the client configuration.
+Install the dependencies and build the server once, then use the same command in every project.
 
-The only per-project value is `VELVET_WORKSPACE`:
+There is no per-project value to set.
+When `VELVET_WORKSPACE` is unset, the server reads the checkout's Git remote once and asks
+`POST /api/v1/me/resolve-repo` which organisation and project it belongs to, so one configuration
+serves every repository.
 
-| Project | `VELVET_WORKSPACE` |
-| --- | --- |
-| Personal | `personal` |
-| XI Ventures | `xi-ventures` |
-| Quantipeak | `quantipeak` |
+Set `VELVET_WORKSPACE` only to override that, or in a directory whose repository is not connected
+to any organisation. A remote that matches no connected repository, or matches two of your
+organisations, is refused rather than guessed at: an agent writing into the wrong client's record
+is worse than one that asks where it is.
 
 Set the shared token before using any of the configurations:
 
@@ -51,8 +56,7 @@ envkit set VELVET_TOKEN
 
 ### jcode
 
-Add this to the jcode MCP server configuration for the project.
-Use the matching workspace value from the table above.
+Add this to the jcode MCP server configuration. The same block works in every project.
 
 ```json
 {
@@ -66,16 +70,14 @@ Use the matching workspace value from the table above.
         "/Users/sabari/Developer/narayana/velvet-otter-lab/mcp/dist/index.js"
       ],
       "env": {
-        "VELVET_URL": "https://worklog.example.com",
-        "VELVET_WORKSPACE": "personal"
+        "VELVET_URL": "https://worklog.example.com"
       }
     }
   }
 }
 ```
 
-For the XI Ventures project, change only `VELVET_WORKSPACE` to `xi-ventures`.
-For the Quantipeak project, change only `VELVET_WORKSPACE` to `quantipeak`.
+Use `velvet_where_am_i` to confirm which organisation and project a checkout resolved to.
 
 ### Claude Code
 
@@ -86,8 +88,7 @@ claude mcp add --transport stdio velvet -- \
   envkit run -- node /Users/sabari/Developer/narayana/velvet-otter-lab/mcp/dist/index.js
 ```
 
-Set `VELVET_URL` and the project workspace in the project MCP settings.
-Use `personal`, `xi-ventures`, or `quantipeak` for `VELVET_WORKSPACE` as appropriate.
+Set `VELVET_URL` in the project MCP settings. `VELVET_WORKSPACE` is optional.
 The token remains in envkit and is not an argument to `claude` or `node`.
 
 ### `.mcp.json`

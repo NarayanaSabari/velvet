@@ -22,9 +22,15 @@ The interface should feel calm, fast, private, keyboard-first, and useful at the
 
 ### Current baseline
 
-The current SPA route tree is workspace-oriented under `/w/$slug` and exposes dashboard, feed, sprint, milestone, issue, evidence, report, mention, administration, and profile routes.
+The current SPA route tree is workspace-oriented under `/w/$slug` and exposes dashboard, feed, sprint, milestone, issue, project, evidence, report, mention, administration, and profile routes.
+
+`web/src/features/projects/ProjectsPage.tsx` is the projects index: a project is the durable thing work belongs to, and its open count links into the Issues page filtered to exactly those issues.
+
+`/me/worklog` is the one route that deliberately sits outside `/w/$slug`, because it gathers work from every organisation the person belongs to and scoping it to one would answer a smaller question.
+`web/src/features/recap/Recap.tsx` groups by day and then by organisation, and links the Markdown form for pasting into a message.
 
 `web/src/app/Shell.tsx` currently gates workspace content through memberships and the `admin`, `member`, and `viewer` roles.
+Its sidebar separates the cross-organisation work log from the workspace-scoped links, because that entry leaves the current organisation.
 
 The personal-first product direction is documented in [the personal worklog specification](docs/superpowers/specs/2026-09-09-ticket-first-personal-worklog-design.md), but the current route tree does not expose a separate personal-project route.
 

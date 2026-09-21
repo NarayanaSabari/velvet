@@ -34,6 +34,7 @@ const issue = (id: string, status: 'backlog' | 'todo' | 'in_progress' | 'in_revi
   priority: 2,
   assignee_id: null,
   milestone_id: null,
+  project_id: null,
   parent_id: null,
   position: 'V',
   created_by: null,

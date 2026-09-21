@@ -54,7 +54,7 @@ describe('core work forms', () => {
     render(<IssueEditForm issue={{
       id: 'i1', workspace_id: 'w1', key: 'ENG-1', number: 1,
       title: 'Old title', description: 'Old description', status: 'todo', priority: 1,
-      assignee_id: null, milestone_id: null, parent_id: null, position: 'V',
+      assignee_id: null, milestone_id: null, project_id: null, parent_id: null, position: 'V',
       created_by: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
     }} onSubmit={submit} />)
 
