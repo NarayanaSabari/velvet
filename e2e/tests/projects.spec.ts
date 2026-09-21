@@ -51,7 +51,9 @@ test('a project can be created, filed against, and archived', async ({ signedIn:
 
   // File an issue under it, then confirm the count links to exactly those.
   await page.goto('/w/lab/issues')
-  await page.getByRole('button', { name: 'New issue' }).click()
+  // The page header and the empty state both offer "New issue", so name the
+  // header one rather than depending on whether any issue already exists.
+  await page.locator('header').getByRole('button', { name: 'New issue' }).click()
   await page.getByLabel('Title').fill('Ship the recap')
   await page.getByRole('button', { name: 'Create issue' }).click()
   await expect(page.getByText('Ship the recap')).toBeVisible()
