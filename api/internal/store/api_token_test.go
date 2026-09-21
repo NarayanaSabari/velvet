@@ -33,16 +33,18 @@ func TestAPITokenRoundTripStoresOnlyHashAndTracksUse(t *testing.T) {
 	require.False(t, tokens[0].CreatedAt.IsZero())
 	require.Nil(t, tokens[0].LastUsedAt)
 
-	user, err := f.Store.LookupAPIToken(ctx, raw)
+	user, tokenID, err := f.Store.LookupAPIToken(ctx, raw)
 	require.NoError(t, err)
 	require.Equal(t, f.User.ID, user.ID)
+	require.Equal(t, tokens[0].ID, tokenID,
+		"the lookup must identify the token so an entry can name the agent that wrote it")
 
 	tokens, err = f.Store.ListAPITokens(ctx, f.User.ID)
 	require.NoError(t, err)
 	require.NotNil(t, tokens[0].LastUsedAt)
 	firstUse := *tokens[0].LastUsedAt
 
-	_, err = f.Store.LookupAPIToken(ctx, raw)
+	_, _, err = f.Store.LookupAPIToken(ctx, raw)
 	require.NoError(t, err)
 	tokens, err = f.Store.ListAPITokens(ctx, f.User.ID)
 	require.NoError(t, err)
@@ -50,7 +52,7 @@ func TestAPITokenRoundTripStoresOnlyHashAndTracksUse(t *testing.T) {
 
 	_, err = f.Pool.Exec(ctx, `UPDATE api_token SET last_used_at=now()-interval '2 minutes' WHERE token_hash=$1`, storedHash)
 	require.NoError(t, err)
-	_, err = f.Store.LookupAPIToken(ctx, raw)
+	_, _, err = f.Store.LookupAPIToken(ctx, raw)
 	require.NoError(t, err)
 	tokens, err = f.Store.ListAPITokens(ctx, f.User.ID)
 	require.NoError(t, err)
@@ -85,7 +87,7 @@ func TestDeleteAPITokenRevokesOnlyTheOwnerToken(t *testing.T) {
 	require.Len(t, tokens, 1)
 
 	require.NoError(t, f.Store.DeleteAPIToken(ctx, f.User.ID, tokens[0].ID))
-	_, err = f.Store.LookupAPIToken(ctx, raw)
+	_, _, err = f.Store.LookupAPIToken(ctx, raw)
 	require.ErrorIs(t, err, store.ErrNotFound)
 	err = f.Store.DeleteAPIToken(ctx, f.User.ID, tokens[0].ID)
 	require.ErrorIs(t, err, store.ErrNotFound)

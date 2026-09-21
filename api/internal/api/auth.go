@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/auth"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 )
@@ -14,6 +16,7 @@ import (
 const userKey ctxKey = "user"
 const workspaceKey ctxKey = "workspace"
 const authMethodKey ctxKey = "auth_method"
+const apiTokenKey ctxKey = "api_token"
 
 type authMethod string
 
@@ -34,6 +37,27 @@ func CurrentWorkspace(ctx context.Context) (store.Membership, bool) {
 
 func isBearerAuth(ctx context.Context) bool {
 	return ctx.Value(authMethodKey) == authMethodBearer
+}
+
+// currentAPIToken identifies the agent token that authenticated the request,
+// so a work-log entry can record which agent wrote it. A browser session has
+// none.
+func currentAPIToken(ctx context.Context) *uuid.UUID {
+	id, ok := ctx.Value(apiTokenKey).(uuid.UUID)
+	if !ok || id == uuid.Nil {
+		return nil
+	}
+	return &id
+}
+
+// commentSource reports who is writing. It is derived from how the request
+// authenticated rather than from anything the client sent, so a caller cannot
+// mark its own entry as human or agent.
+func commentSource(ctx context.Context) string {
+	if isBearerAuth(ctx) {
+		return "agent"
+	}
+	return "human"
 }
 
 // bearerTokenFromRequest recognizes the explicit bearer contract. A malformed
@@ -137,7 +161,7 @@ func (s *Server) secureCookies() bool {
 func (s *Server) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if token, ok := bearerTokenFromRequest(r); ok {
-			user, err := s.store.LookupAPIToken(r.Context(), token)
+			user, tokenID, err := s.store.LookupAPIToken(r.Context(), token)
 			if err != nil {
 				if errors.Is(err, store.ErrNotFound) {
 					WriteError(w, http.StatusUnauthorized, "unauthenticated", "sign-in required")
@@ -148,6 +172,7 @@ func (s *Server) RequireAuth(next http.Handler) http.Handler {
 			}
 			ctx := context.WithValue(r.Context(), userKey, user)
 			ctx = context.WithValue(ctx, authMethodKey, authMethodBearer)
+			ctx = context.WithValue(ctx, apiTokenKey, tokenID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
