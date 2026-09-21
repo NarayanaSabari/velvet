@@ -228,6 +228,18 @@ func InsertForeignPullRequest(t *testing.T, f *Fixture, number int, title string
 	return pr.ID
 }
 
+// GitHubStub answers every GitHub REST call with an empty object. Tests about
+// what the worker does with a delivery it already has do not need real API
+// responses, but the client must still point somewhere.
+func GitHubStub(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{})
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 // NewWorker builds a worker whose GitHub client points at a stub, using an
 // RSA key generated in this process. Generating beats committing: nothing
 // secret ever reaches the repository.

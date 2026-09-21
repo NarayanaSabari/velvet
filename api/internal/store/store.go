@@ -47,6 +47,9 @@ var (
 	// ErrNotPromotable reports an attempt to promote a comment that is not a
 	// project work-log entry, such as one already attached to an issue.
 	ErrNotPromotable = errors.New("only a project work-log entry can be promoted")
+	// ErrAmbiguousReference reports an abbreviated commit sha that matches more
+	// than one commit. Attaching the wrong proof of work is worse than none.
+	ErrAmbiguousReference = errors.New("reference matches more than one record")
 )
 
 type Store struct {

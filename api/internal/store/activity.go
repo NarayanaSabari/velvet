@@ -25,6 +25,7 @@ const (
 	VerbMappedRepoProject  = "mapped_repo_project"
 	VerbMovedIssueProject  = "moved_issue_project"
 	VerbPromotedEntry      = "promoted_entry"
+	VerbAttachedCommit     = "attached_commit"
 )
 
 type ActivityInput struct {
