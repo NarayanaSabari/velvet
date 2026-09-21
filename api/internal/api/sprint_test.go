@@ -90,9 +90,12 @@ func TestClosingASprintRecordsActivity(t *testing.T) {
 	require.Equal(t, http.StatusOK,
 		f.Do(http.MethodPost, "/api/v1/w/lab/sprints/"+s.ID.String()+"/close", nil).Code)
 
+	// Creation, activation, and closing are each recorded, so the query names
+	// the verb it is checking rather than assuming a sprint has only one.
 	var verb string
 	require.NoError(t, f.Pool.QueryRow(t.Context(),
-		`SELECT verb FROM activity WHERE target_id = $1`, s.ID).Scan(&verb))
+		`SELECT verb FROM activity WHERE target_id = $1 AND verb = $2`,
+		s.ID, store.VerbClosedSprint).Scan(&verb))
 	require.Equal(t, store.VerbClosedSprint, verb)
 }
 

@@ -55,19 +55,19 @@ func TestSecurityViewerCannotCreateSprint(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 }
 
-// Sprint lifecycle changes the reporting boundary for the whole workspace,
-// so an ordinary member may not create, activate, or close one.
-func TestSecurityMemberCannotManageSprintLifecycle(t *testing.T) {
+// Sprint lifecycle is ordinary work rather than administration, so a member
+// may run it. A viewer reads the record without writing it.
+func TestSecurityViewerCannotManageSprintLifecycle(t *testing.T) {
 	f := testutil.NewFixture(t)
 	ctx := t.Context()
 
-	member, err := testutil.CreateLinkedUser(t, f.Store, store.GitHubIdentity{ID: 4343, Login: "member"})
+	viewer, err := testutil.CreateLinkedUser(t, f.Store, store.GitHubIdentity{ID: 4343, Login: "viewer"})
 	require.NoError(t, err)
 	_, err = f.Pool.Exec(ctx,
 		`INSERT INTO membership (workspace_id, user_id, role)
-		 VALUES ($1, $2, 'member')`, f.WorkspaceID, member.ID)
+		 VALUES ($1, $2, 'viewer')`, f.WorkspaceID, viewer.ID)
 	require.NoError(t, err)
-	tok, err := f.Store.CreateSession(ctx, member.ID, time.Hour)
+	tok, err := f.Store.CreateSession(ctx, viewer.ID, time.Hour)
 	require.NoError(t, err)
 	f.Token = tok
 

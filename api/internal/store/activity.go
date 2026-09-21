@@ -18,6 +18,8 @@ const (
 	VerbAttachedPR         = "attached_pr"
 	VerbCompletedMilestone = "completed_milestone"
 	VerbClosedSprint       = "closed_sprint"
+	VerbCreatedSprint      = "created_sprint"
+	VerbActivatedSprint    = "activated_sprint"
 	VerbInvitedMember      = "invited_member"
 	VerbChangedMemberRole  = "changed_member_role"
 	VerbCreatedProject     = "created_project"
