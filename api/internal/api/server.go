@@ -68,6 +68,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerGitHubRoutes(mux)
 	s.registerGitHubAuthorizationRoutes(mux)
 	s.registerReportRoutes(mux)
+	s.registerWorklogRoutes(mux)
 
 	return RequestID(Logging(Recover(s.browserMutations(mux))))
 }
