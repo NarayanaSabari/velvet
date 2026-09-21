@@ -15,6 +15,41 @@ func (s *Server) registerWorklogRoutes(mux *http.ServeMux) {
 	// organisation the caller belongs to.
 	mux.Handle("GET /api/v1/me/worklog", s.RequireAuth(http.HandlerFunc(s.handleWorklog)))
 	mux.Handle("GET /api/v1/me/worklog.md", s.RequireAuth(http.HandlerFunc(s.handleWorklogMarkdown)))
+	mux.Handle("POST /api/v1/me/resolve-repo", s.RequireAuth(http.HandlerFunc(s.handleResolveRepo)))
+}
+
+// handleResolveRepo tells an agent which organisation and project the checkout
+// it is running in belongs to, so one configuration works in every repository
+// instead of each needing its own hardcoded workspace.
+func (s *Server) handleResolveRepo(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Remote string `json:"remote"`
+	}
+	if !DecodeJSON(w, r, &body) {
+		return
+	}
+	if strings.TrimSpace(body.Remote) == "" {
+		WriteError(w, http.StatusBadRequest, "invalid_request", "remote is required")
+		return
+	}
+
+	user, _ := CurrentUser(r.Context())
+	resolved, err := s.store.ResolveRepo(r.Context(), user.ID, body.Remote)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrAmbiguousReference):
+			WriteError(w, http.StatusConflict, "ambiguous",
+				"that repository is connected to more than one of your organisations; set the workspace explicitly")
+		case errors.Is(err, store.ErrNotFound):
+			WriteError(w, http.StatusNotFound, "not_found",
+				"no connected repository matches that remote in any of your organisations")
+		default:
+			WriteError(w, http.StatusInternalServerError, "internal", "could not resolve the repository")
+		}
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	WriteJSON(w, http.StatusOK, resolved)
 }
 
 func (s *Server) worklogEntries(w http.ResponseWriter, r *http.Request) ([]store.WorklogEntry, bool) {

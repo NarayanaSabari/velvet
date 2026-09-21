@@ -1,6 +1,6 @@
 import { ISSUE_STATUSES, type IssueStatus, type VelvetConfig } from './types.js'
 
-const REQUIRED_VARIABLES = ['VELVET_URL', 'VELVET_TOKEN', 'VELVET_WORKSPACE'] as const
+const REQUIRED_VARIABLES = ['VELVET_URL', 'VELVET_TOKEN'] as const
 
 export class ConfigError extends Error {
   readonly missing: readonly string[]
@@ -57,6 +57,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): VelvetConfig {
   return {
     baseUrl: rawUrl.replace(/\/+$/, ''),
     token: valueOf(env, 'VELVET_TOKEN'),
+    // Optional on purpose. When unset the workspace is resolved from the
+    // checkout's git remote, so one configuration serves every repository
+    // instead of each needing its own hardcoded value.
     workspace: valueOf(env, 'VELVET_WORKSPACE'),
     ...(defaultStatus ? { defaultStatus } : {}),
   }

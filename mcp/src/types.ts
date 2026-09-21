@@ -12,8 +12,63 @@ export type IssueStatus = (typeof ISSUE_STATUSES)[number]
 export interface VelvetConfig {
   baseUrl: string
   token: string
+  /**
+   * The organisation slug. Empty means "discover it from the checkout's git
+   * remote", which is what lets one configuration serve every repository.
+   */
   workspace: string
   defaultStatus?: IssueStatus
+}
+
+export interface RepoResolution {
+  workspace_slug: string
+  workspace_name?: string
+  owner?: string
+  name?: string
+  project_key?: string | null
+  project_name?: string | null
+  issue_prefix?: string
+}
+
+export interface Project {
+  id?: string
+  key: string
+  name: string
+  description?: string
+  status?: string
+  issue_counts?: Record<string, number>
+}
+
+export interface ProjectsResponse {
+  projects?: Project[]
+}
+
+export interface EvidenceRef {
+  kind: string
+  id?: string
+  sha?: string
+  url?: string
+}
+
+export interface WorklogEntry {
+  day: string
+  at: string
+  workspace_slug: string
+  workspace_name?: string
+  project_key?: string | null
+  project_name?: string | null
+  kind: string
+  source?: string
+  note_kind?: string | null
+  issue_key?: string | null
+  title?: string
+  body?: string
+  url?: string
+  status?: string
+}
+
+export interface WorklogResponse {
+  entries?: WorklogEntry[]
 }
 
 export interface User {
@@ -82,7 +137,16 @@ export interface CreateIssueInput {
   description?: string
   status?: IssueStatus
   priority?: number
+  project?: string
   milestone_id?: string
+}
+
+/** Status is deliberately absent: it changes only on an explicit request. */
+export interface UpdateIssueInput {
+  title?: string
+  description?: string
+  priority?: number
+  project?: string
 }
 
 export interface TicketDetails {
