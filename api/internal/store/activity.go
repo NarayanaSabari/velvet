@@ -20,6 +20,10 @@ const (
 	VerbClosedSprint       = "closed_sprint"
 	VerbInvitedMember      = "invited_member"
 	VerbChangedMemberRole  = "changed_member_role"
+	VerbCreatedProject     = "created_project"
+	VerbUpdatedProject     = "updated_project"
+	VerbMappedRepoProject  = "mapped_repo_project"
+	VerbMovedIssueProject  = "moved_issue_project"
 )
 
 type ActivityInput struct {

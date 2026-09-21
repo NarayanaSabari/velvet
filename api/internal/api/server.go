@@ -60,6 +60,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerMembershipRoutes(mux)
 	s.registerSprintRoutes(mux)
 	s.registerMilestoneRoutes(mux)
+	s.registerProjectRoutes(mux)
 	s.registerIssueRoutes(mux)
 	s.registerLabelRoutes(mux)
 	s.registerCommentRoutes(mux)

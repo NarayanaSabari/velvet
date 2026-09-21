@@ -25,6 +25,7 @@ type Issue struct {
 	Priority    int        `json:"priority"`
 	AssigneeID  *uuid.UUID `json:"assignee_id"`
 	MilestoneID *uuid.UUID `json:"milestone_id"`
+	ProjectID   *uuid.UUID `json:"project_id"`
 	ParentID    *uuid.UUID `json:"parent_id"`
 	Position    string     `json:"position"`
 	CreatedBy   *uuid.UUID `json:"created_by"`
@@ -43,6 +44,7 @@ type CreateIssueInput struct {
 	Priority    int
 	AssigneeID  *uuid.UUID
 	MilestoneID *uuid.UUID
+	ProjectID   *uuid.UUID
 	ParentID    *uuid.UUID
 }
 
@@ -55,6 +57,7 @@ type IssuePatch struct {
 	Priority    *int
 	AssigneeID  **uuid.UUID
 	MilestoneID **uuid.UUID
+	ProjectID   **uuid.UUID
 	ParentID    **uuid.UUID
 	AfterID     *uuid.UUID
 	BeforeID    *uuid.UUID
@@ -64,6 +67,7 @@ type IssuePatch struct {
 type IssueFilter struct {
 	MilestoneID *uuid.UUID
 	SprintID    *uuid.UUID
+	ProjectID   *uuid.UUID
 	AssigneeID  *uuid.UUID
 	Statuses    []string
 	Cursor      string
@@ -84,14 +88,14 @@ func ValidIssueStatus(s string) bool {
 }
 
 const issueCols = `id, workspace_id, key, number, title, description, status::text,
-	priority, assignee_id, milestone_id, parent_id, position, created_by,
+	priority, assignee_id, milestone_id, project_id, parent_id, position, created_by,
 	to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
 	to_char(updated_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM')`
 
 func scanIssue(row pgx.Row) (Issue, error) {
 	var i Issue
 	err := row.Scan(&i.ID, &i.WorkspaceID, &i.Key, &i.Number, &i.Title, &i.Description,
-		&i.Status, &i.Priority, &i.AssigneeID, &i.MilestoneID, &i.ParentID,
+		&i.Status, &i.Priority, &i.AssigneeID, &i.MilestoneID, &i.ProjectID, &i.ParentID,
 		&i.Position, &i.CreatedBy, &i.CreatedAt, &i.UpdatedAt)
 	return i, mapIssueErr(err)
 }
@@ -128,7 +132,7 @@ func nextIssuePosition(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, mi
 func (s *Store) CreateIssue(ctx context.Context, in CreateIssueInput) (Issue, error) {
 	var out Issue
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
-		if err := checkIssueReferences(ctx, tx, in.WorkspaceID, in.AssigneeID, in.MilestoneID, in.ParentID); err != nil {
+		if err := checkIssueReferences(ctx, tx, in.WorkspaceID, in.AssigneeID, in.MilestoneID, in.ProjectID, in.ParentID); err != nil {
 			return err
 		}
 
@@ -148,29 +152,38 @@ func (s *Store) CreateIssue(ctx context.Context, in CreateIssueInput) (Issue, er
 
 		out, err = scanIssue(tx.QueryRow(ctx, `
 			INSERT INTO issue (workspace_id, key, number, title, description, status,
-				priority, assignee_id, milestone_id, parent_id, position, created_by)
-			VALUES ($1, $2, $3, $4, $5, $6::issue_status, $7, $8, $9, $10, $11, $12)
+				priority, assignee_id, milestone_id, project_id, parent_id, position, created_by)
+			VALUES ($1, $2, $3, $4, $5, $6::issue_status, $7, $8, $9, $10, $11, $12, $13)
 			RETURNING `+issueCols,
 			in.WorkspaceID, key, number, in.Title, in.Description, status,
-			in.Priority, in.AssigneeID, in.MilestoneID, in.ParentID, position, in.ActorID))
+			in.Priority, in.AssigneeID, in.MilestoneID, in.ProjectID, in.ParentID, position, in.ActorID))
 		if err != nil {
 			return err
 		}
 
+		meta := map[string]any{"key": out.Key, "title": out.Title}
+		if out.ProjectID != nil {
+			meta["project_id"] = out.ProjectID.String()
+		}
 		return RecordActivity(ctx, tx, ActivityInput{
 			WorkspaceID: in.WorkspaceID, ActorID: in.ActorID,
 			Verb: VerbCreatedIssue, TargetType: "issue", TargetID: out.ID,
-			Metadata: map[string]any{"key": out.Key, "title": out.Title},
+			Metadata: meta,
 		})
 	})
 	return out, err
 }
 
 // checkIssueReferences keeps a valid UUID from another workspace from being
-// used as a milestone or a parent.
-func checkIssueReferences(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, assigneeID, milestoneID, parentID *uuid.UUID) error {
+// used as a milestone, a project, or a parent.
+func checkIssueReferences(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, assigneeID, milestoneID, projectID, parentID *uuid.UUID) error {
 	if assigneeID != nil {
 		if err := checkWorkspaceMember(ctx, tx, workspaceID, *assigneeID); err != nil {
+			return err
+		}
+	}
+	if projectID != nil {
+		if err := checkProjectInWorkspace(ctx, tx, workspaceID, *projectID); err != nil {
 			return err
 		}
 	}
@@ -230,11 +243,12 @@ func (s *Store) ListIssues(ctx context.Context, workspaceID uuid.UUID, f IssueFi
 		        WHERE m.workspace_id = $1 AND m.sprint_id = $3))
 		  AND ($4::uuid IS NULL OR i.assignee_id = $4)
 		  AND ($5::text[] IS NULL OR i.status::text = ANY($5))
-		  AND ($6::text IS NULL OR (i.position, i.id) > ($6, $7::uuid))
+		  AND ($6::uuid IS NULL OR i.project_id = $6)
+		  AND ($7::text IS NULL OR (i.position, i.id) > ($7, $8::uuid))
 		ORDER BY i.position, i.id
-		LIMIT $8`,
+		LIMIT $9`,
 		workspaceID, f.MilestoneID, f.SprintID, f.AssigneeID, statuses,
-		cursorPosition, cursorID, limit)
+		f.ProjectID, cursorPosition, cursorID, limit)
 	if err != nil {
 		return nil, "", err
 	}
@@ -353,11 +367,15 @@ func (s *Store) UpdateIssue(ctx context.Context, workspaceID, id, actorID uuid.U
 		if patch.MilestoneID != nil {
 			milestoneID = *patch.MilestoneID
 		}
+		projectID := before.ProjectID
+		if patch.ProjectID != nil {
+			projectID = *patch.ProjectID
+		}
 		parentID := before.ParentID
 		if patch.ParentID != nil {
 			parentID = *patch.ParentID
 		}
-		if err := checkIssueReferences(ctx, tx, workspaceID, assigneeID, milestoneID, parentID); err != nil {
+		if err := checkIssueReferences(ctx, tx, workspaceID, assigneeID, milestoneID, projectID, parentID); err != nil {
 			return err
 		}
 
@@ -373,12 +391,12 @@ func (s *Store) UpdateIssue(ctx context.Context, workspaceID, id, actorID uuid.U
 		out, err = scanIssue(tx.QueryRow(ctx, `
 			UPDATE issue
 			SET title = $3, description = $4, status = $5::issue_status, priority = $6,
-			    assignee_id = $7, milestone_id = $8, parent_id = $9, position = $10,
-			    updated_at = now()
+			    assignee_id = $7, milestone_id = $8, project_id = $9, parent_id = $10,
+			    position = $11, updated_at = now()
 			WHERE workspace_id = $1 AND id = $2
 			RETURNING `+issueCols,
 			workspaceID, id, title, description, status, priority,
-			assigneeID, milestoneID, parentID, position))
+			assigneeID, milestoneID, projectID, parentID, position))
 		if err != nil {
 			return err
 		}
@@ -403,6 +421,19 @@ func (s *Store) UpdateIssue(ctx context.Context, workspaceID, id, actorID uuid.U
 			if err := RecordActivity(ctx, tx, ActivityInput{
 				WorkspaceID: workspaceID, ActorID: actorID,
 				Verb: VerbAssigned, TargetType: "issue", TargetID: id,
+				Metadata: metadata,
+			}); err != nil {
+				return err
+			}
+		}
+		if patch.ProjectID != nil && !sameUUIDPtr(before.ProjectID, *patch.ProjectID) {
+			metadata := map[string]any{"key": before.Key, "project_id": nil}
+			if projectID != nil {
+				metadata["project_id"] = projectID.String()
+			}
+			if err := RecordActivity(ctx, tx, ActivityInput{
+				WorkspaceID: workspaceID, ActorID: actorID,
+				Verb: VerbMovedIssueProject, TargetType: "issue", TargetID: id,
 				Metadata: metadata,
 			}); err != nil {
 				return err

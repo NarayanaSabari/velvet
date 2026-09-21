@@ -131,6 +131,23 @@ func CreateIssue(t *testing.T, f *Fixture, title string) store.Issue {
 	return issue
 }
 
+// CreateForeignProject makes a project in a different workspace, so a test can
+// prove that a valid UUID from elsewhere cannot be referenced here.
+func CreateForeignProject(t *testing.T, f *Fixture, key string) uuid.UUID {
+	t.Helper()
+	ctx := t.Context()
+
+	var otherWS uuid.UUID
+	require.NoError(t, f.Pool.QueryRow(ctx,
+		`INSERT INTO workspace (name, slug, issue_prefix)
+		 VALUES ('Foreign projects', 'foreign-projects', 'FPR') RETURNING id`).Scan(&otherWS))
+
+	project, err := f.Store.CreateProject(ctx, store.CreateProjectInput{
+		WorkspaceID: otherWS, Key: key, Name: "Foreign"})
+	require.NoError(t, err)
+	return project.ID
+}
+
 // LinkRepo seeds a verified active binding under installation 99, which is the
 // installation the GitHub stubs answer for. Legacy tests seed unverified rows
 // explicitly so evidence tests exercise the same gates as owner-authorized use.
