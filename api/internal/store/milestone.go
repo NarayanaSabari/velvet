@@ -119,7 +119,18 @@ func (s *Store) CreateMilestone(ctx context.Context, in CreateMilestoneInput) (M
 			in.WorkspaceID, in.SprintID, in.Name, in.Description,
 			in.OwnerID, in.TargetDate, position)
 		out, err = scanMilestone(row)
-		return err
+		if err != nil {
+			return err
+		}
+
+		// A milestone is the goal someone was told to work towards, so who
+		// created it and when belongs in the record like every other change.
+		return RecordActivity(ctx, tx, ActivityInput{
+			WorkspaceID: in.WorkspaceID, ActorID: in.ActorID,
+			Verb: VerbCreatedMilestone, TargetType: "milestone", TargetID: out.ID,
+			Metadata: map[string]any{
+				"name": out.Name, "sprint_id": out.SprintID.String()},
+		})
 	})
 	return out, err
 }

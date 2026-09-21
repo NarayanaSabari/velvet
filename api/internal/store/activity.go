@@ -17,9 +17,22 @@ const (
 	VerbAssigned           = "assigned"
 	VerbAttachedPR         = "attached_pr"
 	VerbCompletedMilestone = "completed_milestone"
+	VerbCreatedMilestone   = "created_milestone"
 	VerbClosedSprint       = "closed_sprint"
+	VerbCreatedSprint      = "created_sprint"
+	VerbActivatedSprint    = "activated_sprint"
 	VerbInvitedMember      = "invited_member"
 	VerbChangedMemberRole  = "changed_member_role"
+	VerbCreatedProject     = "created_project"
+	VerbUpdatedProject     = "updated_project"
+	VerbMappedRepoProject  = "mapped_repo_project"
+	VerbMovedIssueProject  = "moved_issue_project"
+	VerbPromotedEntry      = "promoted_entry"
+	VerbAttachedCommit     = "attached_commit"
+	// The GitHub account a person uses inside one organisation, which may
+	// differ from the one they use elsewhere.
+	VerbLinkedGitHubIdentity   = "linked_github_identity"
+	VerbUnlinkedGitHubIdentity = "unlinked_github_identity"
 )
 
 type ActivityInput struct {

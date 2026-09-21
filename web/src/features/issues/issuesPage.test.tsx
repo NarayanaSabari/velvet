@@ -47,6 +47,7 @@ function issue(overrides: Partial<Issue> = {}): Issue {
     priority: 1,
     assignee_id: null,
     milestone_id: null,
+    project_id: null,
     parent_id: null,
     position: 'a',
     created_by: null,
@@ -175,6 +176,7 @@ describe('IssuesPage', () => {
       priority: 3,
       assignee_id: member.id,
       milestone_id: 'm2',
+      project_id: null,
     })
     const other = issue({ id: 'other', key: 'ENG-3', number: 3, title: 'Done work', status: 'done', priority: 4 })
     const user = userEvent.setup()

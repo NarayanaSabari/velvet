@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -16,6 +17,8 @@ func (s *Server) registerGitHubRoutes(mux *http.ServeMux) {
 
 	mux.Handle("GET /api/v1/w/{slug}/issues/{key}/evidence",
 		s.RequireWorkspace(http.HandlerFunc(s.handleIssueEvidence)))
+	mux.Handle("POST /api/v1/w/{slug}/issues/{key}/evidence",
+		s.RequireWorkspace(writer(http.HandlerFunc(s.handleAttachEvidence))))
 	mux.Handle("POST /api/v1/w/{slug}/issues/{key}/prs",
 		s.RequireWorkspace(writer(http.HandlerFunc(s.handleAttachPR))))
 	mux.Handle("DELETE /api/v1/w/{slug}/issues/{key}/prs/{prID}",
@@ -42,6 +45,64 @@ func (s *Server) handleIssueEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, evidence)
+}
+
+// handleAttachEvidence attaches proof of work named the way a person or an
+// agent actually has it: a pull request URL, owner/repo#number, or a commit
+// sha. The UUID form stays available through the existing prs endpoint.
+//
+// Like every other evidence path, this never changes the issue's status.
+// Proof that work happened is not a decision that the work is finished.
+func (s *Server) handleAttachEvidence(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Reference string `json:"reference"`
+	}
+	if !DecodeJSON(w, r, &body) {
+		return
+	}
+	if strings.TrimSpace(body.Reference) == "" {
+		WriteError(w, http.StatusBadRequest, "invalid_request",
+			"reference is required: a pull request URL, owner/repo#number, or a commit sha")
+		return
+	}
+
+	ws, _ := CurrentWorkspace(r.Context())
+	user, _ := CurrentUser(r.Context())
+	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, pathIssueKey(r))
+	if err != nil {
+		writeIssueError(w, err)
+		return
+	}
+
+	ref, err := s.store.ResolveEvidence(r.Context(), ws.WorkspaceID, body.Reference)
+	if err != nil {
+		writeEvidenceError(w, err)
+		return
+	}
+
+	sinceID, _ := s.store.LatestActivityID(r.Context(), ws.WorkspaceID)
+	if err := s.store.AttachEvidenceToIssue(r.Context(), ws.WorkspaceID, issue.ID, user.ID, ref); err != nil {
+		writePRError(w, err)
+		return
+	}
+	s.publishRecent(r.Context(), ws.WorkspaceID, sinceID)
+	WriteJSON(w, http.StatusCreated, ref)
+}
+
+// writeEvidenceError explains an unresolved reference rather than answering a
+// bare 404, because the usual cause is that the PR has not synced yet and the
+// caller can act on knowing that.
+func writeEvidenceError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, store.ErrAmbiguousReference):
+		WriteError(w, http.StatusConflict, "ambiguous",
+			"that abbreviated sha matches more than one commit; use the full sha")
+	case errors.Is(err, store.ErrNotFound):
+		WriteError(w, http.StatusNotFound, "not_found",
+			"no synced pull request or commit matches that reference")
+	default:
+		WriteError(w, http.StatusInternalServerError, "internal", "could not resolve the evidence")
+	}
 }
 
 // handleAttachPR records a PR as evidence on an issue. It deliberately does

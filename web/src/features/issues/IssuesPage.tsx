@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { NavLink } from '../../app/nav'
 import { useSession } from '../auth/useSession'
 import { api, listAllWorkspaceIssues } from '../../lib/api'
-import type { Issue, IssueStatus, Milestone, User } from '../../lib/types'
+import type { Issue, IssueStatus, Milestone, Project, User } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
@@ -97,6 +97,11 @@ export function IssuesPage({ slug }: { slug: string }) {
   const [status, setStatus] = useState<IssueStatus | ''>('')
   const [assignee, setAssignee] = useState('')
   const [priority, setPriority] = useState('')
+  // The Projects page links here with ?project=<key>, so a project's open
+  // count lands on exactly the issues it counted.
+  const [project, setProject] = useState(
+    () => new URLSearchParams(window.location.search).get('project') ?? '',
+  )
   const [creatingIssue, setCreatingIssue] = useState(false)
 
   const issues = useQuery({
@@ -110,6 +115,10 @@ export function IssuesPage({ slug }: { slug: string }) {
   const milestones = useQuery({
     queryKey: ['milestones', slug, 'all'],
     queryFn: () => api.get<{ milestones: Milestone[] }>(`/w/${slug}/milestones`),
+  })
+  const projects = useQuery({
+    queryKey: ['projects', slug, false],
+    queryFn: () => api.get<{ projects: Project[] }>(`/w/${slug}/projects`),
   })
   const createIssue = useMutation({
     mutationFn: (input: IssueInput) => api.post<Issue>(`/w/${slug}/issues`, input),
@@ -135,6 +144,10 @@ export function IssuesPage({ slug }: { slug: string }) {
     }
     return [...options.entries()].sort(([, a], [, b]) => a.localeCompare(b))
   }, [allIssues, members.data])
+  const projectsById = useMemo(
+    () => new Map((projects.data?.projects ?? []).map((item) => [item.id, item])),
+    [projects.data],
+  )
   const filteredIssues = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
     return allIssues.filter((issue) => {
@@ -143,16 +156,22 @@ export function IssuesPage({ slug }: { slug: string }) {
       if (assignee === 'unassigned' && issue.assignee_id !== null) return false
       if (assignee && assignee !== 'unassigned' && issue.assignee_id !== assignee) return false
       if (priority && issue.priority !== Number(priority)) return false
+      if (project === 'unfiled' && issue.project_id !== null) return false
+      if (project && project !== 'unfiled') {
+        if (!issue.project_id) return false
+        if (projectsById.get(issue.project_id)?.key !== project) return false
+      }
       return true
     })
-  }, [allIssues, assignee, priority, search, status])
-  const hasFilters = Boolean(search.trim() || status || assignee || priority)
+  }, [allIssues, assignee, priority, project, projectsById, search, status])
+  const hasFilters = Boolean(search.trim() || status || assignee || priority || project)
 
   function clearFilters() {
     setSearch('')
     setStatus('')
     setAssignee('')
     setPriority('')
+    setProject('')
   }
 
   async function submitIssue(input: IssueInput) {
@@ -186,7 +205,7 @@ export function IssuesPage({ slug }: { slug: string }) {
       ) : null}
 
       <section className="border-y border-grey-200 py-2" aria-label="Issue filters">
-        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto]">
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))_auto]">
           <label className="block min-w-0 text-sm">
             <span className="mb-1 block text-grey-500">Search issues</span>
             <input
@@ -224,6 +243,21 @@ export function IssuesPage({ slug }: { slug: string }) {
               <option value="unassigned">Unassigned</option>
               {assigneeOptions.map(([id, label]) => (
                 <option key={id} value={id}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block min-w-0 text-sm">
+            <span className="mb-1 block text-grey-500">Filter by project</span>
+            <select
+              className={controlClass}
+              value={project}
+              onChange={(event) => setProject(event.target.value)}
+              data-testid="issues-project-filter"
+            >
+              <option value="">All projects</option>
+              <option value="unfiled">Unfiled</option>
+              {(projects.data?.projects ?? []).map((item) => (
+                <option key={item.id} value={item.key}>{item.name}</option>
               ))}
             </select>
           </label>

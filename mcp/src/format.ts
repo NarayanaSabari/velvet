@@ -1,4 +1,14 @@
-import type { Comment, Issue, Milestone, TicketDetails, User } from './types.js'
+import type {
+  Comment,
+  EvidenceRef,
+  Issue,
+  Milestone,
+  Project,
+  Sprint,
+  TicketDetails,
+  User,
+  WorklogEntry,
+} from './types.js'
 
 function text(value: unknown, fallback = '?'): string {
   if (typeof value !== 'string' && typeof value !== 'number') {
@@ -91,4 +101,116 @@ export function formatMilestones(milestones: Milestone[], workspace: string): st
       return `${text(milestone.id)} | ${text(milestone.name, '(unnamed)')}${status}`
     }),
   ].join('\n')
+}
+
+export function formatProjects(projects: Project[], workspace: string): string {
+  if (projects.length === 0) {
+    return `No projects found in workspace ${workspace}. Create one before filing work under a goal.`
+  }
+  return [
+    `Projects in ${workspace}:`,
+    ...projects.map((project) => {
+      const counts = Object.entries(project.issue_counts ?? {})
+        .map(([status, n]) => `${status}: ${n}`)
+        .join(', ')
+      return `${text(project.key)} | ${text(project.name, '(unnamed)')}${counts ? ` | ${counts}` : ''}`
+    }),
+  ].join('\n')
+}
+
+export function formatSprints(sprints: Sprint[], workspace: string): string {
+  if (sprints.length === 0) {
+    return `No sprints found in workspace ${workspace}.`
+  }
+  return [
+    `Sprints in ${workspace}:`,
+    ...sprints.map(
+      (sprint) =>
+        `${text(sprint.id)} | ${text(sprint.name, '(unnamed)')} | ${text(sprint.state)} | ${text(sprint.starts_on)} to ${text(sprint.ends_on)}`,
+    ),
+  ].join('\n')
+}
+
+export function formatCreatedSprint(sprint: Sprint): string {
+  return [
+    `Created sprint ${text(sprint.name, '(unnamed)')} (${text(sprint.starts_on)} to ${text(sprint.ends_on)}).`,
+    `ID: ${text(sprint.id)}`,
+    `State: ${text(sprint.state)}. Activate it when work starts.`,
+  ].join('\n')
+}
+
+export function formatCreatedMilestone(milestone: Milestone): string {
+  return [
+    `Created milestone ${text(milestone.name, '(unnamed)')}.`,
+    `ID: ${text(milestone.id)}`,
+    'File tickets under it with milestone_id.',
+  ].join('\n')
+}
+
+export function formatProjectNote(project: string, comment: Comment): string {
+  return `Logged work to project ${text(project)}: ${text(comment.body, '(empty)')}`
+}
+
+export function formatEvidence(key: string, evidence: EvidenceRef): string {
+  const what = evidence.kind === 'commit' ? `commit ${text(evidence.sha)}` : 'pull request'
+  const url = evidence.url ? ` (${evidence.url})` : ''
+  return `Attached ${what} to ${text(key)} as evidence${url}. Status unchanged.`
+}
+
+/**
+ * Groups by day then organisation, which is how a person reconstructs their
+ * own week when asked what they have been working on.
+ */
+export function formatWorklog(entries: WorklogEntry[]): string {
+  if (entries.length === 0) {
+    return 'No recorded work in this period.'
+  }
+
+  const lines: string[] = []
+  let day = ''
+  let workspace = ''
+  for (const entry of entries) {
+    if (entry.day !== day) {
+      day = entry.day
+      workspace = ''
+      lines.push(`\n${text(entry.day)}`)
+    }
+    if (entry.workspace_slug !== workspace) {
+      workspace = entry.workspace_slug
+      lines.push(`  ${text(entry.workspace_name || entry.workspace_slug)}`)
+    }
+    lines.push(`    - ${worklogLine(entry)}`)
+  }
+  return lines.join('\n').trim()
+}
+
+function worklogLine(entry: WorklogEntry): string {
+  const parts: string[] = []
+  if (entry.project_key) {
+    parts.push(`[${text(entry.project_key)}]`)
+  }
+  if (entry.issue_key) {
+    parts.push(text(entry.issue_key))
+  }
+  switch (entry.kind) {
+    case 'note':
+      // The note body is the record of what happened, so it is what is shown.
+      parts.push(text(entry.body, '(empty)'))
+      break
+    case 'issue':
+      parts.push(text(entry.title, '(untitled)'))
+      if (entry.status) {
+        parts.push(`(${text(entry.status)})`)
+      }
+      break
+    case 'pull_request':
+      parts.push(`PR: ${text(entry.title, '(untitled)')}`)
+      break
+    case 'commit':
+      parts.push(`commit: ${text(entry.title, '(empty)')}`)
+      break
+    default:
+      parts.push(text(entry.title, '(untitled)'))
+  }
+  return parts.join(' ')
 }

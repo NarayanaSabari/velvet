@@ -107,21 +107,25 @@ func (s *Store) DeleteAPIToken(ctx context.Context, userID, id uuid.UUID) error 
 // LookupAPIToken authenticates rawToken and records use at most once per
 // minute. The conditional UPDATE avoids a write on every authenticated API
 // request while keeping the first use visible immediately.
-func (s *Store) LookupAPIToken(ctx context.Context, rawToken string) (User, error) {
+//
+// The token's own id is returned alongside the user so a work-log entry can
+// record which agent token wrote it.
+func (s *Store) LookupAPIToken(ctx context.Context, rawToken string) (User, uuid.UUID, error) {
 	hash := HashToken(rawToken)
 	if _, err := s.pool.Exec(ctx, `
 		UPDATE api_token
 		SET last_used_at=now()
 		WHERE token_hash=$1
 		  AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')`, hash); err != nil {
-		return User{}, err
+		return User{}, uuid.Nil, err
 	}
 
 	var user User
+	var tokenID uuid.UUID
 	err := s.pool.QueryRow(ctx, `
-		SELECT u.id, COALESCE(u.email, ''), u.github_id, u.github_login, u.name, u.avatar_url
+		SELECT t.id, u.id, COALESCE(u.email, ''), u.github_id, u.github_login, u.name, u.avatar_url
 		FROM api_token t JOIN app_user u ON u.id=t.user_id
 		WHERE t.token_hash=$1`, hash).
-		Scan(&user.ID, &user.Email, &user.GitHubID, &user.GitHubLogin, &user.Name, &user.AvatarURL)
-	return user, mapErr(err)
+		Scan(&tokenID, &user.ID, &user.Email, &user.GitHubID, &user.GitHubLogin, &user.Name, &user.AvatarURL)
+	return user, tokenID, mapErr(err)
 }

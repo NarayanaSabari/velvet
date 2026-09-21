@@ -14,6 +14,7 @@ import { NavLink } from './nav'
 const NAV = [
   { label: 'Dashboard', path: '' },
   { label: 'Issues', path: '/issues' },
+  { label: 'Projects', path: '/projects' },
   { label: 'Team feed', path: '/feed' },
   { label: 'Sprints', path: '/sprints' },
   { label: 'Mentions', path: '/mentions' },
@@ -182,10 +183,13 @@ function MoreMenu({
         }`}
       >
         <MenuLink to={`${base}/feed`}>Team feed</MenuLink>
+        <MenuLink to={`${base}/projects`}>Projects</MenuLink>
         <MenuLink to={`${base}/unlinked`}>Unlinked PRs</MenuLink>
         <MenuLink to={`${base}/reports`}>Reports</MenuLink>
         {isAdmin ? <MenuLink to={`${base}/admin`}>Administration</MenuLink> : null}
         <div className="my-1 border-t border-grey-200" />
+        {/* Outside the workspace: the work log spans every organisation. */}
+        <MenuLink to="/me/worklog">My work log</MenuLink>
         <MenuLink to={`${base}/settings/profile`}>Profile</MenuLink>
         <MenuLink to="/orgs/new">New organisation</MenuLink>
         <div className="px-2 py-1.5 text-sm">
@@ -278,6 +282,13 @@ export function Shell({
                 </NavLink>
               </li>
             ) : null}
+            {/* Separated because it leaves the workspace: the work log spans
+                every organisation this person belongs to. */}
+            <li className="pt-2">
+              <NavLink to="/me/worklog" className={NAV_ITEM} activeClassName={NAV_ACTIVE}>
+                My work log
+              </NavLink>
+            </li>
           </ul>
         </nav>
 

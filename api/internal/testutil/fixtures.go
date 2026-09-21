@@ -115,6 +115,33 @@ func (f *Fixture) Do(method, path string, body any) *httptest.ResponseRecorder {
 	return rec
 }
 
+// DoAsAgent issues a request authenticated with a personal API token rather
+// than a browser cookie, which is how a coding agent reaches the API. The
+// Origin header is deliberately absent: bearer requests are not browser
+// requests and must not need one.
+func (f *Fixture) DoAsAgent(method, path, token string, body any) *httptest.ResponseRecorder {
+	f.T.Helper()
+	var buf bytes.Buffer
+	if body != nil {
+		require.NoError(f.T, json.NewEncoder(&buf).Encode(body))
+	}
+	req := httptest.NewRequest(method, path, &buf)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	f.Handler.ServeHTTP(rec, req)
+	return rec
+}
+
+// AgentToken mints a personal API token, returning the one-time secret an
+// agent would be configured with.
+func (f *Fixture) AgentToken(name string) string {
+	f.T.Helper()
+	raw, err := f.Store.CreateAPIToken(f.T.Context(), f.User.ID, name)
+	require.NoError(f.T, err)
+	return raw
+}
+
 // DecodeInto unmarshals a recorder body, failing the test on bad JSON.
 func (f *Fixture) DecodeInto(rec *httptest.ResponseRecorder, dst any) {
 	f.T.Helper()
@@ -129,6 +156,23 @@ func CreateIssue(t *testing.T, f *Fixture, title string) store.Issue {
 		WorkspaceID: f.WorkspaceID, ActorID: f.User.ID, Title: title})
 	require.NoError(t, err)
 	return issue
+}
+
+// CreateForeignProject makes a project in a different workspace, so a test can
+// prove that a valid UUID from elsewhere cannot be referenced here.
+func CreateForeignProject(t *testing.T, f *Fixture, key string) uuid.UUID {
+	t.Helper()
+	ctx := t.Context()
+
+	var otherWS uuid.UUID
+	require.NoError(t, f.Pool.QueryRow(ctx,
+		`INSERT INTO workspace (name, slug, issue_prefix)
+		 VALUES ('Foreign projects', 'foreign-projects', 'FPR') RETURNING id`).Scan(&otherWS))
+
+	project, err := f.Store.CreateProject(ctx, store.CreateProjectInput{
+		WorkspaceID: otherWS, Key: key, Name: "Foreign"})
+	require.NoError(t, err)
+	return project.ID
 }
 
 // LinkRepo seeds a verified active binding under installation 99, which is the
@@ -182,6 +226,18 @@ func InsertForeignPullRequest(t *testing.T, f *Fixture, number int, title string
 		Title: title, State: "open", GHCreatedAt: &now, GHUpdatedAt: &now})
 	require.NoError(t, err)
 	return pr.ID
+}
+
+// GitHubStub answers every GitHub REST call with an empty object. Tests about
+// what the worker does with a delivery it already has do not need real API
+// responses, but the client must still point somewhere.
+func GitHubStub(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{})
+	}))
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 // NewWorker builds a worker whose GitHub client points at a stub, using an

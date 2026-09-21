@@ -93,9 +93,12 @@ func TestCompletingAMilestoneRecordsActivity(t *testing.T) {
 		map[string]any{"status": "completed"})
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
+	// Creation and completion are each recorded, so the query names the verb
+	// it is checking rather than assuming a milestone has only one.
 	var verb string
 	require.NoError(t, f.Pool.QueryRow(t.Context(),
-		`SELECT verb FROM activity WHERE target_id = $1`, m.ID).Scan(&verb))
+		`SELECT verb FROM activity WHERE target_id = $1 AND verb = $2`,
+		m.ID, store.VerbCompletedMilestone).Scan(&verb))
 	require.Equal(t, store.VerbCompletedMilestone, verb)
 }
 

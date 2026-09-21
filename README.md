@@ -9,6 +9,10 @@ Self-hosting is the point: the team owns the data and the deployment.
 
 ## The model
 
+**Project** is the durable thing work belongs to: a client engagement, a product area, something worked on for months.
+A milestone dies with its sprint, so it cannot name that; a project outlives the sprints its issues are scheduled into.
+A repository can be mapped to a project, which is what lets a commit on a branch that names no issue still be attributed to the work it belongs to.
+
 **Sprint** is a calendar month, in state `upcoming`, `active`, or `completed`.
 Closing a sprint freezes a snapshot - milestones completed against planned, issue counts per status, per-person activity totals - so later edits cannot silently rewrite last month's report.
 Incomplete issues move to the next sprint.
@@ -16,7 +20,7 @@ Incomplete issues move to the next sprint.
 **Milestone** belongs to a sprint and carries a name, description, owner, target date, and status.
 Its comment thread is the periodic narrative: where this stands, and why.
 
-**Issue** belongs to a milestone or to nothing at all.
+**Issue** belongs to a milestone, a project, or to nothing at all.
 The unfiled backlog is deliberate, because work arrives before anyone has filed it under a goal, and requiring a milestone at creation makes people skip logging entirely.
 An issue has a human-readable key (`ENG-142`), a title, a Markdown description, a status, a priority from 0 to 4, an assignee, and labels.
 Sub-issues nest exactly one level.
@@ -24,9 +28,61 @@ Sub-issues nest exactly one level.
 `status` is a fixed enum - `backlog`, `todo`, `in_progress`, `in_review`, `done`, `cancelled` - and is not user-configurable, so a status means the same thing across every issue in every report.
 There is no time tracking and there are no estimates or story points: this is a record of work, not a planning tool.
 
-**Comments** are the progress log. They hang off an issue or a milestone, thread one level deep, and parse `@mentions` on write so a "mentions of me" view never scans every body.
+**Comments** are the progress log. They hang off an issue, a milestone, or a project, thread one level deep, and parse `@mentions` on write so a "mentions of me" view never scans every body.
+An entry records whether a person or an agent wrote it, derived from how the request authenticated rather than from anything the client sent.
+A project entry can be promoted into a ticket later, so low-friction logging does not become a place things go to be forgotten.
 
 **Activity** is one append-only stream, written in the same transaction as the change it describes, so the feed can never disagree with the underlying data.
+
+## Agents log their own work
+
+The failure this exists to prevent is work that never gets written down.
+An agent working on a branch that names no ticket has somewhere to log anyway: the project the repository is mapped to.
+Skipping the log because no ticket exists is never the right answer.
+
+```bash
+velvet log --kind progress "I fixed the dropped retry in the token refresh path."
+velvet attach ENG-142 https://github.com/acme/widgets/pull/42
+```
+
+Evidence is attached by whatever reference is to hand - a pull request URL, `owner/repo#42`, or a commit sha - because a UUID is what the database uses and not what anyone has after finishing a piece of work.
+Nothing is ever created to satisfy a reference: an unsynced pull request is a 404 rather than an invented row.
+
+`VELVET_WORKSPACE` is optional.
+Without it, the organisation and project are resolved from the checkout's git remote, so one agent configuration serves every repository.
+A remote that matches no connected repository, or matches two organisations, is refused rather than guessed at.
+
+## Being told what to work on
+
+A manager names a sprint and a goal. Neither has to exist yet, and none of it requires administration: running a sprint is the work, not administration of it, so a member can do it and every change names who made it.
+
+```bash
+velvet sprints new "September 2026" 2026-09-01 2026-09-30
+velvet milestones new "$SPRINT_ID" "Ship the billing rewrite"
+velvet new "Migrate the invoice schema" --milestone "$MILESTONE_ID"
+```
+
+A new sprint starts `upcoming` rather than activating itself, because activating one completes whichever sprint was active and that is a decision, not a side effect.
+
+## What did I work on last week
+
+```bash
+velvet recap --days 7
+```
+
+`GET /api/v1/me/worklog` gathers the notes written, the tickets touched, and the pull requests and commits that prove it, from **every** organisation the caller belongs to, grouped by day and then by organisation.
+`.md` returns the same record as prose, because the question usually arrives as a message and the answer has to be pasteable into one.
+
+Membership is the only scope, so a recap never shows another person's work and drops an organisation the moment someone leaves it.
+
+## One person, one GitHub account per organisation
+
+Someone working for several clients often has a separate GitHub account for each.
+`app_user` holds one global login, so attribution used to work in at most one organisation and showed that person's pull requests as authored by nobody everywhere else.
+
+An organisation-specific identity now takes precedence, with the global login kept as a fallback.
+Linking back-fills the pull requests and reviews already synced under that login, because evidence usually arrives before anyone links an account.
+Two people cannot claim one account inside an organisation, and unlinking keeps the evidence: work that happened still happened.
 
 ## Pull requests are evidence, never a controller
 

@@ -40,19 +40,90 @@ Usage: velvet <command> [arguments]
 
 Commands:
   me                                      Check token authentication
-  issues [--status STATUS] [--mine]      List issue keys and titles
-  issue KEY                              Show an issue and recent comments
-  new TITLE [options]                    Create an issue and print its key
-  log KEY [BODY ...]                     Append a work-log comment
-  status KEY STATUS                      Change an issue status
-  key-from-branch                        Extract an issue key from HEAD
+  where                                   Show the organisation and project for this checkout
+  recap [--days N] [--workspace S]        Summarise your work across every organisation
+  issues [--status STATUS] [--mine]       List issue keys and titles
+  issue KEY                               Show an issue and recent comments
+  projects                                List projects in the workspace
+  sprints [new NAME FROM TO]              List or create sprints
+  milestones [SPRINT_ID | new ...]        List or create milestones
+  new TITLE [options]                     Create an issue and print its key
+  log [KEY] [--project P] [--kind K] ...  Append a work-log entry
+  attach KEY REFERENCE                    Attach a PR or commit as evidence
+  status KEY STATUS                       Change an issue status
+  key-from-branch                         Extract an issue key from HEAD
 
 Run 'velvet <command> --help' for command details.
 
 Environment:
   VELVET_URL                              Velvet URL, for example https://worklog.example.com
-  VELVET_TOKEN                           Personal token (velvet_...)
-  VELVET_WORKSPACE                       Workspace slug, for example engineering
+  VELVET_TOKEN                            Personal token (velvet_...)
+  VELVET_WORKSPACE                        Optional workspace slug; resolved from the git remote when unset
+EOF
+}
+
+usage_where() {
+  cat <<'EOF'
+Usage: velvet where
+
+Show which organisation and project this checkout belongs to, resolved from
+its git remote unless VELVET_WORKSPACE is set.
+EOF
+}
+
+usage_recap() {
+  cat <<'EOF'
+Usage: velvet recap [--days N] [--workspace SLUG] [--project KEY]
+
+Summarise what you worked on across every organisation you belong to: the
+notes you wrote, the tickets you touched, and the pull requests and commits
+that prove it. Defaults to the last seven days.
+EOF
+}
+
+usage_projects() {
+  cat <<'EOF'
+Usage: velvet projects
+
+List the projects in the current workspace with their issue counts.
+EOF
+}
+
+usage_sprints() {
+  cat <<'EOF'
+Usage: velvet sprints
+       velvet sprints new NAME STARTS_ON ENDS_ON
+
+List the sprints in the current workspace, or create one.
+
+A sprint is the calendar window work is scheduled into. Create one when told
+to work in a sprint that does not exist yet. A new sprint starts upcoming and
+is not activated automatically.
+
+Dates are YYYY-MM-DD.
+EOF
+}
+
+usage_milestones() {
+  cat <<'EOF'
+Usage: velvet milestones [SPRINT_ID]
+       velvet milestones new SPRINT_ID NAME
+
+List milestones, optionally for one sprint, or create one.
+
+A milestone is the goal a manager names. File tickets under it with
+'velvet new TITLE --milestone ID'.
+EOF
+}
+
+usage_attach() {
+  cat <<'EOF'
+Usage: velvet attach KEY REFERENCE
+
+Attach a pull request or commit to a ticket as proof of work. REFERENCE may be
+a pull request URL, owner/repo#number, or a commit sha.
+
+This never changes the ticket status.
 EOF
 }
 
@@ -106,11 +177,17 @@ EOF
 
 usage_log() {
   cat <<'EOF'
-Usage: velvet log KEY [BODY ...]
+Usage: velvet log [KEY] [--project KEY] [--kind KIND] [BODY ...]
 
-Append a work-log comment to an issue. If BODY is omitted, read it from stdin.
+Append a work-log entry. If BODY is omitted, read it from stdin.
+
+With KEY the entry hangs off that ticket. Without one it goes to the project,
+either the one given by --project or the project this repository is mapped to,
+so work is never left unrecorded because no ticket exists yet.
 
 Options:
+  --project KEY     Log against this project instead of a ticket
+  --kind KIND       progress, decision, blocker, or note
   -h, --help        Show this help
 EOF
 }
@@ -166,9 +243,63 @@ require_base_config() {
 
 require_workspace() {
   require_base_config
-  if [ -z "${VELVET_WORKSPACE:-}" ]; then
-    die "VELVET_WORKSPACE is not set; provide the workspace slug" "$EX_CONFIG"
+  if [ -n "${VELVET_WORKSPACE:-}" ]; then
+    return
   fi
+  # No workspace configured: ask the server which organisation this checkout
+  # belongs to, so one setup works in every repository rather than each
+  # needing its own slug. Guessing is never an option, because logging into
+  # the wrong client's record is worse than refusing to log.
+  resolve_workspace_from_remote
+}
+
+resolve_workspace_from_remote() {
+  local remote payload
+  remote=$(git remote get-url origin 2>/dev/null || true)
+  if [ -z "$remote" ]; then
+    die "VELVET_WORKSPACE is not set and this directory has no git remote; set VELVET_WORKSPACE" "$EX_CONFIG"
+  fi
+
+  payload=$(json_object remote "$remote")
+  request POST "$API_ROOT/me/resolve-repo" "$TMP_DIR/resolve.json" "$payload"
+  if [ "$HTTP_STATUS" != "200" ]; then
+    api_error "$HTTP_STATUS" "$TMP_DIR/resolve.json"
+  fi
+
+  VELVET_WORKSPACE=$(json_field "$TMP_DIR/resolve.json" workspace_slug)
+  VELVET_PROJECT=${VELVET_PROJECT:-$(json_field "$TMP_DIR/resolve.json" project_key)}
+  export VELVET_WORKSPACE
+  if [ -z "$VELVET_WORKSPACE" ]; then
+    die "could not resolve a workspace for $remote; set VELVET_WORKSPACE" "$EX_CONFIG"
+  fi
+}
+
+# json_field reads one top-level string field, printing nothing when it is
+# absent or null so a caller can test for emptiness.
+json_field() {
+  python3 - "$1" "$2" <<'PY'
+import json
+import sys
+
+try:
+    data = json.load(open(sys.argv[1], encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    data = None
+value = data.get(sys.argv[2]) if isinstance(data, dict) else None
+print(value if isinstance(value, str) else "")
+PY
+}
+
+# json_object builds a JSON object from alternating key and value arguments,
+# so a body is never assembled by string concatenation.
+json_object() {
+  python3 - "$@" <<'PY'
+import json
+import sys
+
+args = sys.argv[1:]
+print(json.dumps(dict(zip(args[::2], args[1::2]))))
+PY
 }
 
 urlencode() {
@@ -638,10 +769,13 @@ PY
 }
 
 command_log() {
-  local key
+  local key=""
+  local project=""
+  local kind=""
   local body
   local workspace_path
   local key_path
+  local project_path
   local payload
 
   if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
@@ -649,9 +783,35 @@ command_log() {
     usage_log
     return 0
   fi
-  [ "$#" -gt 0 ] || die "log requires an issue key; run 'velvet log --help'" "$EX_USAGE"
-  key=$1
-  shift
+
+  # A leading bare word is an issue key, which keeps the original
+  # `velvet log KEY "body"` form working unchanged.
+  case "${1:-}" in
+    -*|'') ;;
+    *) key=$1; shift ;;
+  esac
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --project)
+        [ "$#" -ge 2 ] || die "--project requires a value" "$EX_USAGE"
+        project=$2
+        shift 2
+        ;;
+      --kind)
+        [ "$#" -ge 2 ] || die "--kind requires a value" "$EX_USAGE"
+        kind=$2
+        case "$kind" in
+          progress|decision|blocker|note) ;;
+          *) die "invalid kind '$kind'; use progress, decision, blocker, or note" "$EX_USAGE" ;;
+        esac
+        shift 2
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
   if [ "$#" -gt 0 ]; then
     body=$*
   else
@@ -661,11 +821,247 @@ command_log() {
 
   require_workspace
   workspace_path=$(urlencode "$VELVET_WORKSPACE")
-  key_path=$(urlencode "$key")
-  payload=$(comment_payload "$body")
-  request POST "$API_ROOT/w/$workspace_path/issues/$key_path/comments" "$TMP_DIR/comment.json" "$payload"
-  printf 'Logged worklog to %s.\n' "$key"
+  if [ -n "$kind" ]; then
+    payload=$(json_object body "$body" kind "$kind")
+  else
+    payload=$(json_object body "$body")
+  fi
+
+  if [ -n "$key" ]; then
+    key_path=$(urlencode "$key")
+    request POST "$API_ROOT/w/$workspace_path/issues/$key_path/comments" "$TMP_DIR/comment.json" "$payload"
+    printf 'Logged worklog to %s.\n' "$key"
+    return 0
+  fi
+
+  # No ticket key: fall back to the project, which is what keeps work from
+  # going unrecorded when the branch names no issue.
+  project=${project:-${VELVET_PROJECT:-}}
+  if [ -z "$project" ]; then
+    die "no issue key or project given, and this repository is not mapped to a project; pass --project" "$EX_USAGE"
+  fi
+  project_path=$(urlencode "$project")
+  request POST "$API_ROOT/w/$workspace_path/projects/$project_path/comments" "$TMP_DIR/comment.json" "$payload"
+  printf 'Logged worklog to project %s.\n' "$project"
 }
+
+command_attach() {
+  local key reference workspace_path key_path payload
+
+  if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    usage_attach
+    return 0
+  fi
+  [ "$#" -eq 2 ] || die "attach requires KEY and a reference; run 'velvet attach --help'" "$EX_USAGE"
+  key=$1
+  reference=$2
+
+  require_workspace
+  workspace_path=$(urlencode "$VELVET_WORKSPACE")
+  key_path=$(urlencode "$key")
+  payload=$(json_object reference "$reference")
+  request POST "$API_ROOT/w/$workspace_path/issues/$key_path/evidence" "$TMP_DIR/evidence.json" "$payload"
+  printf 'Attached %s to %s as evidence. Status unchanged.\n' "$reference" "$key"
+}
+
+command_projects() {
+  local workspace_path
+
+  if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    usage_projects
+    return 0
+  fi
+  [ "$#" -eq 0 ] || die "projects does not accept arguments" "$EX_USAGE"
+
+  require_workspace
+  workspace_path=$(urlencode "$VELVET_WORKSPACE")
+  request GET "$API_ROOT/w/$workspace_path/projects" "$TMP_DIR/projects.json"
+  python3 - "$TMP_DIR/projects.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    data = json.load(handle)
+projects = data.get("projects") if isinstance(data, dict) else data
+for project in projects or []:
+    counts = ", ".join(f"{k}: {v}" for k, v in (project.get("issue_counts") or {}).items())
+    line = f"{project.get('key', '?')}\t{project.get('name', '(unnamed)')}"
+    print(f"{line}\t{counts}" if counts else line)
+PY
+}
+
+# command_recap answers "what was I working on", across every organisation,
+# which is the question this whole tool exists to make answerable.
+command_recap() {
+  local days="" workspace="" project="" query=""
+
+  if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    usage_recap
+    return 0
+  fi
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --days)
+        [ "$#" -ge 2 ] || die "--days requires a value" "$EX_USAGE"
+        case "$2" in
+          ''|*[!0-9]*) die "--days must be a positive integer" "$EX_USAGE" ;;
+        esac
+        days=$2
+        shift 2
+        ;;
+      --workspace)
+        [ "$#" -ge 2 ] || die "--workspace requires a value" "$EX_USAGE"
+        workspace=$2
+        shift 2
+        ;;
+      --project)
+        [ "$#" -ge 2 ] || die "--project requires a value" "$EX_USAGE"
+        project=$2
+        shift 2
+        ;;
+      *)
+        die "unknown recap option '$1'" "$EX_USAGE"
+        ;;
+    esac
+  done
+
+  # Deliberately not require_workspace: the recap spans every organisation,
+  # so scoping it to the current checkout would answer a smaller question.
+  require_base_config
+  for pair in "days:$days" "workspace:$workspace" "project:$project"; do
+    local name=${pair%%:*}
+    local value=${pair#*:}
+    [ -n "$value" ] || continue
+    query="${query:+$query&}$(query_param "$name" "$value")"
+  done
+  request GET "$API_ROOT/me/worklog.md${query:+?$query}" "$TMP_DIR/recap.md"
+  cat "$TMP_DIR/recap.md"
+}
+
+# command_sprints lists sprints, or creates one with `sprints new`. A manager
+# naming a sprint that does not exist yet must not be a dead end.
+command_sprints() {
+  local workspace_path
+
+  if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    usage_sprints
+    return 0
+  fi
+
+  if [ "${1:-}" = "new" ]; then
+    shift
+    command_sprint_new "$@"
+    return 0
+  fi
+  [ "$#" -eq 0 ] || die "sprints takes no arguments, or 'new'; run 'velvet sprints --help'" "$EX_USAGE"
+
+  require_workspace
+  workspace_path=$(urlencode "$VELVET_WORKSPACE")
+  request GET "$API_ROOT/w/$workspace_path/sprints" "$TMP_DIR/sprints.json"
+  python3 - "$TMP_DIR/sprints.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    data = json.load(handle)
+for sprint in (data.get("sprints") if isinstance(data, dict) else data) or []:
+    print("\t".join([
+        sprint.get("id", "?"),
+        sprint.get("name", "(unnamed)"),
+        sprint.get("state", "?"),
+        f"{sprint.get('starts_on', '?')} to {sprint.get('ends_on', '?')}",
+    ]))
+PY
+}
+
+command_sprint_new() {
+  local name starts ends workspace_path payload
+
+  [ "$#" -eq 3 ] || die "sprints new requires NAME STARTS_ON ENDS_ON" "$EX_USAGE"
+  name=$1
+  starts=$2
+  ends=$3
+  for date in "$starts" "$ends"; do
+    case "$date" in
+      [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+      *) die "dates must be YYYY-MM-DD" "$EX_USAGE" ;;
+    esac
+  done
+
+  require_workspace
+  workspace_path=$(urlencode "$VELVET_WORKSPACE")
+  payload=$(json_object name "$name" starts_on "$starts" ends_on "$ends")
+  request POST "$API_ROOT/w/$workspace_path/sprints" "$TMP_DIR/sprint.json" "$payload"
+  printf 'Created sprint %s (%s to %s).\nID: %s\n' \
+    "$name" "$starts" "$ends" "$(json_field "$TMP_DIR/sprint.json" id)"
+}
+
+command_milestones() {
+  local workspace_path sprint
+
+  if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    usage_milestones
+    return 0
+  fi
+
+  if [ "${1:-}" = "new" ]; then
+    shift
+    command_milestone_new "$@"
+    return 0
+  fi
+  [ "$#" -le 1 ] || die "milestones takes an optional sprint id, or 'new'" "$EX_USAGE"
+  sprint=${1:-}
+
+  require_workspace
+  workspace_path=$(urlencode "$VELVET_WORKSPACE")
+  if [ -n "$sprint" ]; then
+    request GET "$API_ROOT/w/$workspace_path/sprints/$(urlencode "$sprint")/milestones" "$TMP_DIR/milestones.json"
+  else
+    request GET "$API_ROOT/w/$workspace_path/milestones" "$TMP_DIR/milestones.json"
+  fi
+  python3 - "$TMP_DIR/milestones.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    data = json.load(handle)
+for milestone in (data.get("milestones") if isinstance(data, dict) else data) or []:
+    print("\t".join([
+        milestone.get("id", "?"),
+        milestone.get("name", "(unnamed)"),
+        milestone.get("status", "?"),
+    ]))
+PY
+}
+
+command_milestone_new() {
+  local sprint name workspace_path payload
+
+  [ "$#" -eq 2 ] || die "milestones new requires SPRINT_ID NAME" "$EX_USAGE"
+  sprint=$1
+  name=$2
+
+  require_workspace
+  workspace_path=$(urlencode "$VELVET_WORKSPACE")
+  payload=$(json_object name "$name")
+  request POST "$API_ROOT/w/$workspace_path/sprints/$(urlencode "$sprint")/milestones" \
+    "$TMP_DIR/milestone.json" "$payload"
+  printf 'Created milestone %s.\nID: %s\n' \
+    "$name" "$(json_field "$TMP_DIR/milestone.json" id)"
+}
+
+command_where() {
+  if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    usage_where
+    return 0
+  fi
+  [ "$#" -eq 0 ] || die "where does not accept arguments" "$EX_USAGE"
+
+  require_workspace
+  printf 'Workspace: %s\n' "$VELVET_WORKSPACE"
+  printf 'Project: %s\n' "${VELVET_PROJECT:-(none mapped)}"
+}
+
 
 command_status() {
   local key
@@ -752,10 +1148,16 @@ main() {
       fi
       ;;
     me) command_me "$@" ;;
+    where) command_where "$@" ;;
+    recap) command_recap "$@" ;;
     issues) command_issues "$@" ;;
     issue) command_issue "$@" ;;
+    projects) command_projects "$@" ;;
+    sprints) command_sprints "$@" ;;
+    milestones) command_milestones "$@" ;;
     new) command_new "$@" ;;
     log) command_log "$@" ;;
+    attach) command_attach "$@" ;;
     status) command_status "$@" ;;
     key-from-branch) command_key_from_branch "$@" ;;
     *) die "unknown command '$command'; run 'velvet --help'" "$EX_USAGE" ;;

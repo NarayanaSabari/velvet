@@ -47,8 +47,15 @@ func (s *Store) CreateSprint(ctx context.Context, in CreateSprintInput) (Sprint,
 			RETURNING `+sprintCols,
 			in.WorkspaceID, in.Name, in.StartsOn, in.EndsOn)
 		var err error
-		out, err = scanSprint(row)
-		return err
+		if out, err = scanSprint(row); err != nil {
+			return err
+		}
+		return RecordActivity(ctx, tx, ActivityInput{
+			WorkspaceID: in.WorkspaceID, ActorID: in.ActorID,
+			Verb: VerbCreatedSprint, TargetType: "sprint", TargetID: out.ID,
+			Metadata: map[string]any{
+				"name": out.Name, "starts_on": out.StartsOn, "ends_on": out.EndsOn},
+		})
 	})
 	return out, err
 }
@@ -96,8 +103,14 @@ func (s *Store) ActivateSprint(ctx context.Context, workspaceID, id, actorID uui
 			WHERE workspace_id = $1 AND id = $2
 			RETURNING `+sprintCols, workspaceID, id)
 		var err error
-		out, err = scanSprint(row)
-		return err
+		if out, err = scanSprint(row); err != nil {
+			return err
+		}
+		return RecordActivity(ctx, tx, ActivityInput{
+			WorkspaceID: workspaceID, ActorID: actorID,
+			Verb: VerbActivatedSprint, TargetType: "sprint", TargetID: id,
+			Metadata: map[string]any{"name": out.Name},
+		})
 	})
 	return out, err
 }

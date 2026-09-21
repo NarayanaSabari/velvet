@@ -21,10 +21,15 @@ type Comment struct {
 	ParentID    *uuid.UUID `json:"parent_id"`
 	Author      User       `json:"author"`
 	Body        string     `json:"body"`
-	CreatedAt   string     `json:"created_at"`
-	EditedAt    *string    `json:"edited_at"`
-	DeletedAt   *string    `json:"deleted_at"`
-	Replies     []Comment  `json:"replies,omitempty"`
+	// Source says whether a person or an agent wrote this. It is derived from
+	// the authentication method, never from the request body, so a client
+	// cannot claim to be something it is not.
+	Source    string    `json:"source"`
+	Kind      *string   `json:"kind"`
+	CreatedAt string    `json:"created_at"`
+	EditedAt  *string   `json:"edited_at"`
+	DeletedAt *string   `json:"deleted_at"`
+	Replies   []Comment `json:"replies,omitempty"`
 }
 
 type CreateCommentInput struct {
@@ -34,10 +39,26 @@ type CreateCommentInput struct {
 	TargetID    uuid.UUID
 	ParentID    *uuid.UUID
 	Body        string
+	Source      string
+	Kind        *string
+	APITokenID  *uuid.UUID
 }
 
+// ValidCommentTarget includes project so that work logged before anyone has
+// filed a ticket still has somewhere to go. An agent that finds no issue key
+// must write the entry anyway rather than silently skipping the log.
 func ValidCommentTarget(t string) bool {
-	return t == "issue" || t == "milestone"
+	return t == "issue" || t == "milestone" || t == "project"
+}
+
+// ValidCommentKind classifies a work-log entry. An empty kind is allowed and
+// means ordinary discussion rather than a classified entry.
+func ValidCommentKind(k string) bool {
+	switch k {
+	case "progress", "decision", "blocker", "note":
+		return true
+	}
+	return false
 }
 
 // excerptLen keeps the feed metadata short enough to render in a list without
@@ -45,7 +66,7 @@ func ValidCommentTarget(t string) bool {
 const excerptLen = 140
 
 const commentCols = `c.id, c.workspace_id, c.target_type::text, c.target_id, c.parent_id,
-	c.body,
+	c.body, c.source, c.kind,
 	to_char(c.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
 	to_char(c.edited_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
 	to_char(c.deleted_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
@@ -55,8 +76,8 @@ const commentCols = `c.id, c.workspace_id, c.target_type::text, c.target_id, c.p
 // appended to the same select.
 func scanCommentRow(row pgx.Row, c *Comment, extra ...any) error {
 	dst := []any{&c.ID, &c.WorkspaceID, &c.TargetType, &c.TargetID, &c.ParentID,
-		&c.Body, &c.CreatedAt, &c.EditedAt, &c.DeletedAt, &c.Author.ID,
-		&c.Author.Email, &c.Author.GitHubID, &c.Author.GitHubLogin,
+		&c.Body, &c.Source, &c.Kind, &c.CreatedAt, &c.EditedAt, &c.DeletedAt,
+		&c.Author.ID, &c.Author.Email, &c.Author.GitHubID, &c.Author.GitHubLogin,
 		&c.Author.Name, &c.Author.AvatarURL}
 	return mapCommentErr(row.Scan(append(dst, extra...)...))
 }
@@ -96,16 +117,21 @@ func (s *Store) CreateComment(ctx context.Context, in CreateCommentInput) (Comme
 			}
 		}
 
+		source := in.Source
+		if source == "" {
+			source = "human"
+		}
 		row := tx.QueryRow(ctx, `
 			WITH inserted AS (
 			    INSERT INTO comment (workspace_id, target_type, target_id, parent_id,
-			                         author_id, body)
-			    VALUES ($1, $2::comment_target, $3, $4, $5, $6)
+			                         author_id, body, source, kind, api_token_id)
+			    VALUES ($1, $2::comment_target, $3, $4, $5, $6, $7, $8, $9)
 			    RETURNING *
 			)
 			SELECT `+commentCols+`
 			FROM inserted c JOIN app_user u ON u.id = c.author_id`,
-			in.WorkspaceID, in.TargetType, in.TargetID, in.ParentID, in.ActorID, in.Body)
+			in.WorkspaceID, in.TargetType, in.TargetID, in.ParentID, in.ActorID,
+			in.Body, source, in.Kind, in.APITokenID)
 		if err := scanCommentRow(row, &out); err != nil {
 			return err
 		}
@@ -116,6 +142,10 @@ func (s *Store) CreateComment(ctx context.Context, in CreateCommentInput) (Comme
 			"target_type": in.TargetType,
 			"target_id":   in.TargetID.String(),
 			"excerpt":     excerpt(in.Body),
+			"source":      source,
+		}
+		if in.Kind != nil {
+			meta["kind"] = *in.Kind
 		}
 		switch in.TargetType {
 		case "issue":
@@ -130,6 +160,14 @@ func (s *Store) CreateComment(ctx context.Context, in CreateCommentInput) (Comme
 			if err := tx.QueryRow(ctx,
 				`SELECT name FROM milestone WHERE id = $1 AND workspace_id = $2`,
 				in.TargetID, in.WorkspaceID).Scan(&name); err == nil {
+				meta["name"] = name
+			}
+		case "project":
+			var key, name string
+			if err := tx.QueryRow(ctx,
+				`SELECT key, name FROM project WHERE id = $1 AND workspace_id = $2`,
+				in.TargetID, in.WorkspaceID).Scan(&key, &name); err == nil {
+				meta["key"] = key
 				meta["name"] = name
 			}
 		}
@@ -168,6 +206,70 @@ func excerpt(body string) string {
 	return string(runes[:excerptLen])
 }
 
+// PromoteCommentToIssue turns a project work-log entry into a ticket, carrying
+// the body across and linking the two in both directions.
+//
+// Low-friction logging is what keeps the record honest, but without a way to
+// promote an entry the project log would become a place things go to be
+// forgotten. The original entry is kept rather than moved: it is the record of
+// when the work was actually noted.
+func (s *Store) PromoteCommentToIssue(ctx context.Context, workspaceID, commentID, actorID uuid.UUID, title string) (Issue, error) {
+	var out Issue
+	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		var source Comment
+		var projectID *uuid.UUID
+		err := scanCommentRow(tx.QueryRow(ctx, `
+			SELECT `+commentCols+`,
+			       CASE WHEN c.target_type = 'project' THEN c.target_id END
+			FROM comment c JOIN app_user u ON u.id = c.author_id
+			WHERE c.workspace_id = $1 AND c.id = $2 AND c.deleted_at IS NULL
+			FOR UPDATE OF c`,
+			workspaceID, commentID), &source, &projectID)
+		if err != nil {
+			return err
+		}
+		// Only a project entry can be promoted. An issue comment already has a
+		// ticket, and promoting it would duplicate the work it describes.
+		if source.TargetType != "project" {
+			return ErrNotPromotable
+		}
+
+		key, number, err := s.NextIssueKey(ctx, tx, workspaceID)
+		if err != nil {
+			return err
+		}
+		position, err := nextIssuePosition(ctx, tx, workspaceID, nil)
+		if err != nil {
+			return err
+		}
+
+		out, err = scanIssue(tx.QueryRow(ctx, `
+			INSERT INTO issue (workspace_id, key, number, title, description,
+				status, project_id, position, created_by)
+			VALUES ($1, $2, $3, $4, $5, 'todo'::issue_status, $6, $7, $8)
+			RETURNING `+issueCols,
+			workspaceID, key, number, title, source.Body, projectID, position, actorID))
+		if err != nil {
+			return err
+		}
+
+		// The entry points at the ticket it became, so the project log shows
+		// what was picked up rather than leaving a reader to guess.
+		if _, err := tx.Exec(ctx, `
+			UPDATE comment SET body = body || $3 WHERE workspace_id = $1 AND id = $2`,
+			workspaceID, commentID, "\n\nPromoted to "+key); err != nil {
+			return err
+		}
+
+		return RecordActivity(ctx, tx, ActivityInput{
+			WorkspaceID: workspaceID, ActorID: actorID,
+			Verb: VerbPromotedEntry, TargetType: "issue", TargetID: out.ID,
+			Metadata: map[string]any{"key": out.Key, "comment_id": commentID.String()},
+		})
+	})
+	return out, err
+}
+
 // checkCommentTarget keeps a valid UUID from another workspace from being
 // commented on.
 func checkCommentTarget(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, targetType string, targetID uuid.UUID) error {
@@ -177,6 +279,8 @@ func checkCommentTarget(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, t
 		query = `SELECT EXISTS (SELECT 1 FROM issue WHERE id = $1 AND workspace_id = $2)`
 	case "milestone":
 		query = `SELECT EXISTS (SELECT 1 FROM milestone WHERE id = $1 AND workspace_id = $2)`
+	case "project":
+		query = `SELECT EXISTS (SELECT 1 FROM project WHERE id = $1 AND workspace_id = $2)`
 	default:
 		return ErrNotFound
 	}

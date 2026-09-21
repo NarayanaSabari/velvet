@@ -81,6 +81,7 @@ export interface Issue {
   priority: number
   assignee_id: string | null
   milestone_id: string | null
+  project_id: string | null
   parent_id: string | null
   position: string
   created_by: string | null
@@ -88,6 +89,43 @@ export interface Issue {
   updated_at: string
   labels?: Label[]
   children?: Issue[]
+}
+
+export type ProjectStatus = 'active' | 'archived'
+
+/**
+ * A project is the durable unit of work inside an organisation. Unlike a
+ * milestone it outlives the sprint its issues are scheduled into.
+ */
+export interface Project {
+  id: string
+  workspace_id: string
+  key: string
+  name: string
+  description: string
+  status: ProjectStatus
+  created_at: string
+  updated_at: string
+  archived_at: string | null
+  issue_counts?: Record<string, number>
+}
+
+/** One thing a person did, in one organisation, on one day. */
+export interface WorklogEntry {
+  day: string
+  at: string
+  workspace_slug: string
+  workspace_name: string
+  project_key: string | null
+  project_name: string | null
+  kind: 'note' | 'issue' | 'pull_request' | 'commit'
+  source?: string
+  note_kind?: string | null
+  issue_key?: string | null
+  title: string
+  body?: string
+  url?: string
+  status?: string
 }
 
 export interface Comment {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -36,6 +37,7 @@ func (s *Server) handleListIssues(w http.ResponseWriter, r *http.Request) {
 	}{
 		{"milestone_id", &filter.MilestoneID},
 		{"sprint_id", &filter.SprintID},
+		{"project_id", &filter.ProjectID},
 		{"assignee_id", &filter.AssigneeID},
 	} {
 		id, ok := queryUUID(w, query.Get(f.key), f.key)
@@ -43,6 +45,16 @@ func (s *Server) handleListIssues(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		*f.dst = id
+	}
+	// A project may also be named by its key, because an agent knows the key
+	// it was configured with and has no reason to have seen a UUID.
+	if raw := query.Get("project"); raw != "" {
+		id, err := s.store.ProjectIDByKey(r.Context(), ws.WorkspaceID, store.NormalizeProjectKey(raw))
+		if err != nil {
+			writeProjectError(w, err, "could not resolve the project")
+			return
+		}
+		filter.ProjectID = &id
 	}
 	for _, status := range filter.Statuses {
 		if !store.ValidIssueStatus(status) {
@@ -79,6 +91,8 @@ func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
 		Priority    int     `json:"priority"`
 		AssigneeID  *string `json:"assignee_id"`
 		MilestoneID *string `json:"milestone_id"`
+		ProjectID   *string `json:"project_id"`
+		Project     *string `json:"project"`
 		ParentID    *string `json:"parent_id"`
 	}
 	if !DecodeJSON(w, r, &body) {
@@ -109,6 +123,7 @@ func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
 	}{
 		{body.AssigneeID, &in.AssigneeID, "assignee_id"},
 		{body.MilestoneID, &in.MilestoneID, "milestone_id"},
+		{body.ProjectID, &in.ProjectID, "project_id"},
 		{body.ParentID, &in.ParentID, "parent_id"},
 	} {
 		id, ok := parseOptionalUUID(w, f.raw, f.key)
@@ -120,6 +135,15 @@ func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
 
 	ws, _ := CurrentWorkspace(r.Context())
 	user, _ := CurrentUser(r.Context())
+	// A project key is the form an agent can supply, since it knows the key it
+	// was configured with rather than a UUID it has never seen.
+	if body.Project != nil {
+		id, ok := s.resolveProjectKey(w, r, ws.WorkspaceID, *body.Project)
+		if !ok {
+			return
+		}
+		in.ProjectID = id
+	}
 	in.WorkspaceID = ws.WorkspaceID
 	in.ActorID = user.ID
 
@@ -145,15 +169,17 @@ func (s *Server) handleGetIssue(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Title       *string `json:"title"`
-		Description *string `json:"description"`
-		Status      *string `json:"status"`
-		Priority    *int    `json:"priority"`
-		AssigneeID  *string `json:"assignee_id"`
-		MilestoneID *string `json:"milestone_id"`
-		ParentID    *string `json:"parent_id"`
-		AfterID     *string `json:"after_id"`
-		BeforeID    *string `json:"before_id"`
+		Title       *string         `json:"title"`
+		Description *string         `json:"description"`
+		Status      *string         `json:"status"`
+		Priority    *int            `json:"priority"`
+		AssigneeID  json.RawMessage `json:"assignee_id"`
+		MilestoneID json.RawMessage `json:"milestone_id"`
+		ProjectID   json.RawMessage `json:"project_id"`
+		Project     *string         `json:"project"`
+		ParentID    json.RawMessage `json:"parent_id"`
+		AfterID     *string         `json:"after_id"`
+		BeforeID    *string         `json:"before_id"`
 	}
 	if !DecodeJSON(w, r, &body) {
 		return
@@ -173,24 +199,25 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 		Status: body.Status, Priority: body.Priority,
 	}
 	// An explicit null clears the reference, while omitting the field leaves
-	// it alone, which is why these patch fields are double pointers.
+	// it alone. json.RawMessage is what makes the two distinguishable: a *string
+	// decodes both to nil, so "unschedule this ticket" was silently a no-op.
 	for _, f := range []struct {
-		raw *string
+		raw json.RawMessage
 		dst ***uuid.UUID
 		key string
 	}{
 		{body.AssigneeID, &patch.AssigneeID, "assignee_id"},
 		{body.MilestoneID, &patch.MilestoneID, "milestone_id"},
+		{body.ProjectID, &patch.ProjectID, "project_id"},
 		{body.ParentID, &patch.ParentID, "parent_id"},
 	} {
-		if f.raw == nil {
-			continue
-		}
-		id, ok := parseOptionalUUID(w, f.raw, f.key)
+		id, present, ok := parseNullableUUID(w, f.raw, f.key)
 		if !ok {
 			return
 		}
-		*f.dst = &id
+		if present {
+			*f.dst = &id
+		}
 	}
 	for _, f := range []struct {
 		raw *string
@@ -206,6 +233,13 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 
 	ws, _ := CurrentWorkspace(r.Context())
 	user, _ := CurrentUser(r.Context())
+	if body.Project != nil {
+		id, ok := s.resolveProjectKey(w, r, ws.WorkspaceID, *body.Project)
+		if !ok {
+			return
+		}
+		patch.ProjectID = &id
+	}
 	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, pathIssueKey(r))
 	if err != nil {
 		writeIssueError(w, err)
@@ -219,6 +253,22 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	s.publishRecent(r.Context(), ws.WorkspaceID, sinceID)
 	WriteJSON(w, http.StatusOK, updated)
+}
+
+// resolveProjectKey turns a project key into its identifier, treating an empty
+// string as an explicit clear so that `"project": ""` detaches an issue from
+// its project rather than failing to resolve.
+func (s *Server) resolveProjectKey(w http.ResponseWriter, r *http.Request, workspaceID uuid.UUID, key string) (*uuid.UUID, bool) {
+	normalized := store.NormalizeProjectKey(key)
+	if normalized == "" {
+		return nil, true
+	}
+	id, err := s.store.ProjectIDByKey(r.Context(), workspaceID, normalized)
+	if err != nil {
+		writeProjectError(w, err, "could not resolve the project")
+		return nil, false
+	}
+	return &id, true
 }
 
 // writeIssueError answers 400 for illegal nesting, because a rejected parent

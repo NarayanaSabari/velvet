@@ -139,9 +139,7 @@ func upsertPullRequest(ctx context.Context, db prQuerier, in UpsertPRInput) (Pul
 			merged_at, closed_at, gh_created_at, gh_updated_at,
 			author_id)
 		VALUES ($1, $2, $3, $4, $5::pr_state, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-			(SELECT u.id FROM app_user u
-			 JOIN membership m ON m.user_id = u.id AND m.workspace_id = $1
-			 WHERE lower(u.github_login) = lower($7)))
+			`+memberByGitHubLogin("$1", "$7")+`)
 		ON CONFLICT (repo_id, number) DO UPDATE SET
 			title = EXCLUDED.title, state = EXCLUDED.state, draft = EXCLUDED.draft,
 			body = EXCLUDED.body, additions = EXCLUDED.additions,
@@ -541,15 +539,32 @@ type prExecutor interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
 
+// memberByGitHubLogin resolves a GitHub login to the person it belongs to
+// inside one workspace. workspaceParam and loginParam name the placeholders
+// the caller has already bound, so the same rule serves queries whose
+// parameter order differs.
+//
+// The per-organisation identity is preferred over the global one on app_user,
+// because someone who uses a different GitHub account per client would
+// otherwise have their work attributed in only one organisation. The global
+// login remains a fallback so attribution that worked before this table
+// existed keeps working.
+func memberByGitHubLogin(workspaceParam, loginParam string) string {
+	return `(SELECT COALESCE(
+		(SELECT gi.user_id FROM membership_github_identity gi
+		 WHERE gi.workspace_id = ` + workspaceParam + `
+		   AND lower(gi.github_login) = lower(` + loginParam + `)),
+		(SELECT u.id FROM app_user u
+		 JOIN membership m ON m.user_id = u.id AND m.workspace_id = ` + workspaceParam + `
+		 WHERE lower(u.github_login) = lower(` + loginParam + `))
+	))`
+}
+
 func upsertReview(ctx context.Context, db prExecutor, in UpsertReviewInput) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO pr_review (workspace_id, pull_request_id, github_id,
 			reviewer_login, reviewer_id, state, submitted_at)
-		VALUES ($1, $2, $3, $4,
-			(SELECT u.id FROM app_user u
-			 JOIN membership m ON m.user_id = u.id AND m.workspace_id = $1
-			 WHERE lower(u.github_login) = lower($4)),
-			$5, $6)
+		SELECT $1, $2, $3, $4, `+memberByGitHubLogin("$1", "$4")+`, $5, $6
 		ON CONFLICT (github_id) DO UPDATE SET
 			state = EXCLUDED.state, submitted_at = EXCLUDED.submitted_at`,
 		in.WorkspaceID, in.PullRequestID, in.GitHubID, in.ReviewerLogin,

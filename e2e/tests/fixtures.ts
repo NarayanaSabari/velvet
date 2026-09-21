@@ -27,13 +27,18 @@ export function sql(statement: string): string {
  * Evidence and workflow specs start with a valid email identity and session.
  * onboarding.spec.ts separately exercises email signup and GitHub ownership
  * authorization through the local provider, without seeded sessions or repos.
+ *
+ * The workspace name is upserted rather than skipped on conflict, for the same
+ * reason seedRepo below upserts: the rename spec renames `lab` and the stack is
+ * reused, so DO NOTHING left the previous run's name in place and the second
+ * run failed on an assertion the first run had invalidated.
  */
 export function seedWorkspace(token: string, slug = 'lab'): void {
   const hashed = createHash('sha256').update(token).digest('hex')
   sql(`
     INSERT INTO workspace (name, slug, issue_prefix)
     VALUES ('Lab', '${slug}', 'ENG')
-    ON CONFLICT (slug) DO NOTHING;
+    ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name;
 
     INSERT INTO app_user (email, github_id, github_login, name)
     VALUES ('sabari@example.test', 1, 'sabari', 'Sabari')
@@ -99,7 +104,7 @@ export function resetWorkspaceData(): void {
   sql(`
     TRUNCATE login_token, pr_link, pr_review, commit_ref, pull_request, repo, github_installation,
              github_event, job, comment_mention, comment, issue_label, label,
-             sprint_snapshot, milestone, sprint, issue, activity
+             sprint_snapshot, milestone, sprint, issue, project, activity
     RESTART IDENTITY CASCADE;
     UPDATE workspace SET issue_counter = 0;
   `)

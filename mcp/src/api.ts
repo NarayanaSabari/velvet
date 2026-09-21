@@ -2,13 +2,22 @@ import type {
   Comment,
   CommentsResponse,
   CreateIssueInput,
+  EvidenceRef,
   Issue,
   IssuesResponse,
   MeResponse,
   Milestone,
   MilestonesResponse,
+  Project,
+  ProjectsResponse,
+  RepoResolution,
+  Sprint,
+  SprintsResponse,
   TicketDetails,
+  UpdateIssueInput,
   VelvetConfig,
+  WorklogEntry,
+  WorklogResponse,
 } from './types.js'
 
 export type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>
@@ -58,6 +67,12 @@ function encodePath(value: string): string {
 export class VelvetApi {
   private readonly apiRoot: string
   private readonly fetchImpl: FetchLike
+  /**
+   * The workspace every scoped call uses. It starts from configuration and is
+   * replaced once discovery resolves the checkout, so a tool never has to know
+   * which of the two supplied it.
+   */
+  private workspace: string
 
   constructor(
     private readonly config: VelvetConfig,
@@ -65,10 +80,74 @@ export class VelvetApi {
   ) {
     this.apiRoot = `${config.baseUrl}/api/v1`
     this.fetchImpl = fetchImpl
+    this.workspace = config.workspace
+  }
+
+  useWorkspace(slug: string): void {
+    this.workspace = slug
+  }
+
+  get currentWorkspace(): string {
+    return this.workspace
   }
 
   issueUrl(key: string): string {
-    return `${this.config.baseUrl}/w/${encodePath(this.config.workspace)}/issues/${encodePath(key)}`
+    return `${this.config.baseUrl}/w/${encodePath(this.workspace)}/issues/${encodePath(key)}`
+  }
+
+  async resolveRepo(remote: string): Promise<RepoResolution> {
+    return this.request<RepoResolution>(
+      'POST',
+      '/me/resolve-repo',
+      { remote },
+      `no connected repository matches ${remote} in any of your organisations`,
+    )
+  }
+
+  /** Work-log notes against a project, for work with no ticket yet. */
+  async addProjectComment(project: string, body: string, kind?: string): Promise<Comment> {
+    return this.request<Comment>(
+      'POST',
+      `/w/${encodePath(this.workspace)}/projects/${encodePath(project)}/comments`,
+      { body, ...(kind ? { kind } : {}) },
+      `no such project in workspace ${this.workspace}`,
+    )
+  }
+
+  async listProjects(): Promise<Project[]> {
+    const response = await this.request<ProjectsResponse | Project[]>(
+      'GET',
+      `/w/${encodePath(this.workspace)}/projects`,
+      undefined,
+      `no such workspace ${this.workspace}`,
+    )
+    const projects = Array.isArray(response) ? response : response.projects
+    return Array.isArray(projects) ? projects : []
+  }
+
+  async attachEvidence(key: string, reference: string): Promise<EvidenceRef> {
+    return this.request<EvidenceRef>(
+      'POST',
+      `/w/${encodePath(this.workspace)}/issues/${encodePath(key)}/evidence`,
+      { reference },
+      `no synced pull request or commit matches ${reference}`,
+    )
+  }
+
+  async myWorklog(options: { days?: number; workspace?: string; project?: string } = {}): Promise<WorklogEntry[]> {
+    const query = new URLSearchParams()
+    if (options.days) {
+      query.set('days', String(options.days))
+    }
+    if (options.workspace) {
+      query.set('workspace', options.workspace)
+    }
+    if (options.project) {
+      query.set('project', options.project)
+    }
+    const suffix = query.toString() ? `?${query.toString()}` : ''
+    const response = await this.request<WorklogResponse>('GET', `/me/worklog${suffix}`)
+    return Array.isArray(response.entries) ? response.entries : []
   }
 
   async getMe(): Promise<MeResponse> {
@@ -81,36 +160,45 @@ export class VelvetApi {
     )
     return this.request<Issue>(
       'POST',
-      `/w/${encodePath(this.config.workspace)}/issues`,
+      `/w/${encodePath(this.workspace)}/issues`,
       payload,
-      `no such issue in workspace ${this.config.workspace}`,
+      `no such issue in workspace ${this.workspace}`,
     )
   }
 
-  async addIssueComment(key: string, body: string): Promise<Comment> {
+  async addIssueComment(key: string, body: string, kind?: string): Promise<Comment> {
     return this.request<Comment>(
       'POST',
-      `/w/${encodePath(this.config.workspace)}/issues/${encodePath(key)}/comments`,
-      { body },
-      `no such issue in workspace ${this.config.workspace}`,
+      `/w/${encodePath(this.workspace)}/issues/${encodePath(key)}/comments`,
+      { body, ...(kind ? { kind } : {}) },
+      `no such issue in workspace ${this.workspace}`,
+    )
+  }
+
+  async updateIssue(key: string, patch: UpdateIssueInput): Promise<Issue> {
+    return this.request<Issue>(
+      'PATCH',
+      `/w/${encodePath(this.workspace)}/issues/${encodePath(key)}`,
+      patch,
+      `no such issue in workspace ${this.workspace}`,
     )
   }
 
   async getIssue(key: string): Promise<Issue> {
     return this.request<Issue>(
       'GET',
-      `/w/${encodePath(this.config.workspace)}/issues/${encodePath(key)}`,
+      `/w/${encodePath(this.workspace)}/issues/${encodePath(key)}`,
       undefined,
-      `no such issue in workspace ${this.config.workspace}`,
+      `no such issue in workspace ${this.workspace}`,
     )
   }
 
   async getIssueComments(key: string): Promise<Comment[]> {
     const response = await this.request<CommentsResponse>(
       'GET',
-      `/w/${encodePath(this.config.workspace)}/issues/${encodePath(key)}/comments`,
+      `/w/${encodePath(this.workspace)}/issues/${encodePath(key)}/comments`,
       undefined,
-      `no such issue in workspace ${this.config.workspace}`,
+      `no such issue in workspace ${this.workspace}`,
     )
     return Array.isArray(response.comments) ? response.comments : []
   }
@@ -123,10 +211,13 @@ export class VelvetApi {
     return { issue, comments }
   }
 
-  async listIssues(options: { status?: string; mine?: boolean } = {}): Promise<Issue[]> {
+  async listIssues(options: { status?: string; mine?: boolean; project?: string } = {}): Promise<Issue[]> {
     const query = new URLSearchParams()
     if (options.status) {
       query.set('status', options.status)
+    }
+    if (options.project) {
+      query.set('project', options.project)
     }
     if (options.mine) {
       const me = await this.getMe()
@@ -139,9 +230,9 @@ export class VelvetApi {
     const suffix = query.toString() ? `?${query.toString()}` : ''
     const response = await this.request<IssuesResponse | Issue[]>(
       'GET',
-      `/w/${encodePath(this.config.workspace)}/issues${suffix}`,
+      `/w/${encodePath(this.workspace)}/issues${suffix}`,
       undefined,
-      `no such issue in workspace ${this.config.workspace}`,
+      `no such issue in workspace ${this.workspace}`,
     )
     const issues = Array.isArray(response) ? response : response.issues
     return Array.isArray(issues) ? issues : []
@@ -150,21 +241,53 @@ export class VelvetApi {
   async setIssueStatus(key: string, status: string): Promise<Issue> {
     return this.request<Issue>(
       'PATCH',
-      `/w/${encodePath(this.config.workspace)}/issues/${encodePath(key)}`,
+      `/w/${encodePath(this.workspace)}/issues/${encodePath(key)}`,
       { status },
-      `no such issue in workspace ${this.config.workspace}`,
+      `no such issue in workspace ${this.workspace}`,
     )
   }
 
   async listMilestones(): Promise<Milestone[]> {
     const response = await this.request<MilestonesResponse | Milestone[]>(
       'GET',
-      `/w/${encodePath(this.config.workspace)}/milestones`,
+      `/w/${encodePath(this.workspace)}/milestones`,
       undefined,
-      `no such issue in workspace ${this.config.workspace}`,
+      `no such issue in workspace ${this.workspace}`,
     )
     const milestones = Array.isArray(response) ? response : response.milestones
     return Array.isArray(milestones) ? milestones : []
+  }
+
+  async listSprints(): Promise<Sprint[]> {
+    const response = await this.request<SprintsResponse | Sprint[]>(
+      'GET',
+      `/w/${encodePath(this.workspace)}/sprints`,
+      undefined,
+      `no such workspace ${this.workspace}`,
+    )
+    const sprints = Array.isArray(response) ? response : response.sprints
+    return Array.isArray(sprints) ? sprints : []
+  }
+
+  async createSprint(input: { name: string; starts_on: string; ends_on: string }): Promise<Sprint> {
+    return this.request<Sprint>(
+      'POST',
+      `/w/${encodePath(this.workspace)}/sprints`,
+      input,
+      `no such workspace ${this.workspace}`,
+    )
+  }
+
+  async createMilestone(
+    sprintID: string,
+    input: { name: string; description?: string; target_date?: string },
+  ): Promise<Milestone> {
+    return this.request<Milestone>(
+      'POST',
+      `/w/${encodePath(this.workspace)}/sprints/${encodePath(sprintID)}/milestones`,
+      input,
+      `no such sprint in workspace ${this.workspace}`,
+    )
   }
 
   private async request<T>(
@@ -202,7 +325,7 @@ export class VelvetApi {
           message = 'token invalid or revoked'
           break
         case 404:
-          message = notFoundMessage ?? `resource not found in workspace ${this.config.workspace}`
+          message = notFoundMessage ?? `resource not found in workspace ${this.workspace}`
           break
         default: {
           const detail = responseMessage(data)

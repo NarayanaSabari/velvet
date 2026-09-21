@@ -1,8 +1,6 @@
 package worker_test
 
 import (
-	"encoding/json"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -202,11 +200,9 @@ func TestOutOfOrderEventsDoNotResurrectStaleState(t *testing.T) {
 // stubGitHub answers the few REST calls the worker makes during these tests.
 // Webhook processing should not need GitHub at all; this exists so a stray
 // call fails loudly in the test rather than reaching the network.
+// stubGitHub delegates to the shared testutil stub so both packages describe
+// an empty GitHub the same way.
 func stubGitHub(t *testing.T) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{})
-	}))
-	t.Cleanup(srv.Close)
-	return srv
+	return testutil.GitHubStub(t)
 }
