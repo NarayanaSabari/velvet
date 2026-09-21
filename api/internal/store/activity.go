@@ -26,6 +26,10 @@ const (
 	VerbMovedIssueProject  = "moved_issue_project"
 	VerbPromotedEntry      = "promoted_entry"
 	VerbAttachedCommit     = "attached_commit"
+	// The GitHub account a person uses inside one organisation, which may
+	// differ from the one they use elsewhere.
+	VerbLinkedGitHubIdentity   = "linked_github_identity"
+	VerbUnlinkedGitHubIdentity = "unlinked_github_identity"
 )
 
 type ActivityInput struct {

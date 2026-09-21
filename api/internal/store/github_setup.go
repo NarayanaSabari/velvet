@@ -21,6 +21,10 @@ type GitHubAuthorization struct {
 	CandidateInstallationID int64
 	Verifier                string
 	Completed               bool
+	// LinkWorkspaceID names the organisation a profile link was started
+	// from, so completing it records which GitHub account this person uses
+	// there. Zero means an ordinary profile-only link.
+	LinkWorkspaceID uuid.UUID
 }
 
 func githubRandom() (string, error) {
@@ -54,7 +58,10 @@ func lockGitHubSessionTx(ctx context.Context, tx pgx.Tx, sessionHash string, use
 	return mapErr(tx.QueryRow(ctx, `SELECT id FROM session WHERE id=$1 AND user_id=$2 AND expires_at>clock_timestamp()`, sessionHash, userID).Scan(&id))
 }
 
-func (s *Store) CreateGitHubLinkAuthorization(ctx context.Context, session string, userID uuid.UUID) (string, string, error) {
+// CreateGitHubLinkAuthorization starts a profile link. A non-zero workspaceID
+// scopes the result to that organisation, which is what lets one person use a
+// different GitHub account for each client they work for.
+func (s *Store) CreateGitHubLinkAuthorization(ctx context.Context, session string, userID, workspaceID uuid.UUID) (string, string, error) {
 	state, verifier, challenge, err := githubSecrets()
 	if err != nil {
 		return "", "", err
@@ -63,7 +70,15 @@ func (s *Store) CreateGitHubLinkAuthorization(ctx context.Context, session strin
 		if err := lockGitHubSessionTx(ctx, tx, HashToken(session), userID); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO github_authorization_state(token_hash,session_id,user_id,purpose,verifier,expires_at) VALUES($1,$2,$3,'link',$4,clock_timestamp()+interval '15 minutes')`, HashToken(state), HashToken(session), userID, verifier)
+		var workspace *uuid.UUID
+		if workspaceID != uuid.Nil {
+			// Only a member may bind an identity to an organisation.
+			if err := checkWorkspaceMember(ctx, tx, workspaceID, userID); err != nil {
+				return err
+			}
+			workspace = &workspaceID
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO github_authorization_state(token_hash,session_id,user_id,purpose,verifier,link_workspace_id,expires_at) VALUES($1,$2,$3,'link',$4,$5,clock_timestamp()+interval '15 minutes')`, HashToken(state), HashToken(session), userID, verifier, workspace)
 		return err
 	})
 	if err != nil {
@@ -128,14 +143,14 @@ func (s *Store) StartGitHubInstallationAuthorization(ctx context.Context, setup,
 	return state, challenge, nil
 }
 
-const githubAuthorizationSelect = `SELECT a.token_hash,a.session_id,a.user_id,a.purpose,COALESCE(a.setup_token_hash,''),COALESCE(g.workspace_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(w.slug,''),COALESCE(g.candidate_installation_id,0),a.completed_at IS NOT NULL
+const githubAuthorizationSelect = `SELECT a.token_hash,a.session_id,a.user_id,a.purpose,COALESCE(a.setup_token_hash,''),COALESCE(g.workspace_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(w.slug,''),COALESCE(g.candidate_installation_id,0),a.completed_at IS NOT NULL,COALESCE(a.link_workspace_id,'00000000-0000-0000-0000-000000000000'::uuid)
  FROM github_authorization_state a JOIN session s ON s.id=a.session_id LEFT JOIN github_setup_state g ON g.token_hash=a.setup_token_hash LEFT JOIN workspace w ON w.id=g.workspace_id
  WHERE a.token_hash=$1 AND a.session_id=$2 AND a.user_id=$3 AND s.user_id=a.user_id AND s.expires_at>clock_timestamp() AND a.expires_at>clock_timestamp()
  AND (a.purpose='link' OR (g.session_id=a.session_id AND g.user_id=a.user_id AND g.expires_at>clock_timestamp() AND g.candidate_installation_id>0 AND g.claimed_at IS NOT NULL AND ((g.phase='authorization' AND g.completed_at IS NULL AND a.completed_at IS NULL) OR (g.phase='completed' AND g.completed_at IS NOT NULL AND a.completed_at IS NOT NULL))))`
 
 func scanGitHubAuthorization(row pgx.Row) (GitHubAuthorization, error) {
 	var a GitHubAuthorization
-	err := row.Scan(&a.StateHash, &a.SessionHash, &a.UserID, &a.Purpose, &a.SetupHash, &a.WorkspaceID, &a.WorkspaceSlug, &a.CandidateInstallationID, &a.Completed)
+	err := row.Scan(&a.StateHash, &a.SessionHash, &a.UserID, &a.Purpose, &a.SetupHash, &a.WorkspaceID, &a.WorkspaceSlug, &a.CandidateInstallationID, &a.Completed, &a.LinkWorkspaceID)
 	return a, mapErr(err)
 }
 
@@ -195,6 +210,14 @@ func (s *Store) CompleteGitHubLink(ctx context.Context, a GitHubAuthorization, i
 		}
 		if _, err := tx.Exec(ctx, `UPDATE app_user SET github_id=$1,github_login=$2,updated_at=clock_timestamp() WHERE id=$3`, identity.ID, identity.Login, a.UserID); err != nil {
 			return mapErr(err)
+		}
+		// A link started from inside an organisation also records the account
+		// this person uses there, in the same transaction, so attribution and
+		// the profile can never disagree about which identity was just linked.
+		if a.LinkWorkspaceID != uuid.Nil {
+			if err := linkMembershipIdentityTx(ctx, tx, a.LinkWorkspaceID, a.UserID, identity); err != nil {
+				return err
+			}
 		}
 		// The user update may have waited for another profile mutation. Recheck
 		// both expiries after that wait, rolling the identity update back if dead.

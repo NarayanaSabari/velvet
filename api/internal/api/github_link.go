@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 )
 
@@ -12,6 +14,68 @@ func (s *Server) registerGitHubAuthorizationRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/v1/auth/github/callback", s.RequireAuth(http.HandlerFunc(s.handleGitHubAuthorizationCallback)))
 	mux.Handle("GET /api/v1/github/setup", s.RequireAuth(http.HandlerFunc(s.handleGitHubSetup)))
 	mux.Handle("DELETE /api/v1/me/github", s.RequireAuth(http.HandlerFunc(s.handleGitHubUnlink)))
+	mux.Handle("GET /api/v1/w/{slug}/me/github",
+		s.RequireWorkspace(http.HandlerFunc(s.handleWorkspaceGitHubIdentity)))
+	mux.Handle("GET /api/v1/w/{slug}/me/github/link",
+		s.RequireWorkspace(http.HandlerFunc(s.handleWorkspaceGitHubLink)))
+	mux.Handle("DELETE /api/v1/w/{slug}/me/github",
+		s.RequireWorkspace(http.HandlerFunc(s.handleWorkspaceGitHubUnlink)))
+}
+
+// handleWorkspaceGitHubLink starts a link scoped to this organisation, which
+// is what lets one person use a different GitHub account for each client they
+// work for and still have their work recognised in every one.
+func (s *Server) handleWorkspaceGitHubLink(w http.ResponseWriter, r *http.Request) {
+	githubPrivateResponse(w)
+	if s.githubUser == nil {
+		WriteError(w, 503, "unavailable", "GitHub authorization is unavailable")
+		return
+	}
+	user, _ := CurrentUser(r.Context())
+	ws, _ := CurrentWorkspace(r.Context())
+	session, ok := requireBrowserSession(w, r)
+	if !ok {
+		return
+	}
+	state, challenge, err := s.store.CreateGitHubLinkAuthorization(r.Context(), session, user.ID, ws.WorkspaceID)
+	if err != nil {
+		writeGitHubAuthorizationError(w, err)
+		return
+	}
+	http.Redirect(w, r, s.githubUser.AuthorizationURL(state, challenge), http.StatusFound)
+}
+
+func (s *Server) handleWorkspaceGitHubIdentity(w http.ResponseWriter, r *http.Request) {
+	githubPrivateResponse(w)
+	user, _ := CurrentUser(r.Context())
+	ws, _ := CurrentWorkspace(r.Context())
+	identity, err := s.store.GitHubIdentityForMembership(r.Context(), ws.WorkspaceID, user.ID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			// No organisation-specific account is an ordinary state, not a
+			// failure: most people use the same GitHub account everywhere.
+			WriteJSON(w, http.StatusOK, map[string]any{"identity": nil})
+			return
+		}
+		WriteError(w, http.StatusInternalServerError, "internal", "could not read the GitHub identity")
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"identity": identity})
+}
+
+func (s *Server) handleWorkspaceGitHubUnlink(w http.ResponseWriter, r *http.Request) {
+	githubPrivateResponse(w)
+	user, _ := CurrentUser(r.Context())
+	ws, _ := CurrentWorkspace(r.Context())
+	if err := s.store.UnlinkMembershipGitHubIdentity(r.Context(), ws.WorkspaceID, user.ID); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			WriteError(w, http.StatusNotFound, "not_found", "no GitHub account is linked here")
+			return
+		}
+		WriteError(w, http.StatusInternalServerError, "internal", "could not unlink the GitHub identity")
+		return
+	}
+	WriteJSON(w, http.StatusNoContent, nil)
 }
 
 func githubPrivateResponse(w http.ResponseWriter) {
@@ -30,7 +94,7 @@ func (s *Server) handleGitHubLink(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	state, challenge, err := s.store.CreateGitHubLinkAuthorization(r.Context(), session, user.ID)
+	state, challenge, err := s.store.CreateGitHubLinkAuthorization(r.Context(), session, user.ID, uuid.Nil)
 	if err != nil {
 		writeGitHubAuthorizationError(w, err)
 		return

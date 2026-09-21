@@ -8,6 +8,7 @@ import (
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/testutil"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 )
@@ -16,7 +17,7 @@ import (
 func TestGitHubAuthorizationClaimAndProfileReceipt(t *testing.T) {
 	f := testutil.NewFixture(t)
 	ctx := t.Context()
-	state, challenge, err := f.Store.CreateGitHubLinkAuthorization(ctx, f.Token, f.User.ID)
+	state, challenge, err := f.Store.CreateGitHubLinkAuthorization(ctx, f.Token, f.User.ID, uuid.Nil)
 	require.NoError(t, err)
 	require.Len(t, state, 43)
 	require.Len(t, challenge, 43)
@@ -51,7 +52,7 @@ func TestGitHubAuthorizationClaimAndProfileReceipt(t *testing.T) {
 func TestGitHubAuthorizationExpiryAfterLockWait(t *testing.T) {
 	f := testutil.NewFixture(t)
 	ctx := t.Context()
-	state, _, err := f.Store.CreateGitHubLinkAuthorization(ctx, f.Token, f.User.ID)
+	state, _, err := f.Store.CreateGitHubLinkAuthorization(ctx, f.Token, f.User.ID, uuid.Nil)
 	require.NoError(t, err)
 	_, err = f.Pool.Exec(ctx, `UPDATE github_authorization_state SET expires_at=clock_timestamp()+interval '600 milliseconds' WHERE token_hash=$1`, store.HashToken(state))
 	require.NoError(t, err)
@@ -105,7 +106,7 @@ func TestGitHubSetupCompletionWritesBothReceipts(t *testing.T) {
 
 func TestGitHubAuthorizationConcurrentClaimsHaveOneWinner(t *testing.T) {
 	f := testutil.NewFixture(t)
-	state, _, err := f.Store.CreateGitHubLinkAuthorization(t.Context(), f.Token, f.User.ID)
+	state, _, err := f.Store.CreateGitHubLinkAuthorization(t.Context(), f.Token, f.User.ID, uuid.Nil)
 	require.NoError(t, err)
 	var wg sync.WaitGroup
 	results := make(chan error, 2)
@@ -137,7 +138,7 @@ func TestGitHubLinkCompletionExpiryWhileWaitingForUser(t *testing.T) {
 		t.Run(table, func(t *testing.T) {
 			f := testutil.NewFixture(t)
 			ctx := t.Context()
-			state, _, err := f.Store.CreateGitHubLinkAuthorization(ctx, f.Token, f.User.ID)
+			state, _, err := f.Store.CreateGitHubLinkAuthorization(ctx, f.Token, f.User.ID, uuid.Nil)
 			require.NoError(t, err)
 			a, err := f.Store.ClaimGitHubAuthorization(ctx, state, f.Token, f.User.ID, "link")
 			require.NoError(t, err)
