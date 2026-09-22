@@ -2,7 +2,10 @@ package api
 
 import (
 	"errors"
+	"mime"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -10,9 +13,9 @@ import (
 )
 
 func (s *Server) registerGitHubAuthorizationRoutes(mux *http.ServeMux) {
-	mux.Handle("GET /api/v1/auth/github/link", s.RequireAuth(http.HandlerFunc(s.handleGitHubLink)))
-	mux.Handle("GET /api/v1/auth/github/callback", s.RequireAuth(http.HandlerFunc(s.handleGitHubAuthorizationCallback)))
-	mux.Handle("GET /api/v1/github/setup", s.RequireAuth(http.HandlerFunc(s.handleGitHubSetup)))
+	mux.Handle("GET /api/v1/auth/github/link", s.githubBrowserReturn(http.HandlerFunc(s.handleGitHubLink)))
+	mux.Handle("GET /api/v1/auth/github/callback", s.githubBrowserReturn(http.HandlerFunc(s.handleGitHubAuthorizationCallback)))
+	mux.Handle("GET /api/v1/github/setup", s.githubBrowserReturn(http.HandlerFunc(s.handleGitHubSetup)))
 	mux.Handle("DELETE /api/v1/me/github", s.RequireAuth(http.HandlerFunc(s.handleGitHubUnlink)))
 	mux.Handle("GET /api/v1/w/{slug}/me/github",
 		s.RequireWorkspace(http.HandlerFunc(s.handleWorkspaceGitHubIdentity)))
@@ -20,6 +23,92 @@ func (s *Server) registerGitHubAuthorizationRoutes(mux *http.ServeMux) {
 		s.RequireWorkspace(http.HandlerFunc(s.handleWorkspaceGitHubLink)))
 	mux.Handle("DELETE /api/v1/w/{slug}/me/github",
 		s.RequireWorkspace(http.HandlerFunc(s.handleWorkspaceGitHubUnlink)))
+}
+
+// githubBrowserReturn changes only the presentation of errors on the three
+// browser return routes. Authentication and authorization still run normally.
+func (s *Server) githubBrowserReturn(next http.Handler) http.Handler {
+	authenticated := s.RequireAuth(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set these before RequireAuth, which can reject without calling next.
+		githubPrivateResponse(w)
+		if githubDocumentNavigation(r) {
+			w = &githubRecoveryWriter{ResponseWriter: w}
+		}
+		authenticated.ServeHTTP(w, r)
+	})
+}
+
+func githubDocumentNavigation(r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		return false
+	}
+	// Older browsers may omit Fetch Metadata. When present, it must describe
+	// a top-level document navigation, not fetch, an iframe, or a subresource.
+	if mode := r.Header.Get("Sec-Fetch-Mode"); mode != "" && mode != "navigate" {
+		return false
+	}
+	if dest := r.Header.Get("Sec-Fetch-Dest"); dest != "" && dest != "document" {
+		return false
+	}
+	html := false
+	for _, value := range r.Header.Values("Accept") {
+		for _, part := range strings.Split(value, ",") {
+			media, params, err := mime.ParseMediaType(strings.TrimSpace(part))
+			if err != nil {
+				continue
+			}
+			if quality, ok := params["q"]; ok {
+				q, err := strconv.ParseFloat(quality, 64)
+				if err != nil || !(q > 0 && q <= 1) {
+					continue
+				}
+			}
+			// An explicit JSON consumer keeps the API contract even if it also
+			// accepts HTML. Wildcards alone never opt into browser recovery.
+			if media == "application/json" {
+				return false
+			}
+			if media == "text/html" {
+				html = true
+			}
+		}
+	}
+	return html
+}
+
+// Intercept the status before headers are committed and discard only an error
+// body. No response buffering or production httptest recorder is needed.
+// These routes do not stream or use optional ResponseWriter interfaces.
+type githubRecoveryWriter struct {
+	http.ResponseWriter
+	wroteHeader bool
+	recovery    bool
+}
+
+func (w *githubRecoveryWriter) WriteHeader(status int) {
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
+	if status >= 400 && status <= 599 {
+		w.recovery = true
+		w.Header().Del("Content-Type")
+		w.Header().Del("Content-Length")
+		w.Header().Set("Location", "/auth/recovery")
+		status = http.StatusFound
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *githubRecoveryWriter) Write(body []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	if w.recovery {
+		return len(body), nil
+	}
+	return w.ResponseWriter.Write(body)
 }
 
 // handleWorkspaceGitHubLink starts a link scoped to this organisation, which

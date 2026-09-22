@@ -1,5 +1,5 @@
 .landing-canvas {
-  height: 100dvh;
+  min-height: 100dvh;
 }
 
 .landing-layout {
@@ -8,6 +8,7 @@
   grid-template-rows: auto minmax(min-content, 1fr) auto;
   gap: 12px;
   padding: 12px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
 
 .landing-title {
@@ -32,13 +33,28 @@
   display: grid;
   grid-template-rows: auto 1fr;
   border-block: 1px solid var(--color-grey-200);
+  overflow-wrap: anywhere;
 }
 
 .landing-signin-form {
+  min-width: 0;
   width: 100%;
   max-width: 28rem;
   margin-block: auto;
   padding-block: 16px;
+}
+
+/* Onboarding can contain many invitations. Keep its content in normal flow. */
+.landing-layout-expanded {
+  height: auto;
+  min-height: calc(100dvh - 68px);
+  grid-template-rows: auto auto auto;
+}
+
+.landing-layout-expanded .landing-signin-form {
+  max-width: 34rem;
+  margin-block: 0;
+  padding-block: 24px;
 }
 
 .landing-client, .landing-lab {
@@ -74,9 +90,10 @@
 @media (min-width: 1024px) {
   .landing-layout {
     grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-    grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+    grid-template-rows: minmax(min-content, 3fr) minmax(min-content, 2fr);
     gap: 0;
     padding: 24px;
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
   }
 
   .landing-intro {
@@ -96,6 +113,7 @@
   .landing-work-row { grid-template-columns: 9rem minmax(0, 1fr); align-items: baseline; gap: 16px; }
   .landing-proofs { margin: 24px 0 0 32px; }
   .landing-proofs article { display: flex; flex-direction: column; justify-content: center; padding: 20px; }
+  .landing-layout-expanded { grid-template-rows: auto auto; }
 }
 
 @media (min-width: 1024px) and (max-height: 780px) {
@@ -104,4 +122,19 @@
   .landing-project { margin-top: 16px; }
   .landing-project dl { margin-top: 8px; }
   .landing-project dl > div { padding-block: 6px; }
+}
+
+@media (min-width: 1024px) and (max-height: 680px) {
+  .landing-title { font-size: 2.5rem; }
+  .landing-description { margin-top: 16px; }
+  /* The same actions remain in the header; avoid repeating them on short screens. */
+  .landing-actions { display: none; }
+  .landing-project { margin-top: 12px; }
+  .landing-project h2 { font-size: var(--text-base); }
+  .landing-project dl > div { padding-block: 4px; }
+  .landing-project > p { margin-top: 8px; }
+  .landing-proofs { margin-top: 16px; }
+  .landing-proofs article { padding: 12px; }
+  .landing-proofs h2 { font-size: var(--text-base); }
+  .landing-proofs p { margin-top: 4px; font-size: var(--text-xs); }
 }

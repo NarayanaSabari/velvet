@@ -6,8 +6,10 @@ import { clearPrivateQueries } from './sessionNavigation'
 
 export function SignOutButton({
   navigate = (to) => window.location.assign(to),
+  publicStyle = false,
 }: {
   navigate?: (to: string) => void
+  publicStyle?: boolean
 }) {
   const queryClient = useQueryClient()
   const [isSigningOut, setIsSigningOut] = useState(false)
@@ -16,7 +18,7 @@ export function SignOutButton({
   return (
     <div>
       <button
-        className="mt-2 inline-block text-grey-500 underline disabled:opacity-50"
+        className={`mt-2 inline-block text-grey-500 underline disabled:opacity-50${publicStyle ? ' min-h-12 px-3' : ''}`}
         disabled={isSigningOut}
         type="button"
         onClick={async () => {
@@ -33,8 +35,9 @@ export function SignOutButton({
           }
         }}
       >
-        Sign out
+        {publicStyle && isSigningOut ? 'Signing out…' : 'Sign out'}
       </button>
+      {publicStyle && isSigningOut ? <p role="status" className="text-xs text-grey-500">Signing out…</p> : null}
       {failed ? (
         <p className="text-xs text-blocked" role="alert">Could not sign out. Try again.</p>
       ) : null}
