@@ -2,34 +2,10 @@ import type { ReactNode } from 'react'
 
 import { NavLink } from '../../app/nav'
 import { buttonClassName } from '../../ui/buttonStyles'
+import { Wordmark } from '../../ui/Wordmark'
 import './landing.css'
 
 const SOURCE_URL = 'https://github.com/NarayanaSabari/velvet-otter-lab'
-
-function LedgerMark({ className = '' }: { className?: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <rect x="1.5" y="1.5" width="21" height="21" rx="4.5" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M6 7.5H18M6 12H14M6 16.5H18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <rect x="16" y="10" width="2" height="2" rx="1" fill="currentColor" />
-    </svg>
-  )
-}
-
-function Wordmark() {
-  return (
-    <span className="inline-flex items-center gap-2 text-sm font-semibold tracking-[-0.02em]">
-      <LedgerMark className="size-6" />
-      Velvet
-    </span>
-  )
-}
 
 function WorkRow({ meta, children }: { meta: ReactNode; children: ReactNode }) {
   return (
