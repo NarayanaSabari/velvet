@@ -1,14 +1,6 @@
 import type { ButtonHTMLAttributes } from 'react'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost'
-
-const VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'border-ink bg-ink text-paper hover:bg-grey-700',
-  secondary: 'border-grey-300 bg-paper text-ink hover:bg-grey-100',
-  // Red is one of the three semantic colours: destructive, and only destructive.
-  danger: 'border-blocked bg-paper text-blocked hover:bg-grey-100',
-  ghost: 'border-transparent bg-transparent text-ink hover:bg-grey-100',
-}
+import { buttonClassName, type ButtonVariant } from './buttonStyles'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
@@ -18,7 +10,7 @@ export function Button({ variant = 'secondary', className = '', ...rest }: Butto
   return (
     <button
       type="button"
-      className={`ui-button rounded-[6px] border px-2 py-1 text-sm disabled:opacity-40 ${VARIANTS[variant]} ${className}`}
+      className={buttonClassName(variant, className)}
       {...rest}
     />
   )

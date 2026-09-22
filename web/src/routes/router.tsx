@@ -16,7 +16,8 @@ import { Invite } from '../features/auth/Invite'
 import { landingWorkspace, sessionQueryOptions } from '../features/auth/useSession'
 import { NewOrganisation } from '../features/orgs/NewOrganisation'
 import { ProfileRoute } from '../features/profile/Profile'
-import { Placeholder, RootLayout } from './root'
+import { LandingPage } from '../features/landing/LandingPage'
+import { RootLayout } from './root'
 import { Dashboard } from '../features/dashboard/Dashboard'
 import { TeamFeed } from '../features/feed/TeamFeed'
 import { SprintList } from '../features/sprints/SprintList'
@@ -33,20 +34,20 @@ import { Mentions } from '../features/mentions/Mentions'
 
 const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: RootLayout })
 
-// `/` cannot know the workspace slug on its own, so it asks the session which
-// workspace the caller actually belongs to before redirecting.
+// Signed-in callers should get back to work immediately. Signed-out callers
+// stay at the public root so they can understand the product before signing in.
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: async ({ context }) => {
     const session = await context.queryClient.fetchQuery({ ...sessionQueryOptions(context.queryClient), staleTime: 0 })
-    if (!session) throw redirect({ href: '/signin' })
+    if (!session) return
     const workspace = landingWorkspace(session)
     // `href` rather than a typed `to`: the route tree is still being built
     // here, so its literal paths are not yet known to the type checker.
     throw redirect({ href: workspace ? `/w/${workspace.workspace_slug}` : '/orgs/new' })
   },
-  component: () => <Placeholder title="Work log" />,
+  component: LandingPage,
 })
 
 const dashboardRoute = createRoute({

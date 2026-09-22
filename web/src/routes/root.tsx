@@ -29,8 +29,3 @@ export function RootLayout() {
     </NavLinkProvider>
   )
 }
-
-/** Placeholder until the feature tasks land their real pages. */
-export function Placeholder({ title }: { title: string }) {
-  return <h1 className="text-lg">{title}</h1>
-}
