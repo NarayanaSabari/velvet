@@ -38,7 +38,7 @@ function show(path: string, client = new QueryClient({ defaultOptions: { queries
 }
 
 it.each([
-  ['/signin', 'Work log'], ['/expired', 'Link expired'], ['/signin/confirm', 'Link expired'], ['/invite', 'Link expired'],
+  ['/signin', 'Sign in to Velvet'], ['/expired', 'Link expired'], ['/signin/confirm', 'Link expired'], ['/invite', 'Link expired'],
 ])('renders public %s without fetching a session', async (path, heading) => {
   const fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
