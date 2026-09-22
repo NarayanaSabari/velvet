@@ -20,7 +20,7 @@ test('an unauthenticated visitor can request an email sign-in link', async ({ br
   // in, and the shared fixture always is.
   const context = await browser.newContext()
   const page = await context.newPage()
-  await page.goto('/')
+  await page.goto('/signin')
 
   await expect(page.getByLabel('Email', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Send sign-in link' })).toBeVisible()

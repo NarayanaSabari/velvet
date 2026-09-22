@@ -60,10 +60,12 @@ it.each([
   await waitFor(() => expect(router.state.location.pathname).toBe(path))
 })
 
-it('sends a signed-out root visitor to sign-in', async () => {
+it('shows the public landing page to a signed-out root visitor', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({ error: { code: 'unauthenticated', message: 'sign-in required' } }) } as Response))
   const router = show('/')
-  await waitFor(() => expect(router.state.location.pathname).toBe('/signin'))
+
+  expect(await screen.findByRole('heading', { name: 'Know what you worked on last week.' })).toBeInTheDocument()
+  expect(router.state.location.pathname).toBe('/')
 })
 
 it('protects the organisation creation page', async () => {

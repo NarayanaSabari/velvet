@@ -73,6 +73,10 @@ Metadata and compact labels are 14px with a 1.5 line height through `--text-xs`.
 
 Primary page headings are 24px with a 1.25 line height through `--text-lg`.
 
+The public landing page alone may use `--text-display`, a responsive 48px to 96px scale with a 0.95 line height and tight tracking.
+
+Do not use the display token inside the authenticated product shell.
+
 The token names are intentionally nontraditional because `--text-xs` is 14px and `--text-sm` is 16px in this project.
 
 Use the existing type tokens instead of introducing 12px body copy or one-off heading sizes.
