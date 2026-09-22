@@ -99,6 +99,7 @@ it('shows identity and pending invitations with no membership and accepts by id'
   const navigate = vi.fn()
   show(<NewOrganisation navigate={navigate} />)
   expect(await screen.findByText('person@example.com')).toBeInTheDocument()
+  expect(screen.getByLabelText('Organisation name')).not.toHaveClass('min-h-12')
   expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
   await userEvent.click(await screen.findByRole('button', { name: 'Accept Lab invitation' }))
   await waitFor(() => expect(navigate).toHaveBeenCalledWith('/w/lab'))
@@ -160,4 +161,76 @@ it('links a profile through the distinct authorization endpoint and clears ident
   expect(await screen.findByRole('link', { name: 'Link GitHub profile' })).toHaveAttribute('href', '/api/v1/auth/github/link')
   expect(client.getQueryData(['authors', 'lab'])).toBeUndefined()
   expect(client.getQueryData(['reports', 'lab'])).toBeUndefined()
+})
+
+it('retries a failed invitation preview without consuming the token', async () => {
+  window.history.replaceState(null, '', '/invite#token=invite-secret')
+  let finishPreview!: (value: Response) => void
+  const fetchMock = vi.fn()
+    .mockImplementationOnce(() => response({ error: { code: 'unavailable', message: 'Preview unavailable' } }, 503))
+    .mockImplementation(() => new Promise<Response>((resolve) => { finishPreview = resolve }))
+  vi.stubGlobal('fetch', fetchMock)
+  show(<Invite />)
+  expect(await screen.findByRole('alert')).toHaveTextContent('Preview unavailable')
+  await userEvent.click(screen.getByRole('button', { name: 'Retry invitation' }))
+  expect(await screen.findByRole('status')).toHaveTextContent('Loading invitation')
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  finishPreview(await response({ invite: { ...invitation, workspace_name: 'x'.repeat(80) }, signed_in: true, email_matches: true }))
+  expect(await screen.findByRole('button', { name: 'Accept invitation' })).toBeInTheDocument()
+  expect(fetchMock).toHaveBeenCalledTimes(2)
+  expect(fetchMock.mock.calls.every(([url]) => url === '/api/v1/invite/preview')).toBe(true)
+  expect(window.location.hash).toBe('#token=invite-secret')
+})
+
+it('clears an invitation acceptance error while an explicit retry is pending', async () => {
+  window.history.replaceState(null, '', '/invite#token=invite-secret')
+  let attempts = 0
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+    if (url.endsWith('/preview')) return response({ invite: invitation, signed_in: true, email_matches: true })
+    attempts += 1
+    return attempts === 1 ? response({ error: { code: 'unavailable', message: 'Acceptance unavailable' } }, 503) : new Promise(() => {})
+  }))
+  show(<Invite />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Accept invitation' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Acceptance unavailable')
+  await userEvent.click(screen.getByRole('button', { name: 'Accept invitation' }))
+  expect(await screen.findByRole('status')).toHaveTextContent('Continuing with your invitation')
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Continuing…' })).toBeDisabled()
+})
+
+it('retries a public session failure instead of showing sign-in', async () => {
+  const fetchMock = vi.fn()
+    .mockImplementationOnce(() => response({ error: { code: 'unavailable', message: 'Unavailable' } }, 503))
+    .mockImplementation((url: string) => response(url === '/api/v1/me'
+      ? { user: identity, memberships: [], last_workspace: null }
+      : { invites: [] }))
+  vi.stubGlobal('fetch', fetchMock)
+  show(<NewOrganisation publicLayout />)
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not load your session')
+  expect(screen.queryByRole('button', { name: 'Send sign-in link' })).not.toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Retry session' }))
+  expect(await screen.findByLabelText('Organisation name')).toBeInTheDocument()
+  expect(fetchMock.mock.calls.filter(([url]) => url === '/api/v1/me')).toHaveLength(2)
+  expect(screen.getByLabelText('Organisation name')).toHaveClass('min-h-12')
+})
+
+it('retries public invitations without losing the organisation draft and announces acceptance', async () => {
+  let attempts = 0
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+    if (url === '/api/v1/me') return response({ user: identity, memberships: [membership], last_workspace: membership })
+    if (url.endsWith('/accept')) return new Promise(() => {})
+    attempts += 1
+    return attempts === 1 ? response({ error: { code: 'unavailable', message: 'Unavailable' } }, 503) : response({ invites: [invitation] })
+  }))
+  show(<NewOrganisation publicLayout />)
+  await userEvent.type(await screen.findByLabelText('Organisation name'), 'My Draft')
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not load invitations')
+  await userEvent.click(screen.getByRole('button', { name: 'Retry invitations' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Accept Lab invitation' }))
+  expect(await screen.findByRole('status')).toHaveTextContent('Accepting invitation')
+  expect(screen.getByRole('button', { name: 'Accept Lab invitation' })).toBeDisabled()
+  expect(screen.getByLabelText('Organisation name')).toHaveValue('My Draft')
+  expect(screen.getByRole('link', { name: 'Back to Lab' })).toHaveAttribute('href', '/w/lab')
+  expect(screen.queryByText('No password needed')).not.toBeInTheDocument()
 })

@@ -87,6 +87,89 @@ func githubRequest(h http.Handler, method, path, token string) *httptest.Respons
 	return rec
 }
 
+// Use the same real router with browser navigation headers, including when
+// RequireAuth rejects before reaching the authorization handler.
+func githubDocumentHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		r.Header.Set("Sec-Fetch-Mode", "navigate")
+		r.Header.Set("Sec-Fetch-Dest", "document")
+		h.ServeHTTP(w, r)
+	})
+}
+
+func TestGitHubBrowserReturnRecovery(t *testing.T) {
+	f := testutil.NewFixture(t)
+	h := api.NewServer(f.Pool, &config.Config{BaseURL: "http://localhost:8080"}, api.Dependencies{}).Handler()
+	for _, path := range []string{"/api/v1/auth/github/link", "/api/v1/auth/github/callback", "/api/v1/github/setup"} {
+		t.Run(path, func(t *testing.T) {
+			for _, token := range []string{"", "expired-session", f.Token} {
+				baseline := githubRequest(h, "GET", path, token)
+				require.GreaterOrEqual(t, baseline.Code, 400)
+				for _, tc := range []struct {
+					name, accept, mode, dest string
+					recovery                 bool
+				}{
+					{name: "document", accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", mode: "navigate", dest: "document", recovery: true},
+					{name: "legacy", accept: "text/html", recovery: true},
+					{name: "weighted html", accept: "text/html;q=0.5,*/*;q=0.1", recovery: true},
+					{name: "json", accept: "application/json"},
+					{name: "wildcard", accept: "*/*"},
+					{name: "absent"},
+					{name: "explicit json", accept: "text/html,application/json"},
+					{name: "json document", accept: "application/json", mode: "navigate", dest: "document"},
+					{name: "wildcard document", accept: "*/*", mode: "navigate", dest: "document"},
+					{name: "fetch", accept: "text/html", mode: "cors", dest: "empty"},
+					{name: "same origin fetch", accept: "text/html", mode: "same-origin"},
+					{name: "iframe", accept: "text/html", mode: "navigate", dest: "iframe"},
+					{name: "html disabled", accept: "text/html;q=0,*/*"},
+					{name: "invalid quality", accept: "text/html;q=invalid"},
+					{name: "quality out of range", accept: "text/html;q=2"},
+					{name: "non finite quality", accept: "text/html;q=NaN"},
+					{name: "malformed", accept: "text/html;broken"},
+				} {
+					t.Run(tc.name, func(t *testing.T) {
+						requestHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							r.Header.Set("Accept", tc.accept)
+							r.Header.Set("Sec-Fetch-Mode", tc.mode)
+							r.Header.Set("Sec-Fetch-Dest", tc.dest)
+							h.ServeHTTP(w, r)
+						})
+						// Neither a hostile return target nor provider/session values may
+						// influence the recovery location or appear in its body.
+						rec := githubRequest(requestHandler, "GET", path+"?state=private-state&code=private-code&error=private-provider&next=https://evil.example", token)
+						require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+						require.Equal(t, "no-referrer", rec.Header().Get("Referrer-Policy"))
+						require.Empty(t, rec.Result().Cookies())
+						if tc.recovery {
+							require.Equal(t, http.StatusFound, rec.Code)
+							require.Equal(t, "/auth/recovery", rec.Header().Get("Location"))
+							require.Empty(t, rec.Body.String())
+							require.Empty(t, rec.Header().Get("Content-Type"))
+						} else {
+							require.Equal(t, baseline.Code, rec.Code)
+							require.Equal(t, baseline.Body.String(), rec.Body.String())
+							require.Equal(t, baseline.Header().Get("Content-Type"), rec.Header().Get("Content-Type"))
+							require.Empty(t, rec.Header().Get("Location"))
+						}
+					})
+				}
+			}
+		})
+	}
+	// HTML acceptance must not affect product APIs or the unlink operation.
+	for _, tc := range []struct{ method, path string }{
+		{"GET", "/api/v1/me"},
+		{"GET", "/api/v1/w/lab/me/github/link"},
+		{"DELETE", "/api/v1/me/github"},
+		{"HEAD", "/api/v1/auth/github/link"},
+	} {
+		rec := githubRequest(githubDocumentHandler(h), tc.method, tc.path, "")
+		require.Equal(t, http.StatusUnauthorized, rec.Code)
+		require.Empty(t, rec.Header().Get("Location"))
+	}
+}
+
 func githubCallback(t *testing.T, location string) string {
 	t.Helper()
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -104,27 +187,32 @@ func TestGitHubLinkRoundtripSessionSwitchReplayAndUnlink(t *testing.T) {
 	stub := newGitHubAuthStub(t)
 	h := api.NewServer(f.Pool, &config.Config{BaseURL: "http://localhost:8080"}, api.Dependencies{GitHubUser: stub.client}).Handler()
 	require.Equal(t, 401, githubRequest(h, "GET", "/api/v1/auth/github/link", "").Code)
-	start := githubRequest(h, "GET", "/api/v1/auth/github/link", f.Token)
+	browser := githubDocumentHandler(h)
+	start := githubRequest(browser, "GET", "/api/v1/auth/github/link", f.Token)
 	require.Equal(t, 302, start.Code, start.Body.String())
 	callback := githubCallback(t, start.Header().Get("Location"))
 	other, err := f.Store.CreateSession(t.Context(), f.User.ID, time.Hour)
 	require.NoError(t, err)
 	wrong := githubRequest(h, "GET", callback, other)
 	require.Equal(t, 410, wrong.Code)
+	browserWrong := githubRequest(browser, "GET", callback, other)
+	require.Equal(t, 302, browserWrong.Code)
+	require.Equal(t, "/auth/recovery", browserWrong.Header().Get("Location"))
+	require.Empty(t, browserWrong.Body.String())
 	require.Zero(t, stub.exchanges)
 	stub.beforeExchange = func() {
 		var spent bool
 		require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT claimed_at IS NOT NULL AND verifier='' FROM github_authorization_state`).Scan(&spent))
 		require.True(t, spent)
 	}
-	done := githubRequest(h, "GET", callback, f.Token)
+	done := githubRequest(browser, "GET", callback, f.Token)
 	require.Equal(t, 302, done.Code, done.Body.String())
 	require.Equal(t, "/", done.Header().Get("Location"))
 	require.Empty(t, done.Result().Cookies())
 	user, err := f.Store.UserBySessionToken(t.Context(), f.Token)
 	require.NoError(t, err)
 	require.Equal(t, int64(42), *user.GitHubID)
-	replay := githubRequest(h, "GET", callback, f.Token)
+	replay := githubRequest(browser, "GET", callback, f.Token)
 	require.Equal(t, 302, replay.Code)
 	require.Equal(t, "/", replay.Header().Get("Location"))
 	require.Equal(t, 1, stub.exchanges)
@@ -143,54 +231,70 @@ func TestGitHubLinkRoundtripSessionSwitchReplayAndUnlink(t *testing.T) {
 }
 
 func TestGitHubLinkFailureRequiresFreshFlow(t *testing.T) {
-	for _, mode := range []string{"exchange", "pkce", "conflict", "expiry", "denied", "expired-during-exchange"} {
-		t.Run(mode, func(t *testing.T) {
-			f := testutil.NewFixture(t)
-			stub := newGitHubAuthStub(t)
-			h := api.NewServer(f.Pool, &config.Config{BaseURL: "http://localhost:8080"}, api.Dependencies{GitHubUser: stub.client}).Handler()
-			start := githubRequest(h, "GET", "/api/v1/auth/github/link", f.Token)
-			require.Equal(t, 302, start.Code)
-			callback := githubCallback(t, start.Header().Get("Location"))
-			status := 502
-			switch mode {
-			case "exchange":
-				stub.fail = true
-			case "pkce":
-				_, err := f.Pool.Exec(t.Context(), `UPDATE github_authorization_state SET verifier='wrong-verifier'`)
-				require.NoError(t, err)
-			case "conflict":
-				_, err := testutil.CreateLinkedUser(t, f.Store, store.GitHubIdentity{ID: 42, Login: "linked-owner"})
-				require.NoError(t, err)
-				status = 409
-			case "expiry":
-				_, err := f.Pool.Exec(t.Context(), `UPDATE github_authorization_state SET expires_at=clock_timestamp()-interval '1 second'`)
-				require.NoError(t, err)
-				status = 410
-			case "denied":
-				callback += "&error=access_denied"
-				status = 400
-			case "expired-during-exchange":
-				stub.beforeExchange = func() {
+	for _, document := range []bool{false, true} {
+		for _, mode := range []string{"exchange", "pkce", "conflict", "expiry", "denied", "expired-during-exchange"} {
+			t.Run(fmt.Sprintf("%s/document=%t", mode, document), func(t *testing.T) {
+				f := testutil.NewFixture(t)
+				stub := newGitHubAuthStub(t)
+				h := api.NewServer(f.Pool, &config.Config{BaseURL: "http://localhost:8080"}, api.Dependencies{GitHubUser: stub.client}).Handler()
+				if document {
+					h = githubDocumentHandler(h)
+				}
+				start := githubRequest(h, "GET", "/api/v1/auth/github/link", f.Token)
+				require.Equal(t, 302, start.Code)
+				callback := githubCallback(t, start.Header().Get("Location"))
+				status := 502
+				switch mode {
+				case "exchange":
+					stub.fail = true
+				case "pkce":
+					_, err := f.Pool.Exec(t.Context(), `UPDATE github_authorization_state SET verifier='wrong-verifier'`)
+					require.NoError(t, err)
+				case "conflict":
+					_, err := testutil.CreateLinkedUser(t, f.Store, store.GitHubIdentity{ID: 42, Login: "linked-owner"})
+					require.NoError(t, err)
+					status = 409
+				case "expiry":
 					_, err := f.Pool.Exec(t.Context(), `UPDATE github_authorization_state SET expires_at=clock_timestamp()-interval '1 second'`)
 					require.NoError(t, err)
+					status = 410
+				case "denied":
+					callback += "&error=access_denied"
+					status = 400
+				case "expired-during-exchange":
+					stub.beforeExchange = func() {
+						_, err := f.Pool.Exec(t.Context(), `UPDATE github_authorization_state SET expires_at=clock_timestamp()-interval '1 second'`)
+						require.NoError(t, err)
+					}
+					status = 410
 				}
-				status = 410
-			}
-			rec := githubRequest(h, "GET", callback, f.Token)
-			require.Equal(t, status, rec.Code, rec.Body.String())
-			require.NotContains(t, rec.Body.String(), "provider-secret")
-			require.Empty(t, rec.Result().Cookies())
-			user, err := f.Store.UserBySessionToken(t.Context(), f.Token)
-			require.NoError(t, err)
-			require.Equal(t, *f.User.GitHubID, *user.GitHubID)
-			var receipts int
-			require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM github_authorization_state WHERE completed_at IS NOT NULL`).Scan(&receipts))
-			require.Zero(t, receipts)
-			exchanges := stub.exchanges
-			retry := githubRequest(h, "GET", callback, f.Token)
-			require.Equal(t, 410, retry.Code, fmt.Sprintf("%s: %s", mode, retry.Body.String()))
-			require.Equal(t, exchanges, stub.exchanges)
-		})
+				rec := githubRequest(h, "GET", callback, f.Token)
+				if document {
+					require.Equal(t, 302, rec.Code)
+					require.Equal(t, "/auth/recovery", rec.Header().Get("Location"))
+					require.Empty(t, rec.Body.String())
+				} else {
+					require.Equal(t, status, rec.Code, rec.Body.String())
+				}
+				require.NotContains(t, rec.Body.String(), "provider-secret")
+				require.Empty(t, rec.Result().Cookies())
+				user, err := f.Store.UserBySessionToken(t.Context(), f.Token)
+				require.NoError(t, err)
+				require.Equal(t, *f.User.GitHubID, *user.GitHubID)
+				var receipts int
+				require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM github_authorization_state WHERE completed_at IS NOT NULL`).Scan(&receipts))
+				require.Zero(t, receipts)
+				exchanges := stub.exchanges
+				retry := githubRequest(h, "GET", callback, f.Token)
+				if document {
+					require.Equal(t, 302, retry.Code)
+					require.Equal(t, "/auth/recovery", retry.Header().Get("Location"))
+				} else {
+					require.Equal(t, 410, retry.Code, fmt.Sprintf("%s: %s", mode, retry.Body.String()))
+				}
+				require.Equal(t, exchanges, stub.exchanges)
+			})
+		}
 	}
 }
 

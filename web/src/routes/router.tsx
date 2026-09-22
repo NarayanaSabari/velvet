@@ -17,7 +17,8 @@ import { landingWorkspace, sessionQueryOptions } from '../features/auth/useSessi
 import { NewOrganisation } from '../features/orgs/NewOrganisation'
 import { ProfileRoute } from '../features/profile/Profile'
 import { LandingPage } from '../features/landing/LandingPage'
-import { RootLayout } from './root'
+import { RootLayout, RootNotFound } from './root'
+import { PublicRecovery, PublicSessionPending, PublicSessionError } from '../features/auth/PublicRecovery'
 import { Dashboard } from '../features/dashboard/Dashboard'
 import { TeamFeed } from '../features/feed/TeamFeed'
 import { SprintList } from '../features/sprints/SprintList'
@@ -32,7 +33,7 @@ import { Reports } from '../features/reports/Reports'
 import { Admin } from '../features/admin/Admin'
 import { Mentions } from '../features/mentions/Mentions'
 
-const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: RootLayout })
+const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: RootLayout, notFoundComponent: RootNotFound })
 
 // Signed-in callers should get back to work immediately. Signed-out callers
 // stay at the public root so they can understand the product before signing in.
@@ -48,6 +49,10 @@ const indexRoute = createRoute({
     throw redirect({ href: workspace ? `/w/${workspace.workspace_slug}` : '/orgs/new' })
   },
   component: LandingPage,
+  pendingComponent: PublicSessionPending,
+  pendingMs: 0,
+  pendingMinMs: 0,
+  errorComponent: PublicSessionError,
 })
 
 const dashboardRoute = createRoute({
@@ -183,6 +188,11 @@ const routes = [
   reportsRoute,
   createRoute({
     getParentRoute: () => rootRoute,
+    path: '/not-invited',
+    beforeLoad: () => { throw redirect({ href: '/signin', replace: true }) },
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
     path: '/signin',
     component: () => <SignIn />,
   }),
@@ -208,8 +218,13 @@ const routes = [
   }),
   createRoute({
     getParentRoute: () => rootRoute,
+    path: '/auth/recovery',
+    component: PublicRecovery,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
     path: '/orgs/new',
-    component: NewOrganisation,
+    component: () => <NewOrganisation publicLayout />,
   }),
   createRoute({
     getParentRoute: () => rootRoute,

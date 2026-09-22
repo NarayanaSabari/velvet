@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 
 import { NavLink } from '../../app/nav'
 import { buttonClassName } from '../../ui/buttonStyles'
@@ -26,7 +26,19 @@ const PROOFS = [
   },
 ] as const
 
-export function PublicPageLayout({ children, signingIn = false }: { children: ReactNode; signingIn?: boolean }) {
+export function PublicPageLayout({ children, signingIn = false, title = 'Know what you worked on', expanded = false }: {
+  children: ReactNode
+  signingIn?: boolean
+  title?: string
+  expanded?: boolean
+}) {
+  const Headline = signingIn ? 'p' : 'h1'
+  useEffect(() => {
+    const previousTitle = document.title
+    document.title = `${title} · Velvet`
+    return () => { document.title = previousTitle }
+  }, [title])
+
   return (
     <div className="landing-canvas bg-paper text-ink">
       <a
@@ -38,7 +50,7 @@ export function PublicPageLayout({ children, signingIn = false }: { children: Re
 
       <header className="h-[68px] border-b border-grey-200">
         <div className="flex h-full items-center justify-between gap-3 px-3 sm:px-6">
-          <NavLink to="/" className="rounded-[6px]">
+          <NavLink to="/" className="inline-flex min-h-11 items-center rounded-[6px]">
             <Wordmark />
           </NavLink>
           <nav aria-label="Public navigation" className="flex items-center gap-1 sm:gap-2">
@@ -51,7 +63,7 @@ export function PublicPageLayout({ children, signingIn = false }: { children: Re
               View source
             </a>
             <NavLink
-              to={signingIn ? "/" : "/signin"}
+              to={signingIn ? '/' : '/signin'}
               className={buttonClassName('primary', 'inline-flex min-h-11 items-center px-4 no-underline')}
             >
               {signingIn ? 'About Velvet' : 'Sign in'}
@@ -62,19 +74,19 @@ export function PublicPageLayout({ children, signingIn = false }: { children: Re
 
       <main
         id="main-content"
-        className="landing-layout"
+        className={`landing-layout${expanded ? ' landing-layout-expanded' : ''}`}
       >
         <section className="landing-intro">
           <div className="min-w-0">
-            <h1 className="landing-title font-semibold">
+            <Headline className="landing-title font-semibold">
               Know what you worked on last week.
-            </h1>
+            </Headline>
             <p className="landing-description text-xs text-grey-700 lg:text-base">
               Your notes, tickets, and agent progress. GitHub proof. One work record across organisations.
             </p>
-            <div className="mt-4 hidden flex-wrap gap-2 sm:flex lg:mt-6">
+            <div className="landing-actions mt-4 hidden flex-wrap gap-2 sm:flex lg:mt-6">
               <NavLink
-                to={signingIn ? "/" : "/signin"}
+                to={signingIn ? '/' : '/signin'}
                 className={buttonClassName('primary', 'inline-flex min-h-11 items-center px-4 no-underline')}
               >
                 {signingIn ? 'About Velvet' : 'Sign in'}
