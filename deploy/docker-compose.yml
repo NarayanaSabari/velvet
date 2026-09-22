@@ -4,8 +4,8 @@ name: worklog
 # still builds locally and tags the result with that name, so development and
 # the end-to-end suite are unchanged; a production host runs `pull` instead
 # and never needs to compile anything. IMAGE_TAG pins a deploy to one commit.
-x-api-image: &api-image ${IMAGE_REPO:-ghcr.io/narayanasabari/velvet-otter-lab}/api:${IMAGE_TAG:-latest}
-x-web-image: &web-image ${IMAGE_REPO:-ghcr.io/narayanasabari/velvet-otter-lab}/web:${IMAGE_TAG:-latest}
+x-api-image: &api-image ${IMAGE_REPO:-ghcr.io/narayanasabari/velvet}/api:${IMAGE_TAG:-latest}
+x-web-image: &web-image ${IMAGE_REPO:-ghcr.io/narayanasabari/velvet}/web:${IMAGE_TAG:-latest}
 
 services:
   postgres:
