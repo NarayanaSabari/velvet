@@ -8,6 +8,7 @@ import type { Repo, Role, WorkspaceMembership } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { OrganisationPanel } from './OrganisationPanel'
 import { InvitePanel } from './InvitePanel'
 import { GitHubPanel } from './GitHubPanel'
@@ -49,7 +50,7 @@ export function Admin({ slug }: { slug: string }) {
     },
   })
 
-  if (session.isLoading) return <p className="text-grey-500">Loading…</p>
+  if (session.isLoading) return <LoadingState />
   if (!isAdmin) return <EmptyState title="Admin access required" message="Only organisation admins can manage members and repository connections." />
 
   return (
@@ -60,8 +61,14 @@ export function Admin({ slug }: { slug: string }) {
       <InvitePanel slug={slug} />
       <section className="mb-8" aria-labelledby="members-heading">
         <h2 id="members-heading" className="mb-3 border-b border-grey-200 pb-1 text-base">Members</h2>
-        {members.isPending ? <p className="text-grey-500">Loading members…</p> : null}
-        {members.error ? <p role="alert" className="text-blocked">Could not load members.</p> : null}
+        {members.isPending ? <LoadingState label="Loading members…" /> : null}
+        {members.error ? (
+          <ErrorState
+            message="Could not load members."
+            onRetry={() => void members.refetch()}
+            retrying={members.isRefetching}
+          />
+        ) : null}
         {updateRole.error ? <p role="alert" className="text-blocked">{updateRole.error.message}</p> : null}
         {remove.error ? <p role="alert" className="text-blocked">{remove.error.message}</p> : null}
         <ul className="border-t border-grey-200">

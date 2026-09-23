@@ -146,7 +146,7 @@ export function ActivityRow({ activity }: { activity: Activity }) {
   return (
     <div className="flex gap-2 text-sm">
       <Avatar user={actor} />
-      <div className="min-w-0 flex-1 text-grey-700">
+      <div className="min-w-0 flex-1 text-grey-700 [overflow-wrap:anywhere]">
         <span className="text-ink">{who}</span> {body}
       </div>
       <RelativeTime iso={activity.created_at} />

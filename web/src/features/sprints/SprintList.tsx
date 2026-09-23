@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import type { Sprint } from '../../lib/types'
 import { EmptyState } from '../../ui/EmptyState'
 import { List } from '../../ui/List'
+import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { useSession } from '../auth/useSession'
 import { SprintForm, type SprintInput } from '../work/CoreForms'
 
@@ -21,8 +22,16 @@ export function SprintList({ slug }: { slug: string }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sprints', slug] }),
   })
 
-  if (query.isPending) return <p className="text-grey-500">Loading…</p>
-  if (query.error) return <p className="text-blocked">Could not load sprints.</p>
+  if (query.isPending) return <LoadingState />
+  if (query.error) {
+    return (
+      <ErrorState
+        message="Could not load sprints."
+        onRetry={() => void query.refetch()}
+        retrying={query.isRefetching}
+      />
+    )
+  }
 
   const sprints = query.data.sprints
 

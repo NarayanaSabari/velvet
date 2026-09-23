@@ -3,13 +3,14 @@ import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { NavLink } from '../../app/nav'
-import { api } from '../../lib/api'
+import { api, isNotFound } from '../../lib/api'
 import type { Issue, IssueStatus, Milestone, Sprint, User } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Avatar } from '../../ui/Avatar'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { List } from '../../ui/List'
+import { ErrorState, LoadingState, NotFoundState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
 import { useSession } from '../auth/useSession'
@@ -160,7 +161,7 @@ export function MilestoneCard({ milestone, slug, owner }: MilestoneCardProps) {
   return (
     <NavLink
       to={`/w/${slug}/milestones/${milestone.id}`}
-      className="block h-full text-ink no-underline hover:bg-grey-100"
+      className="block h-full min-w-0 text-ink no-underline hover:bg-grey-100"
     >
       {card}
     </NavLink>
@@ -380,7 +381,7 @@ function SprintHeader({
       <div className="flex flex-wrap items-start gap-4">
         <div className="min-w-0 flex-1">
           <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase">Sprint</p>
-          <h1 className="text-lg font-medium">{sprint.name}</h1>
+          <h1 className="text-lg font-medium [overflow-wrap:anywhere]">{sprint.name}</h1>
           <p className="mt-1 text-sm text-grey-500">
             {sprint.starts_on} to {sprint.ends_on} · {sprint.state}
           </p>
@@ -452,9 +453,28 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
     },
   })
 
-  if (sprint.isPending || milestones.isPending) return <p className="text-grey-500">Loading…</p>
+  if (isNotFound(sprint.error)) {
+    return (
+      <NotFoundState
+        title="Sprint not found"
+        message="This sprint does not exist in this organisation, or it has been removed."
+        backTo={`/w/${slug}/sprints`}
+        backLabel="Back to sprints"
+      />
+    )
+  }
+  if (sprint.isPending || milestones.isPending) return <LoadingState />
   if (sprint.error || milestones.error || !sprint.data || !milestones.data) {
-    return <p className="text-blocked">Could not load this sprint.</p>
+    return (
+      <ErrorState
+        message="Could not load this sprint."
+        onRetry={() => {
+          void sprint.refetch()
+          void milestones.refetch()
+        }}
+        retrying={sprint.isRefetching || milestones.isRefetching}
+      />
+    )
   }
 
   const sprintData = sprint.data
@@ -507,7 +527,7 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
             slug={slug}
           />
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {milestoneRows.map((milestone) => (
               <MilestoneCard
                 key={milestone.id}
@@ -544,9 +564,13 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
           ) : null}
         </div>
         {sprintIssues.isPending || unfiledIssues.isPending ? (
-          <p className="text-sm text-grey-500">Loading issues…</p>
+          <LoadingState label="Loading issues…" />
         ) : sprintIssues.error ? (
-          <p role="alert" className="text-sm text-blocked">Could not load this sprint's issues.</p>
+          <ErrorState
+            message="Could not load this sprint's issues."
+            onRetry={() => void sprintIssues.refetch()}
+            retrying={sprintIssues.isRefetching}
+          />
         ) : unfiledIssues.error && issueRows.length > 0 ? (
           <>
             <p className="mb-2 text-sm text-grey-500">Unfiled issues could not be loaded.</p>

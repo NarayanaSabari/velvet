@@ -14,6 +14,12 @@ export class ApiError extends Error {
   }
 }
 
+/** True when the API said the record does not exist, as opposed to failing.
+ *  Retrying a missing record cannot help, so callers show a way back instead. */
+export function isNotFound(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(BASE + path, {
     method,

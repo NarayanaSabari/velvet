@@ -8,6 +8,7 @@ import { SignOutButton } from '../features/auth/SignOutButton'
 import { CommandPalette } from '../features/palette/CommandPalette'
 import { COMMAND_PALETTE_TEST_IDS } from '../features/palette/paletteTestIds'
 import { Avatar } from '../ui/Avatar'
+import { LoadingState } from '../ui/QueryState'
 import { userLabel } from '../lib/userLabel'
 import { NavLink } from './nav'
 
@@ -218,7 +219,7 @@ export function Shell({
 
   // Rendering nothing session-dependent while loading is what stops the
   // sign-in prompt flashing on every refresh.
-  if (isLoading) return <div className="p-4 text-grey-500">Loading…</div>
+  if (isLoading) return <div className="p-4"><LoadingState /></div>
   if (!isSignedIn) return <SignIn />
   if (!slug && memberships.length === 0) return <NewOrganisation />
   if (!workspace) {

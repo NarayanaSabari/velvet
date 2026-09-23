@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import type { Issue, PullRequest } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
 
 /**
@@ -20,8 +21,16 @@ export function UnlinkedPRs({ slug }: { slug: string }) {
     queryFn: () => api.get<{ pull_requests: PullRequest[] }>(`/w/${slug}/pull-requests/unlinked`),
   })
 
-  if (query.isPending) return <p className="text-grey-500">Loading…</p>
-  if (query.error) return <p className="text-blocked">Could not load pull requests.</p>
+  if (query.isPending) return <LoadingState />
+  if (query.error) {
+    return (
+      <ErrorState
+        message="Could not load pull requests."
+        onRetry={() => void query.refetch()}
+        retrying={query.isRefetching}
+      />
+    )
+  }
 
   const prs = query.data.pull_requests ?? []
 

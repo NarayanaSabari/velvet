@@ -156,7 +156,8 @@ it.each(['/w/first/missing', '/me/worklog/missing'])('preserves the product shel
   }) } as Response))
   show(path)
 
-  expect(await screen.findByText('Not Found')).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: /^Back to/ })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/w/first/settings/profile')
   expect(screen.queryByRole('navigation', { name: 'Public navigation' })).not.toBeInTheDocument()
 })

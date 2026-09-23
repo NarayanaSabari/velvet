@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api } from '../../lib/api'
+import { api, isNotFound } from '../../lib/api'
 import type {
   Activity,
   Comment,
@@ -27,6 +27,7 @@ import { useSession } from '../auth/useSession'
 import { userLabel } from '../../lib/userLabel'
 import { IssueEditForm, IssueForm, type IssueInput } from '../work/CoreForms'
 import { Button } from '../../ui/Button'
+import { ErrorState, LoadingState, NotFoundState } from '../../ui/QueryState'
 import { NavLink } from '../../app/nav'
 
 export type TimelineEntry =
@@ -197,7 +198,7 @@ export function IssueEvidenceSection({
     <section className="border-t border-grey-200 pt-4" data-testid="issue-evidence-section">
       <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Linked PRs / evidence</h2>
       {isPending ? (
-        <p className="text-sm text-grey-500">Loading linked PRs…</p>
+        <LoadingState label="Loading linked PRs…" />
       ) : hasError ? (
         <p className="text-sm text-blocked" role="alert">Could not load linked PRs.</p>
       ) : pullRequests.length === 0 ? (
@@ -314,8 +315,26 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
     onSuccess: invalidate,
   })
 
-  if (issue.isPending) return <p className="text-grey-500">Loading…</p>
-  if (issue.error || !issue.data) return <p className="text-blocked">Could not load this issue.</p>
+  if (issue.isPending) return <LoadingState />
+  if (isNotFound(issue.error)) {
+    return (
+      <NotFoundState
+        title="Issue not found"
+        message={`${issueKey} does not exist in this organisation, or it has been removed.`}
+        backTo={`/w/${slug}/issues`}
+        backLabel="Back to issues"
+      />
+    )
+  }
+  if (issue.error || !issue.data) {
+    return (
+      <ErrorState
+        message="Could not load this issue."
+        onRetry={() => void issue.refetch()}
+        retrying={issue.isRefetching}
+      />
+    )
+  }
 
   const data = issue.data
   const memberChoices = (members.data?.members ?? []).map((member) => ({
@@ -335,7 +354,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
       <header className="flex items-start justify-between gap-3 border-b border-grey-200 pb-4" data-testid="issue-header">
         <div className="min-w-0">
           <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase">{data.key}</p>
-          <h1 className="text-lg">{data.title}</h1>
+          <h1 className="text-lg [overflow-wrap:anywhere]">{data.title}</h1>
         </div>
         {canWrite ? (
           <Button
