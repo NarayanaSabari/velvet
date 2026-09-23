@@ -111,7 +111,7 @@ function MilestoneCardContent({ milestone, owner }: { milestone: SprintMilestone
       className="h-full border border-grey-300 bg-paper p-3 shadow-[2px_2px_0_var(--color-grey-200)]"
     >
       <div className="flex items-start gap-3">
-        <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+        <h3 className="min-w-0 flex-1 break-words text-sm font-medium text-ink [overflow-wrap:anywhere]">
           {milestone.name}
         </h3>
         <span className="shrink-0 text-sm tabular-nums text-grey-500" aria-label={`${done} of ${total} issues done`}>
@@ -200,14 +200,16 @@ function IssueAssignee({ issue, members }: { issue: SprintIssue; members: Map<st
 function IssueRow({ issue, members }: { issue: SprintIssue; members: Map<string, User> }) {
   const activity = activityTimestamp(issue)
   return (
-    <span className="flex items-center gap-2 text-sm">
+    <span className="grid min-w-0 grid-cols-[5rem_minmax(0,1fr)] items-start gap-x-2 gap-y-1 text-sm sm:flex">
       <span className="w-20 shrink-0 text-grey-500">{issue.key}</span>
-      <span className="min-w-0 flex-1 truncate text-ink">{issue.title}</span>
-      <IssueAssignee issue={issue} members={members} />
-      <span className="shrink-0 text-xs text-grey-500" aria-label={`Priority P${issue.priority}`}>
-        P{issue.priority}
+      <span className="min-w-0 flex-1 break-words text-ink [overflow-wrap:anywhere]">{issue.title}</span>
+      <span className="col-start-2 flex items-center gap-2 text-xs text-grey-500 sm:contents">
+        <IssueAssignee issue={issue} members={members} />
+        <span className="shrink-0" aria-label={`Priority P${issue.priority}`}>
+          P{issue.priority}
+        </span>
+        {activity ? <RelativeTime iso={parseableTimestamp(activity)} /> : null}
       </span>
-      {activity ? <RelativeTime iso={parseableTimestamp(activity)} /> : null}
     </span>
   )
 }

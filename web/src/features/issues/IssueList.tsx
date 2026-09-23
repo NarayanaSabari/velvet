@@ -22,10 +22,12 @@ export function IssueList({
       keyExtractor={(issue) => issue.id}
       onActivate={(issue) => onOpen?.(issue)}
       renderItem={(issue) => (
-        <span className="flex items-center gap-2 text-sm">
+        <span className="grid min-w-0 grid-cols-[5rem_minmax(0,1fr)] items-start gap-x-2 gap-y-1 text-sm">
           <span className="w-20 shrink-0 text-grey-500">{issue.key}</span>
-          <span className="min-w-0 flex-1 truncate">{issue.title}</span>
-          <StatusBadge status={issue.status} />
+          <span className="min-w-0 break-words [overflow-wrap:anywhere]">{issue.title}</span>
+          <span className="col-start-2">
+            <StatusBadge status={issue.status} />
+          </span>
         </span>
       )}
     />

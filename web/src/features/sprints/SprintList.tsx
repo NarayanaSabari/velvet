@@ -55,12 +55,12 @@ export function SprintList({ slug }: { slug: string }) {
             void navigate({ href: `/w/${slug}/sprints/${sprint.id}` })
           }
           renderItem={(sprint) => (
-            <span className="flex items-baseline gap-2 text-sm">
-              <span className="min-w-0 flex-1 truncate">{sprint.name}</span>
-              <span className="text-grey-500">
-                {sprint.starts_on} – {sprint.ends_on}
+            <span className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:items-baseline sm:gap-2">
+              <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{sprint.name}</span>
+              <span className="flex flex-wrap gap-x-2 text-xs text-grey-500 sm:shrink-0 sm:text-sm">
+                <span>{sprint.starts_on} – {sprint.ends_on}</span>
+                <span>{sprint.state}</span>
               </span>
-              <span className="text-grey-500">{sprint.state}</span>
             </span>
           )}
         />

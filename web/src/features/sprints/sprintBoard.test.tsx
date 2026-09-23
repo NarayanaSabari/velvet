@@ -82,6 +82,17 @@ describe('MilestoneRow', () => {
     expect(screen.getByRole('progressbar', { name: 'Ship auth progress' })).toHaveAttribute('aria-valuenow', '38')
     expect(screen.getByText('3/8')).toBeInTheDocument()
   })
+
+  it('keeps a long milestone name readable instead of truncating it', () => {
+    const longName = 'A milestone name that must stay readable across narrow workspace layouts'
+    render(<MilestoneRow milestone={{ ...base, name: longName, issue_counts: {}, last_comment: null }} />)
+
+    expect(screen.getByRole('heading', { name: longName })).toHaveClass(
+      'break-words',
+      '[overflow-wrap:anywhere]',
+    )
+    expect(screen.getByRole('heading', { name: longName })).not.toHaveClass('truncate')
+  })
 })
 
 describe('IssueGroups', () => {
@@ -106,6 +117,22 @@ describe('IssueGroups', () => {
     expect(screen.getByText('ENG-i1')).toBeInTheDocument()
     expect(screen.getByText('ENG-i5')).toBeInTheDocument()
     expect(screen.getByText('ENG-i6')).toBeInTheDocument()
+  })
+
+  it('keeps long issue titles readable and moves compact metadata below on narrow layouts', () => {
+    const longTitle = 'Supercalifragilisticexpialidocious_identifier_that_never_breaks_across_lines'
+    render(
+      <IssueGroups
+        issues={[{ ...issue('i1', 'in_progress'), title: longTitle }]}
+      />,
+    )
+
+    expect(screen.getByText(longTitle)).toHaveClass(
+      'break-words',
+      '[overflow-wrap:anywhere]',
+    )
+    expect(screen.getByText(longTitle)).not.toHaveClass('truncate')
+    expect(screen.getByLabelText('Priority P2').parentElement).toHaveClass('col-start-2')
   })
 })
 
