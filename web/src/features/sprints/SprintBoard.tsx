@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { NavLink } from '../../app/nav'
-import { api, isNotFound } from '../../lib/api'
+import { api, isNotFound, listAllWorkspaceIssues } from '../../lib/api'
 import type { Issue, IssueStatus, Milestone, Sprint, User } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Avatar } from '../../ui/Avatar'
@@ -425,7 +425,7 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
   // only truly unfiled issues into the active sprint below.
   const unfiledIssues = useQuery({
     queryKey: ['issues', slug, { milestone_id: null }],
-    queryFn: () => api.get<{ issues: SprintIssue[] }>(`/w/${slug}/issues?limit=200`),
+    queryFn: async () => ({ issues: await listAllWorkspaceIssues<SprintIssue>(slug) }),
   })
   const members = useQuery({
     queryKey: ['members', slug],

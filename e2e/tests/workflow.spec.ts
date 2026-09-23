@@ -66,6 +66,10 @@ test('closing a sprint freezes its numbers against later edits', async ({ reques
 test('a completed sprint does not absorb later unfiled work', async ({ request, signedIn: page }) => {
   const { sprints } = await request.get('/api/v1/w/lab/sprints').then((r) => r.json())
   const sprint = sprints[0]
+  if (sprint.state !== 'completed') {
+    const close = await request.post(`/api/v1/w/lab/sprints/${sprint.id}/close`)
+    expect(close.status()).toBe(200)
+  }
   const created = await request.post('/api/v1/w/lab/issues', {
     data: { title: 'Work created after sprint close' },
   })

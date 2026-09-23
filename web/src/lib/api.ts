@@ -56,8 +56,8 @@ export const api = {
   del: (path: string, body?: unknown) => request<void>('DELETE', path, body),
 }
 
-interface IssueListPage {
-  issues: Issue[]
+interface IssueListPage<T extends Issue = Issue> {
+  issues: T[]
   next_cursor?: string | null
 }
 
@@ -66,15 +66,15 @@ interface IssueListPage {
  * Consumers that need a workspace-wide view must explicitly walk every page
  * rather than assuming the default or maximum limit is the complete result.
  */
-export async function listAllWorkspaceIssues(slug: string): Promise<Issue[]> {
-  const issues: Issue[] = []
+export async function listAllWorkspaceIssues<T extends Issue = Issue>(slug: string): Promise<T[]> {
+  const issues: T[] = []
   let cursor = ''
 
   for (;;) {
     const params = new URLSearchParams({ limit: '200' })
     if (cursor) params.set('cursor', cursor)
 
-    const page = await api.get<IssueListPage>(`/w/${slug}/issues?${params.toString()}`)
+    const page = await api.get<IssueListPage<T>>(`/w/${slug}/issues?${params.toString()}`)
     issues.push(...page.issues)
 
     const nextCursor = page.next_cursor ?? ''
