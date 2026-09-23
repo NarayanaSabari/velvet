@@ -1,3 +1,4 @@
+import { NavLink } from '../app/nav'
 import { Button } from './Button'
 
 /**
@@ -32,6 +33,30 @@ export function ErrorState({
           {retrying ? 'Retrying…' : 'Try again'}
         </Button>
       ) : null}
+    </div>
+  )
+}
+
+/** A record or page that does not exist. Retrying cannot help, so it offers a
+ *  way back instead. */
+export function NotFoundState({
+  title,
+  message,
+  backTo,
+  backLabel,
+}: {
+  title: string
+  message: string
+  backTo: string
+  backLabel: string
+}) {
+  return (
+    <div className="max-w-[80rem]">
+      <h1 className="mb-2 text-lg">{title}</h1>
+      <p className="text-sm text-grey-700">{message}</p>
+      <p className="mt-3 text-sm">
+        <NavLink to={backTo} className="underline">{backLabel}</NavLink>
+      </p>
     </div>
   )
 }

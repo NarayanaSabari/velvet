@@ -106,3 +106,16 @@ test('a failed load says so and recovers with Try again', async ({ signedIn: pag
   await expect(page.getByRole('alert')).toHaveCount(0)
   await expect(page.getByText(UNBROKEN).first()).toBeVisible()
 })
+
+test('missing records and routes say not found and offer a way back', async ({ signedIn: page }) => {
+  for (const [path, heading, back] of [
+    ['/w/lab/issues/ENG-9999', 'Issue not found', 'Back to issues'],
+    ['/w/lab/sprints/00000000-0000-0000-0000-000000000000', 'Sprint not found', 'Back to sprints'],
+    ['/w/lab/no-such-page', 'Page not found', 'Back to the dashboard'],
+  ] as const) {
+    await page.goto(path)
+    await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
+    await expect(page.getByRole('link', { name: back })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0)
+  }
+})

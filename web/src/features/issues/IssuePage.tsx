@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api } from '../../lib/api'
+import { api, isNotFound } from '../../lib/api'
 import type {
   Activity,
   Comment,
@@ -27,7 +27,7 @@ import { useSession } from '../auth/useSession'
 import { userLabel } from '../../lib/userLabel'
 import { IssueEditForm, IssueForm, type IssueInput } from '../work/CoreForms'
 import { Button } from '../../ui/Button'
-import { ErrorState, LoadingState } from '../../ui/QueryState'
+import { ErrorState, LoadingState, NotFoundState } from '../../ui/QueryState'
 import { NavLink } from '../../app/nav'
 
 export type TimelineEntry =
@@ -316,6 +316,16 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
   })
 
   if (issue.isPending) return <LoadingState />
+  if (isNotFound(issue.error)) {
+    return (
+      <NotFoundState
+        title="Issue not found"
+        message={`${issueKey} does not exist in this organisation, or it has been removed.`}
+        backTo={`/w/${slug}/issues`}
+        backLabel="Back to issues"
+      />
+    )
+  }
   if (issue.error || !issue.data) {
     return (
       <ErrorState

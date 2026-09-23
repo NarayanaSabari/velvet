@@ -2,13 +2,13 @@ import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 
-import { api } from '../../lib/api'
+import { api, isNotFound } from '../../lib/api'
 import type { Comment, Issue, Milestone, MilestoneStatus, Sprint, User } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { Markdown } from '../../ui/Markdown'
-import { ErrorState, LoadingState } from '../../ui/QueryState'
+import { ErrorState, LoadingState, NotFoundState } from '../../ui/QueryState'
 import { NavLink } from '../../app/nav'
 import { CommentComposer } from '../comments/CommentComposer'
 import { CommentThread } from '../comments/CommentThread'
@@ -127,6 +127,16 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
   })
 
   if (milestone.isPending) return <LoadingState />
+  if (isNotFound(milestone.error)) {
+    return (
+      <NotFoundState
+        title="Milestone not found"
+        message="This milestone does not exist in this organisation, or it has been removed."
+        backTo={`/w/${slug}/sprints`}
+        backLabel="Back to sprints"
+      />
+    )
+  }
   if (milestone.error || !milestone.data) {
     return (
       <ErrorState

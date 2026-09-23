@@ -3,14 +3,14 @@ import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
 import { NavLink } from '../../app/nav'
-import { api } from '../../lib/api'
+import { api, isNotFound } from '../../lib/api'
 import type { Issue, IssueStatus, Milestone, Sprint, User } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Avatar } from '../../ui/Avatar'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { List } from '../../ui/List'
-import { ErrorState, LoadingState } from '../../ui/QueryState'
+import { ErrorState, LoadingState, NotFoundState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
 import { useSession } from '../auth/useSession'
@@ -453,6 +453,16 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
     },
   })
 
+  if (isNotFound(sprint.error)) {
+    return (
+      <NotFoundState
+        title="Sprint not found"
+        message="This sprint does not exist in this organisation, or it has been removed."
+        backTo={`/w/${slug}/sprints`}
+        backLabel="Back to sprints"
+      />
+    )
+  }
   if (sprint.isPending || milestones.isPending) return <LoadingState />
   if (sprint.error || milestones.error || !sprint.data || !milestones.data) {
     return (

@@ -75,6 +75,9 @@ test('the reports page renders all four tables', async ({ signedIn: page }) => {
 
 test('the command palette searches an issue title and opens the issue', async ({ signedIn: page }) => {
   await page.goto('/w/lab')
+  // The shortcut is registered by the shell once the session has loaded, so
+  // pressing it before the page is ready silently does nothing.
+  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible()
 
   await page.keyboard.press('Meta+K')
   await expect(page.getByTestId('command-palette')).toBeVisible()
@@ -292,6 +295,9 @@ test('uses readable type at 100% zoom without disturbing responsive layout', asy
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/w/lab')
   await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible()
+  // The shell renders before the dashboard data, so wait for the page heading
+  // too or the measurement races the first fetch.
+  await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible()
   const mobileMetrics = await page.evaluate(() => {
     const size = (selector: string) => {
       const element = document.querySelector<HTMLElement>(selector)

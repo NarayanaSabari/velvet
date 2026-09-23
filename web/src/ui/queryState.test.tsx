@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TeamFeed } from '../features/feed/TeamFeed'
 import { Mentions } from '../features/mentions/Mentions'
 import { Reports } from '../features/reports/Reports'
+import { IssuePage } from '../features/issues/IssuePage'
 import { ErrorState, LoadingState } from './QueryState'
 
 beforeEach(() => vi.unstubAllGlobals())
@@ -124,5 +125,21 @@ describe('Mentions states', () => {
     fail = false
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByText('No mentions')).toBeInTheDocument()
+  })
+})
+
+describe('Not found', () => {
+  it('shows a missing issue as not found with a way back, not a retryable failure', async () => {
+    stubApi((path) => {
+      if (path.endsWith('/issues/ENG-999')) return json({ error: { code: 'not_found', message: 'issue not found' } }, 404)
+      if (path.endsWith('/me')) return json(null, 401)
+      return json({})
+    })
+    renderWithClient(<IssuePage slug="lab" issueKey="ENG-999" />)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Issue not found' })).toBeInTheDocument()
+    expect(screen.getByText(/ENG-999 does not exist/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back to issues' })).toHaveAttribute('href', '/w/lab/issues')
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
   })
 })

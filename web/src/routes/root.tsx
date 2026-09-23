@@ -4,6 +4,7 @@ import { Shell } from '../app/Shell'
 import { NavLinkProvider, type NavLinkProps } from '../app/nav'
 import { PublicAuthPage } from '../features/auth/PublicAuthPage'
 import { buttonClassName } from '../ui/buttonStyles'
+import { NotFoundState } from '../ui/QueryState'
 
 function RouterNavLink({ to, children, className }: NavLinkProps) {
   return (
@@ -21,7 +22,17 @@ function isProductPath(pathname: string) {
 export function RootNotFound() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   // Keep the existing product not-found content inside its workspace shell.
-  if (isProductPath(pathname)) return <p>Not Found</p>
+  if (isProductPath(pathname)) {
+    const slug = /^\/w\/([^/]+)/.exec(pathname)?.[1]
+    return (
+      <NotFoundState
+        title="Page not found"
+        message="This page does not exist or the link is no longer available."
+        backTo={slug ? `/w/${slug}` : '/'}
+        backLabel={slug ? 'Back to the dashboard' : 'Back to your organisations'}
+      />
+    )
+  }
 
   return (
     <PublicAuthPage title="Page not found" note="">
