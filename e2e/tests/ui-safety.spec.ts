@@ -5,6 +5,7 @@ const memberEmail = 'ui-safety-member@example.test'
 const accessibilityRunId = `${Date.now()}-${process.pid}`
 const accessibilitySprintName = `Accessibility review ${accessibilityRunId}`
 const accessibilityIssueTitle = `Verify accessible shell behavior ${accessibilityRunId}`
+const contentIssueTitle = `Verify accessible content behavior ${accessibilityRunId}`
 
 function documentOverflows(page: import('@playwright/test').Page) {
   return page.evaluate(
@@ -17,8 +18,30 @@ test.describe.configure({ mode: 'serial' })
 test.beforeAll(() => {
   seededSessionToken()
   sql(`
+    DELETE FROM activity
+    WHERE target_id IN (
+      SELECT c.id FROM comment c
+      JOIN issue i ON c.target_type = 'issue' AND c.target_id = i.id
+      WHERE i.title IN ('${accessibilityIssueTitle}', '${contentIssueTitle}')
+        AND i.workspace_id = (SELECT id FROM workspace WHERE slug = 'lab')
+    ) OR target_id IN (
+      SELECT i.id FROM issue i
+      WHERE i.title IN ('${accessibilityIssueTitle}', '${contentIssueTitle}')
+        AND i.workspace_id = (SELECT id FROM workspace WHERE slug = 'lab')
+    );
+    DELETE FROM comment_mention
+    WHERE comment_id IN (
+      SELECT c.id FROM comment c
+      JOIN issue i ON c.target_type = 'issue' AND c.target_id = i.id
+      WHERE i.title IN ('${accessibilityIssueTitle}', '${contentIssueTitle}')
+        AND i.workspace_id = (SELECT id FROM workspace WHERE slug = 'lab')
+    );
+    DELETE FROM comment c USING issue i
+    WHERE c.target_type = 'issue' AND c.target_id = i.id
+      AND i.title IN ('${accessibilityIssueTitle}', '${contentIssueTitle}')
+      AND i.workspace_id = (SELECT id FROM workspace WHERE slug = 'lab');
     DELETE FROM issue
-    WHERE title = '${accessibilityIssueTitle}'
+    WHERE title IN ('${accessibilityIssueTitle}', '${contentIssueTitle}')
       AND workspace_id = (SELECT id FROM workspace WHERE slug = 'lab');
     DELETE FROM sprint
     WHERE name = '${accessibilitySprintName}'
@@ -43,8 +66,30 @@ test.beforeAll(() => {
 
 test.afterAll(() => {
   sql(`
+    DELETE FROM activity
+    WHERE target_id IN (
+      SELECT c.id FROM comment c
+      JOIN issue i ON c.target_type = 'issue' AND c.target_id = i.id
+      WHERE i.title IN ('${accessibilityIssueTitle}', '${contentIssueTitle}')
+        AND i.workspace_id = (SELECT id FROM workspace WHERE slug = 'lab')
+    ) OR target_id IN (
+      SELECT i.id FROM issue i
+      WHERE i.title IN ('${accessibilityIssueTitle}', '${contentIssueTitle}')
+        AND i.workspace_id = (SELECT id FROM workspace WHERE slug = 'lab')
+    );
+    DELETE FROM comment_mention
+    WHERE comment_id IN (
+      SELECT c.id FROM comment c
+      JOIN issue i ON c.target_type = 'issue' AND c.target_id = i.id
+      WHERE i.title IN ('${accessibilityIssueTitle}', '${contentIssueTitle}')
+        AND i.workspace_id = (SELECT id FROM workspace WHERE slug = 'lab')
+    );
+    DELETE FROM comment c USING issue i
+    WHERE c.target_type = 'issue' AND c.target_id = i.id
+      AND i.title IN ('${accessibilityIssueTitle}', '${contentIssueTitle}')
+      AND i.workspace_id = (SELECT id FROM workspace WHERE slug = 'lab');
     DELETE FROM issue
-    WHERE title = '${accessibilityIssueTitle}'
+    WHERE title IN ('${accessibilityIssueTitle}', '${contentIssueTitle}')
       AND workspace_id = (SELECT id FROM workspace WHERE slug = 'lab');
     DELETE FROM sprint
     WHERE name = '${accessibilitySprintName}'
@@ -167,5 +212,72 @@ test('the product shell supports keyboard menus, skip navigation, titles, and on
   await page.goto(`/w/lab/issues/${issue.key}`)
   await expect(page).toHaveTitle(`${issue.key} ${accessibilityIssueTitle} · Velvet`)
   await expect(page.locator('main')).toHaveCount(1)
+  expect(await documentOverflows(page)).toBe(false)
+})
+
+test('Markdown stays readable and mentions provide keyboard navigation to their target', async ({
+  signedIn: page,
+  request,
+}) => {
+  const description = [
+    '## Release checklist',
+    '',
+    'Use the deployment runbook before release.',
+    '',
+    '- [x] Complete migration',
+    '- [ ] Verify rollback',
+    '  - [x] Document fallback',
+    '',
+    '```go',
+    'func main() {}',
+    '```',
+  ].join('\n')
+  const issueResponse = await request.post('/api/v1/w/lab/issues', {
+    data: { title: contentIssueTitle, description },
+  })
+  expect(issueResponse.status()).toBe(201)
+  const issue = await issueResponse.json()
+
+  const commentResponse = await request.post(`/api/v1/w/lab/issues/${issue.key}/comments`, {
+    data: { body: '@sabari Please review the release checklist.' },
+  })
+  expect(commentResponse.status()).toBe(201)
+
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto(`/w/lab/issues/${issue.key}`)
+  const markdown = page.locator('.markdown').first()
+  const heading = markdown.getByRole('heading', { level: 2, name: 'Release checklist' })
+  await expect(heading).toBeVisible()
+  await expect(
+    markdown.getByRole('checkbox', { name: 'Completed task: Complete migration' }),
+  ).toBeChecked()
+  await expect(
+    markdown.getByRole('checkbox', { name: 'Incomplete task: Verify rollback' }),
+  ).not.toBeChecked()
+  await expect(
+    markdown.getByRole('checkbox', { name: 'Completed task: Document fallback' }),
+  ).toBeChecked()
+  await expect(markdown.locator('pre')).toContainText('func main() {}')
+  const [headingHeight, bodyHeight, codePadding] = await Promise.all([
+    heading.evaluate((element) => element.getBoundingClientRect().height),
+    markdown.getByText('Use the deployment runbook before release.').evaluate(
+      (element) => element.getBoundingClientRect().height,
+    ),
+    markdown.locator('pre').evaluate((element) => getComputedStyle(element).padding),
+  ])
+  expect(headingHeight).toBeGreaterThan(bodyHeight)
+  expect(codePadding).not.toBe('0px')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await documentOverflows(page)).toBe(false)
+
+  await page.goto('/w/lab/mentions')
+  const target = page.getByRole('link', { name: issue.key, exact: true })
+  await expect(target).toBeVisible()
+  await target.focus()
+  await expect(target).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(new RegExp(`/w/lab/issues/${issue.key}$`))
+  await expect(page.getByRole('heading', { level: 1, name: contentIssueTitle })).toBeVisible()
   expect(await documentOverflows(page)).toBe(false)
 })

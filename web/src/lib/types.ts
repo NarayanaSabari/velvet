@@ -183,6 +183,7 @@ export interface Activity {
 export interface Mention {
   comment: Comment
   read_at: string | null
+  target_label: string
 }
 
 export interface DashboardPayload {

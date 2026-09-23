@@ -69,7 +69,35 @@ func TestMentionCreatesAnUnreadMention(t *testing.T) {
 
 	rec = f.Do(http.MethodGet, "/api/v1/w/lab/mentions?unread=true", nil)
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Contains(t, rec.Body.String(), "can you review")
+	var mentions struct {
+		Mentions []store.Mention `json:"mentions"`
+	}
+	f.DecodeInto(rec, &mentions)
+	require.Len(t, mentions.Mentions, 1)
+	require.Contains(t, mentions.Mentions[0].Comment.Body, "can you review")
+	require.Equal(t, issue.Key, mentions.Mentions[0].TargetLabel)
+}
+
+func TestMentionWithADeletedTargetIsHidden(t *testing.T) {
+	f := testutil.NewFixture(t)
+	issue := createIssue(t, f, map[string]any{"title": "Temporary target"})
+	require.Equal(t, http.StatusCreated,
+		f.Do(http.MethodPost, "/api/v1/w/lab/issues/"+issue.Key+"/comments",
+			map[string]any{"body": "@sabari this target will be removed"}).Code)
+
+	_, err := f.Pool.Exec(t.Context(), `DELETE FROM issue WHERE id = $1`, issue.ID)
+	require.NoError(t, err)
+
+	rec := f.Do(http.MethodGet, "/api/v1/w/lab/mentions?unread=true", nil)
+	var mentions struct {
+		Mentions []store.Mention `json:"mentions"`
+	}
+	f.DecodeInto(rec, &mentions)
+	require.Empty(t, mentions.Mentions)
+
+	count, err := f.Store.UnreadMentionCount(t.Context(), f.WorkspaceID, f.User.ID)
+	require.NoError(t, err)
+	require.Zero(t, count)
 }
 
 func TestMentionOfANonMemberIsIgnored(t *testing.T) {
@@ -166,7 +194,7 @@ func TestMilestoneCommentActivityNamesTheMilestone(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated,
 		f.Do(http.MethodPost, "/api/v1/w/lab/milestones/"+m.ID.String()+"/comments",
-			map[string]any{"body": "On track."}).Code)
+			map[string]any{"body": "@sabari On track."}).Code)
 
 	var name string
 	require.NoError(t, f.Pool.QueryRow(t.Context(), `
@@ -174,4 +202,29 @@ func TestMilestoneCommentActivityNamesTheMilestone(t *testing.T) {
 		WHERE verb = $1 ORDER BY id DESC LIMIT 1`, store.VerbCommented).Scan(&name))
 	require.Equal(t, "Ship auth", name,
 		"a milestone comment carries no issue key, so the name is what the feed can show")
+
+	var mentions struct {
+		Mentions []store.Mention `json:"mentions"`
+	}
+	f.DecodeInto(f.Do(http.MethodGet, "/api/v1/w/lab/mentions", nil), &mentions)
+	require.Len(t, mentions.Mentions, 1)
+	require.Equal(t, "Ship auth", mentions.Mentions[0].TargetLabel)
+}
+
+func TestProjectMentionNamesItsTarget(t *testing.T) {
+	f := testutil.NewFixture(t)
+	rec := f.Do(http.MethodPost, "/api/v1/w/lab/projects",
+		map[string]any{"key": "velvet", "name": "Velvet"})
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+	rec = f.Do(http.MethodPost, "/api/v1/w/lab/projects/velvet/comments",
+		map[string]any{"body": "@sabari project update"})
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+	var mentions struct {
+		Mentions []store.Mention `json:"mentions"`
+	}
+	f.DecodeInto(f.Do(http.MethodGet, "/api/v1/w/lab/mentions", nil), &mentions)
+	require.Len(t, mentions.Mentions, 1)
+	require.Equal(t, "velvet", mentions.Mentions[0].TargetLabel)
 }

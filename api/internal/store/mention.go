@@ -35,8 +35,9 @@ func ParseMentions(body string) []string {
 // Mention is a comment that named the caller, with the read state that decides
 // whether the inbox shows it as new.
 type Mention struct {
-	Comment Comment `json:"comment"`
-	ReadAt  *string `json:"read_at"`
+	Comment     Comment `json:"comment"`
+	ReadAt      *string `json:"read_at"`
+	TargetLabel string  `json:"target_label"`
 }
 
 // ListMentions returns the comments that named this user, newest first. A
@@ -44,11 +45,19 @@ type Mention struct {
 func (s *Store) ListMentions(ctx context.Context, workspaceID, userID uuid.UUID, unreadOnly bool) ([]Mention, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+commentCols+`,
-		       to_char(cm.read_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM')
+		       to_char(cm.read_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
+		       COALESCE(i.key, m.name, p.key, '')
 		FROM comment_mention cm
 		JOIN comment c ON c.id = cm.comment_id
 		JOIN app_user u ON u.id = c.author_id
+		LEFT JOIN issue i ON c.target_type = 'issue' AND i.id = c.target_id
+		  AND i.workspace_id = c.workspace_id
+		LEFT JOIN milestone m ON c.target_type = 'milestone' AND m.id = c.target_id
+		  AND m.workspace_id = c.workspace_id
+		LEFT JOIN project p ON c.target_type = 'project' AND p.id = c.target_id
+		  AND p.workspace_id = c.workspace_id
 		WHERE cm.user_id = $1 AND c.workspace_id = $2 AND c.deleted_at IS NULL
+		  AND (i.id IS NOT NULL OR m.id IS NOT NULL OR p.id IS NOT NULL)
 		  AND (NOT $3::boolean OR cm.read_at IS NULL)
 		ORDER BY c.created_at DESC`, userID, workspaceID, unreadOnly)
 	if err != nil {
@@ -59,7 +68,7 @@ func (s *Store) ListMentions(ctx context.Context, workspaceID, userID uuid.UUID,
 	out := []Mention{}
 	for rows.Next() {
 		var m Mention
-		if err := scanCommentRow(rows, &m.Comment, &m.ReadAt); err != nil {
+		if err := scanCommentRow(rows, &m.Comment, &m.ReadAt, &m.TargetLabel); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -72,9 +81,17 @@ func (s *Store) UnreadMentionCount(ctx context.Context, workspaceID, userID uuid
 	var n int
 	err := s.pool.QueryRow(ctx, `
 		SELECT count(*)
-		FROM comment_mention cm JOIN comment c ON c.id = cm.comment_id
+		FROM comment_mention cm
+		JOIN comment c ON c.id = cm.comment_id
+		LEFT JOIN issue i ON c.target_type = 'issue' AND i.id = c.target_id
+		  AND i.workspace_id = c.workspace_id
+		LEFT JOIN milestone m ON c.target_type = 'milestone' AND m.id = c.target_id
+		  AND m.workspace_id = c.workspace_id
+		LEFT JOIN project p ON c.target_type = 'project' AND p.id = c.target_id
+		  AND p.workspace_id = c.workspace_id
 		WHERE cm.user_id = $1 AND c.workspace_id = $2
-		  AND c.deleted_at IS NULL AND cm.read_at IS NULL`,
+		  AND c.deleted_at IS NULL AND cm.read_at IS NULL
+		  AND (i.id IS NOT NULL OR m.id IS NOT NULL OR p.id IS NOT NULL)`,
 		userID, workspaceID).Scan(&n)
 	return n, err
 }

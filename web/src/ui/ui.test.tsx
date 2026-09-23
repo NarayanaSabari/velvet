@@ -67,6 +67,22 @@ describe('Markdown', () => {
     const link = container.querySelector('a')
     expect(link?.getAttribute('href') ?? '').not.toContain('javascript:')
   })
+
+  it('preserves readable document structure and names task-list state', () => {
+    const { container } = render(
+      <Markdown
+        source={
+          '## Context\n\n```go\nfunc main() {}\n```\n\n- [ ] Link account\n  - [x] Add callback'
+        }
+      />,
+    )
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Context' })).toBeInTheDocument()
+    expect(screen.getByText('func main() {}').closest('pre')).not.toBeNull()
+    expect(screen.getByRole('checkbox', { name: 'Incomplete task: Link account' })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'Completed task: Add callback' })).toBeDisabled()
+    expect(container.firstElementChild).toHaveClass('markdown')
+  })
 })
 
 describe('RelativeTime', () => {
