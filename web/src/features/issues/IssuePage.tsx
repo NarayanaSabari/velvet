@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, isNotFound } from '../../lib/api'
@@ -170,9 +170,9 @@ export function IssuePageLayout({ main, sidebar }: { main: ReactNode; sidebar: R
         className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_17rem]"
         data-testid="issue-page-columns"
       >
-        <main className="min-w-0" data-testid="issue-main">
+        <div className="min-w-0" data-testid="issue-main">
           {main}
-        </main>
+        </div>
         <aside className="min-w-0 lg:sticky lg:top-4" data-testid="issue-sidebar">
           {sidebar}
         </aside>
@@ -262,6 +262,10 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
     queryKey: ['milestones', slug, 'all'],
     queryFn: () => api.get<{ milestones: Milestone[] }>(`/w/${slug}/milestones`),
   })
+
+  useEffect(() => {
+    if (issue.data) document.title = `${issue.data.key} ${issue.data.title} · Velvet`
+  }, [issue.data])
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ['issue', slug, issueKey] })

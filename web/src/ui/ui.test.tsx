@@ -122,4 +122,19 @@ describe('List', () => {
     await user.keyboard('{Enter}')
     expect(onActivate).toHaveBeenCalledWith(items[0])
   })
+
+  it('keeps a visible focus treatment and a non-colour selected marker', () => {
+    render(
+      <List
+        items={items}
+        keyExtractor={(i) => i.id}
+        renderItem={(i) => <span>{i.label}</span>}
+      />,
+    )
+
+    const listbox = screen.getByRole('listbox')
+    expect(listbox).not.toHaveClass('focus:outline-none')
+    expect(listbox.className).toContain('focus-visible:')
+    expect(screen.getAllByRole('option')[0]).toHaveClass('border-l-ink')
+  })
 })

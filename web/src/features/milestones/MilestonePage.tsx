@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 
@@ -49,9 +49,9 @@ export function MilestonePageLayout({ main, sidebar }: { main: ReactNode; sideba
         className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_17rem]"
         data-testid="milestone-page-columns"
       >
-        <main className="min-w-0" data-testid="milestone-main">
+        <div className="min-w-0" data-testid="milestone-main">
           {main}
-        </main>
+        </div>
         <aside className="min-w-0 lg:sticky lg:top-4" data-testid="milestone-sidebar">
           {sidebar}
         </aside>
@@ -90,6 +90,10 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
     queryKey: ['sprints', slug],
     queryFn: () => api.get<{ sprints: Sprint[] }>(`/w/${slug}/sprints`),
   })
+
+  useEffect(() => {
+    if (milestone.data) document.title = `${milestone.data.name} · Velvet`
+  }, [milestone.data])
 
   const addComment = useMutation({
     mutationFn: (body: string) =>

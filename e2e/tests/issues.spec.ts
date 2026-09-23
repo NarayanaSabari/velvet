@@ -282,7 +282,7 @@ test('keeps the Issues page readable and contained on mobile', async ({ signedIn
   await expect(mobileNavigation.getByRole('link', { name: 'Issues' })).toBeVisible()
   await expect(mobileNavigation.getByRole('link', { name: 'Feed' })).toHaveCount(0)
   await mobileNavigation.getByRole('button', { name: 'More' }).click()
-  await expect(page.getByRole('menu').getByRole('link', { name: 'Team feed' })).toBeVisible()
+  await expect(page.getByRole('menu').getByRole('menuitem', { name: 'Team feed' })).toBeVisible()
   await expect(page.getByText(longTitle)).toBeVisible()
 
   const metrics = await page.evaluate(() => ({

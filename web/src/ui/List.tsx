@@ -33,7 +33,7 @@ export function List<T>({
       aria-label={ariaLabel}
       aria-activedescendant={activeId}
       tabIndex={0}
-      className="divide-y divide-grey-200 border-y border-grey-200 focus:outline-none"
+      className="divide-y divide-grey-200 border-y border-grey-200 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ink"
       onKeyDown={(e) => {
         if (e.key === 'j' || e.key === 'ArrowDown') {
           // preventDefault only on keys actually handled, so an unhandled key
@@ -63,8 +63,8 @@ export function List<T>({
               setIndex(i)
               onActivate?.(item)
             }}
-            className={`cursor-default px-2 py-1 hover:bg-grey-100 ${
-              isActive ? 'bg-grey-100' : ''
+            className={`cursor-default border-l-2 px-2 py-1 hover:bg-grey-100 ${
+              isActive ? 'border-l-ink' : 'border-l-transparent'
             }`}
           >
             {renderItem(item, isActive)}

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Outlet, useNavigate, useParams, useRouterState, Link } from '@tanstack/react-router'
 
 import { Shell } from '../app/Shell'
@@ -5,10 +6,11 @@ import { NavLinkProvider, type NavLinkProps } from '../app/nav'
 import { PublicAuthPage } from '../features/auth/PublicAuthPage'
 import { buttonClassName } from '../ui/buttonStyles'
 import { NotFoundState } from '../ui/QueryState'
+import { productPageTitle } from './productTitle'
 
-function RouterNavLink({ to, children, className }: NavLinkProps) {
+function RouterNavLink({ to, children, className, activeClassName: _activeClassName, ...linkProps }: NavLinkProps) {
   return (
-    <Link to={to} className={className}>
+    <Link to={to} className={className} {...linkProps}>
       {children}
     </Link>
   )
@@ -52,6 +54,10 @@ export function RootLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const navigate = useNavigate()
   const outsideShell = !isProductPath(pathname)
+
+  useEffect(() => {
+    if (!outsideShell) document.title = `${productPageTitle(pathname)} · Velvet`
+  }, [outsideShell, pathname])
 
   return (
     <NavLinkProvider value={RouterNavLink}>

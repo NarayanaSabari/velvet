@@ -88,7 +88,6 @@ describe('IssueGroups', () => {
   it('renders every status in the fixed order with its count, including unfiled issues', () => {
     const { container } = render(
       <IssueGroups
-        slug="lab"
         issues={[issue('i5', 'done'), issue('i1', 'in_progress'), issue('i6', 'cancelled')]}
       />,
     )

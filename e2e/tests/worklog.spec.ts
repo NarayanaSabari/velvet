@@ -47,7 +47,7 @@ test('sign out ends the server session and returns to sign in', async ({ browser
   await page.goto('/w/lab')
   await expect(page.getByRole('button', { name: 'Sign out' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Open account menu' }).click()
-  await page.getByRole('button', { name: 'Sign out' }).click()
+  await page.getByRole('menuitem', { name: 'Sign out' }).click()
   await expect(page).toHaveURL(/\/signin$/)
   await expect(page.getByRole('button', { name: 'Send sign-in link' })).toBeVisible()
 

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { NavLink } from '../../app/nav'
 import { api, isNotFound, listAllWorkspaceIssues } from '../../lib/api'
@@ -197,16 +197,12 @@ function IssueAssignee({ issue, members }: { issue: SprintIssue; members: Map<st
   )
 }
 
-function IssueRow({ issue, members, slug }: { issue: SprintIssue; members: Map<string, User>; slug: string }) {
+function IssueRow({ issue, members }: { issue: SprintIssue; members: Map<string, User> }) {
   const activity = activityTimestamp(issue)
   return (
     <span className="flex items-center gap-2 text-sm">
-      <NavLink to={`/w/${slug}/issues/${issue.key}`} className="w-20 shrink-0 text-grey-500">
-        {issue.key}
-      </NavLink>
-      <NavLink to={`/w/${slug}/issues/${issue.key}`} className="min-w-0 flex-1 truncate text-ink">
-        {issue.title}
-      </NavLink>
+      <span className="w-20 shrink-0 text-grey-500">{issue.key}</span>
+      <span className="min-w-0 flex-1 truncate text-ink">{issue.title}</span>
       <IssueAssignee issue={issue} members={members} />
       <span className="shrink-0 text-xs text-grey-500" aria-label={`Priority P${issue.priority}`}>
         P{issue.priority}
@@ -219,11 +215,10 @@ function IssueRow({ issue, members, slug }: { issue: SprintIssue; members: Map<s
 export interface IssueGroupsProps {
   issues: SprintIssue[]
   members?: User[]
-  slug?: string
   onOpen?: (issue: SprintIssue) => void
 }
 
-export function IssueGroups({ issues, members = [], slug = '', onOpen }: IssueGroupsProps) {
+export function IssueGroups({ issues, members = [], onOpen }: IssueGroupsProps) {
   const membersById = new Map(members.map((member) => [member.id, member]))
   const groups = groupIssuesByStatus(issues)
   const [openStatuses, setOpenStatuses] = useState<Set<IssueStatus>>(
@@ -264,7 +259,7 @@ export function IssueGroups({ issues, members = [], slug = '', onOpen }: IssueGr
               keyExtractor={(issue) => issue.id}
               onActivate={onOpen}
               renderItem={(issue) => (
-                <IssueRow issue={issue} members={membersById} slug={slug} />
+                <IssueRow issue={issue} members={membersById} />
               )}
             />
           ) : (
@@ -431,6 +426,11 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
     queryKey: ['members', slug],
     queryFn: () => api.get<{ members: User[] }>(`/w/${slug}/members`),
   })
+
+  useEffect(() => {
+    if (sprint.data) document.title = `${sprint.data.name} · Velvet`
+  }, [sprint.data])
+
   const createMilestone = useMutation({
     mutationFn: (input: MilestoneInput) =>
       api.post<SprintMilestone>(`/w/${slug}/sprints/${sprintId}/milestones`, input),
@@ -485,7 +485,6 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
     <IssueGroups
       issues={issueRows}
       members={members.data?.members ?? []}
-      slug={slug}
       onOpen={(issue) => {
         void navigate({ href: `/w/${slug}/issues/${issue.key}` })
       }}

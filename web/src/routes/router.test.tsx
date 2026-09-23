@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createAppRouter } from './router'
@@ -78,15 +79,31 @@ it('protects the organisation creation page', async () => {
   expect(screen.queryByLabelText('Organisation name')).not.toBeInTheDocument()
 })
 
+it('gives product routes a page-specific browser title', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => Promise.resolve({
+    ok: true,
+    status: 200,
+    json: async () => url === '/api/v1/me'
+      ? { user: { id: 'u1', email: 'person@example.com', github_login: null, name: '', avatar_url: '' }, memberships: [first], last_workspace: first }
+      : { projects: [] },
+  } as Response)))
+
+  show('/w/first/projects')
+
+  expect(await screen.findByRole('heading', { level: 1, name: 'Projects' })).toBeInTheDocument()
+  await waitFor(() => expect(document.title).toBe('Projects · Velvet'))
+})
+
 it('refreshes a stale session and clears old identity projections before rendering the current account', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(['session'], { user: { id: 'old', email: 'old@example.com', name: '', github_login: null, avatar_url: '' }, memberships: [first], last_workspace: first })
   client.setQueryData(['feed', 'first'], ['old account private data'])
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => Promise.resolve({ ok: true, status: 200, json: async () => url === '/api/v1/me'
     ? { user: { id: 'new', email: 'new@example.com', name: '', github_login: null, avatar_url: '' }, memberships: [last], last_workspace: last }
-    : { my_issues: [], active_sprint: null, milestones: [], recent_activity: [], unread_mentions: 0 } } as Response)))
+    : { my_issues: [], active_sprint: null, milestones: [], activity: [], unread_mentions: 0 } } as Response)))
   show('/', client)
-  expect(await screen.findByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/w/last/settings/profile')
+  await userEvent.click(await screen.findByRole('button', { name: 'Open account menu' }))
+  expect(screen.getByRole('menuitem', { name: 'Profile' })).toHaveAttribute('href', '/w/last/settings/profile')
   expect(client.getQueryData(['feed', 'first'])).toBeUndefined()
   expect(screen.getByText('new@example.com')).toBeInTheDocument()
 })
@@ -158,7 +175,8 @@ it.each(['/w/first/missing', '/me/worklog/missing'])('preserves the product shel
 
   expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: /^Back to/ })).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/w/first/settings/profile')
+  await userEvent.click(screen.getByRole('button', { name: 'Open account menu' }))
+  expect(screen.getByRole('menuitem', { name: 'Profile' })).toHaveAttribute('href', '/w/first/settings/profile')
   expect(screen.queryByRole('navigation', { name: 'Public navigation' })).not.toBeInTheDocument()
 })
 
