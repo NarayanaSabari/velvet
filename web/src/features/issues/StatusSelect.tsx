@@ -138,7 +138,7 @@ export function StatusSelect({
         aria-controls={open ? listboxId : undefined}
         aria-activedescendant={open ? `${listboxId}-${activeStatus}` : undefined}
         disabled={disabled}
-        className="inline-flex min-h-7 items-center gap-2 border border-grey-300 bg-paper px-2 py-1 text-sm hover:bg-grey-100 disabled:cursor-not-allowed"
+        className="ui-control inline-flex min-h-8 items-center gap-2 px-2 py-1 text-sm hover:bg-grey-100 disabled:cursor-not-allowed"
         onClick={() => {
           if (open) closeMenu()
           else openMenu(false)
@@ -157,7 +157,7 @@ export function StatusSelect({
           aria-label="Status"
           data-testid="status-listbox-options"
           data-status-listbox-options
-          className="absolute right-0 top-[calc(100%+0.375rem)] z-20 min-w-40 border border-grey-300 bg-paper py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+          className="absolute right-0 top-[calc(100%+0.375rem)] z-20 min-w-40 overflow-hidden rounded-[var(--radius-surface)] border border-grey-300 bg-paper py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
           style={{
             animation: openedByKeyboard
               ? 'none'

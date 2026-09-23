@@ -39,7 +39,7 @@ export function CommentComposer({
   return (
     <div className="mt-3">
       <textarea
-        className="w-full border border-grey-300 bg-paper px-2 py-1 text-sm"
+        className="ui-control w-full px-3 py-2 text-sm"
         rows={3}
         value={body}
         placeholder={placeholder}

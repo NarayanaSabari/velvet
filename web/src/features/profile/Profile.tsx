@@ -7,6 +7,7 @@ import { useSession } from '../auth/useSession'
 import { clearPrivateQueries, refreshPrivateQueries, navigateTo } from '../auth/sessionNavigation'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { PageHeader, SectionHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
 
@@ -41,11 +42,17 @@ export function Profile({ slug }: { slug: string }) {
   })
   if (session.isLoading) return <LoadingState label="Loading profile…" />
   if (!session.user) return null
-  return <div className="max-w-lg space-y-4">
-    <h1 className="text-lg">Profile</h1>
-    <p>{userLabel(session.user)}</p>
-    {session.user.email && session.user.email !== userLabel(session.user) ? <p className="text-grey-500">{session.user.email}</p> : null}
-    <h2 className="border-b border-grey-200 pb-1 text-base">GitHub profile</h2>
+  return <div className="max-w-2xl">
+    <PageHeader
+      title="Profile"
+      description="Manage your linked identity and personal access for tools and coding agents."
+    />
+    <div className="mb-8">
+      <p className="font-medium">{userLabel(session.user)}</p>
+      {session.user.email && session.user.email !== userLabel(session.user) ? <p className="mt-1 text-sm text-grey-500">{session.user.email}</p> : null}
+    </div>
+    <section className="space-y-3" aria-labelledby="github-profile-heading">
+    <SectionHeader id="github-profile-heading" title="GitHub profile" />
     <p className="text-grey-500">Link your GitHub identity to attribute your work. Organisation installation ownership is verified separately in Administration.</p>
     {session.user.github_login ? <>
       <p>Linked to @{session.user.github_login}</p>
@@ -69,6 +76,7 @@ export function Profile({ slug }: { slug: string }) {
       navigateTo('/api/v1/auth/github/link')
     }}>Link GitHub profile</a>}
     {unlink.error ? <p role="alert" className="text-blocked">{unlink.error.message}</p> : null}
+    </section>
     <ApiTokens />
   </div>
 }
@@ -89,7 +97,7 @@ function TokenForm({
       <label className="min-w-0 flex-1">
         <span className="mb-0.5 block text-xs text-grey-500">Token name</span>
         <input
-          className="block w-full border border-grey-300 bg-paper px-2 py-1"
+          className="ui-control block min-h-10 w-full px-2 py-1 md:min-h-8"
           type="text"
           name="name"
           autoComplete="off"
@@ -173,11 +181,11 @@ export function ApiTokens() {
 
   return (
     <section className="mt-8 space-y-3" aria-labelledby="api-tokens-heading">
-      <h2 id="api-tokens-heading" className="border-b border-grey-200 pb-1 text-base">API tokens</h2>
+      <SectionHeader id="api-tokens-heading" title="API tokens" />
       <p className="text-grey-500">Create a personal token for tools that need to write to your worklog.</p>
 
       {createdToken ? (
-        <div className="border border-grey-300 bg-grey-100 p-3" role="status" aria-live="polite">
+        <div className="ui-surface bg-grey-100 p-4" role="status" aria-live="polite">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <p className="font-medium">Token created</p>
@@ -186,7 +194,7 @@ export function ApiTokens() {
             <Button onClick={() => setCreatedToken(null)}>Dismiss token</Button>
           </div>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
-            <code className="min-w-0 flex-1 break-all border border-grey-300 bg-paper px-2 py-1 font-mono text-sm">
+            <code className="ui-control min-w-0 flex-1 break-all px-2 py-1 font-mono text-sm">
               {createdToken.token}
             </code>
             <Button aria-label="Copy API token" onClick={() => void copyToken()}>
@@ -219,9 +227,9 @@ export function ApiTokens() {
       {tokens.data && tokens.data.tokens.length > 0 ? (
         <>
           {form}
-          <ul className="divide-y divide-grey-200 border-y border-grey-200">
+          <ul className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
             {tokens.data.tokens.map((token) => (
-              <li key={token.id} className="flex flex-wrap items-center gap-3 px-2 py-2">
+              <li key={token.id} className="flex flex-wrap items-center gap-3 border-t border-grey-200 px-3 py-3 first:border-t-0">
                 <div className="min-w-0 flex-1">
                   <p className="break-all">{token.name}</p>
                   <dl className="flex flex-wrap gap-x-4 text-xs text-grey-500">

@@ -31,12 +31,12 @@ const MOBILE_NAV = [
 ] as const
 
 const NAV_ITEM =
-  'flex min-h-7 items-center rounded-[6px] border-l-2 border-transparent px-2 py-1 text-sm hover:bg-grey-100 focus-visible:bg-grey-100'
+  'flex min-h-8 items-center rounded-[var(--radius-control)] border-l-2 border-transparent px-2 py-1 text-sm hover:bg-grey-100 focus-visible:bg-grey-100'
 const NAV_ACTIVE = 'border-l-ink bg-grey-100 font-medium'
 const MENU_ITEM =
-  'block rounded-[6px] px-2 py-1.5 text-sm hover:bg-grey-100 focus-visible:bg-grey-100'
+  'block rounded-[var(--radius-control)] px-2 py-1.5 text-sm hover:bg-grey-100 focus-visible:bg-grey-100'
 const TAB_ITEM =
-  'flex min-h-12 flex-col items-center justify-center rounded-[6px] px-1 py-1 text-xs leading-tight text-grey-700 hover:bg-grey-100 focus-visible:bg-grey-100'
+  'flex min-h-12 flex-col items-center justify-center rounded-[var(--radius-control)] px-1 py-1 text-xs leading-tight text-grey-700 hover:bg-grey-100 focus-visible:bg-grey-100'
 
 function WorkspaceSwitcher({
   memberships,
@@ -56,7 +56,7 @@ function WorkspaceSwitcher({
       <span className="sr-only">Organisation</span>
       <select
         aria-label="Organisation"
-        className="w-full rounded-[6px] border border-grey-300 bg-paper px-2 py-1 text-sm text-ink"
+        className="ui-control w-full px-2 py-1 text-sm"
         value={workspaceSlug}
         onChange={(event) => {
           window.location.href = `/w/${event.target.value}`
@@ -334,7 +334,7 @@ export function Shell({
     <div className="min-h-screen bg-paper sm:flex sm:items-start">
       <a
         href="#main-content"
-        className="sr-only z-50 rounded-[6px] border border-ink bg-paper px-3 py-2 text-sm focus:fixed focus:top-2 focus:left-2 focus:not-sr-only"
+        className="sr-only z-50 rounded-[var(--radius-control)] border border-ink bg-paper px-3 py-2 text-sm focus:fixed focus:top-2 focus:left-2 focus:not-sr-only"
       >
         Skip to content
       </a>
@@ -393,7 +393,7 @@ export function Shell({
             type="button"
             data-testid={COMMAND_PALETTE_TEST_IDS.trigger}
             aria-label="Open command palette (⌘K)"
-            className="mb-2 flex w-full items-center justify-between rounded-[6px] px-2 py-1.5 text-left text-xs text-grey-500 hover:bg-grey-100 hover:text-ink"
+            className="mb-2 flex w-full items-center justify-between rounded-[var(--radius-control)] px-2 py-1.5 text-left text-xs text-grey-500 hover:bg-grey-100 hover:text-ink"
             onClick={() => setPaletteOpen(true)}
           >
             <span>Command palette</span>

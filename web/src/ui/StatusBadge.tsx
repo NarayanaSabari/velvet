@@ -19,7 +19,7 @@ export function StatusBadge({ status }: { status: IssueStatus }) {
   return (
     <span
       className={`inline-block border px-1 text-xs whitespace-nowrap ${
-        TONE[status] ?? 'border-grey-300 text-grey-700'
+        TONE[status] ?? 'border-grey-300 bg-grey-100 text-grey-700'
       }`}
     >
       {LABELS[status]}

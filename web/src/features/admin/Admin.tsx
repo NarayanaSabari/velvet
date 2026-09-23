@@ -8,6 +8,7 @@ import type { Repo, Role, WorkspaceMembership } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { PageHeader, SectionHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { OrganisationPanel } from './OrganisationPanel'
 import { InvitePanel } from './InvitePanel'
@@ -55,12 +56,14 @@ export function Admin({ slug }: { slug: string }) {
 
   return (
     <div className="max-w-[80rem]">
-      <h1 className="mb-1 text-lg">Administration</h1>
-      <p className="mb-6 text-grey-500">Manage who can enter this organisation and which GitHub repositories supply work evidence.</p>
+      <PageHeader
+        title="Administration"
+        description="Manage who can enter this organisation and which GitHub repositories supply work evidence."
+      />
       <OrganisationPanel slug={slug} workspace={session.workspace!} />
       <InvitePanel slug={slug} />
       <section className="mb-8" aria-labelledby="members-heading">
-        <h2 id="members-heading" className="mb-3 border-b border-grey-200 pb-1 text-base">Members</h2>
+        <SectionHeader id="members-heading" title="Members" />
         {members.isPending ? <LoadingState label="Loading members…" /> : null}
         {members.error ? (
           <ErrorState
@@ -71,9 +74,9 @@ export function Admin({ slug }: { slug: string }) {
         ) : null}
         {updateRole.error ? <p role="alert" className="text-blocked">{updateRole.error.message}</p> : null}
         {remove.error ? <p role="alert" className="text-blocked">{remove.error.message}</p> : null}
-        <ul className="border-t border-grey-200">
+        <ul className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
           {members.data?.memberships.map((membership) => (
-            <li key={membership.id} className="border-b border-grey-200 px-2 py-2">
+            <li key={membership.id} className="border-t border-grey-200 px-3 py-3 first:border-t-0">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="break-words [overflow-wrap:anywhere]">
@@ -86,7 +89,7 @@ export function Admin({ slug }: { slug: string }) {
                 <label>
                   <span className="sr-only">Role for {userLabel(membership.user)}</span>
                   <select
-                    className="border border-grey-300 bg-paper px-2 py-1 text-sm"
+                    className="ui-control px-2 py-1 text-sm"
                     value={membership.role}
                     disabled={updateRole.isPending || remove.isPending}
                     onChange={(event) => updateRole.mutate({ id: membership.id, role: event.target.value as Role })}

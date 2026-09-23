@@ -1,10 +1,12 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
 import type { DashboardPayload, Issue, Milestone } from '../../lib/types'
 import { useStream } from '../../lib/useStream'
 import { EmptyState } from '../../ui/EmptyState'
+import { Button } from '../../ui/Button'
+import { PageHeader, SectionHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { StatusBadge } from '../../ui/StatusBadge'
 import { NavLink } from '../../app/nav'
@@ -15,7 +17,7 @@ import { IssueForm, type IssueInput } from '../work/CoreForms'
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mb-6">
-      <h2 className="mb-2 text-sm tracking-wide text-grey-500 uppercase">{title}</h2>
+      <SectionHeader title={title} />
       {children}
     </section>
   )
@@ -70,6 +72,7 @@ export function Dashboard({ slug }: { slug: string }) {
   const queryClient = useQueryClient()
   const { workspace } = useSession(slug)
   const canWrite = workspace?.role === 'admin' || workspace?.role === 'member'
+  const [creatingIssue, setCreatingIssue] = useState(false)
   const query = useQuery({
     queryKey: ['dashboard', slug],
     queryFn: () => api.get<DashboardPayload>(`/w/${slug}/dashboard`),
@@ -95,19 +98,32 @@ export function Dashboard({ slug }: { slug: string }) {
 
   return (
     <div className="max-w-[80rem]">
-      <h1 className="mb-4 text-lg">Dashboard</h1>
+      <PageHeader
+        title="Dashboard"
+        description="Your current sprint, assigned work, and latest activity in one view."
+        actions={canWrite && !creatingIssue ? (
+          <Button variant="primary" onClick={() => setCreatingIssue(true)}>New issue</Button>
+        ) : undefined}
+      />
 
-      {canWrite ? (
-        <details className="mb-4">
-          <summary className="cursor-pointer text-sm underline">New unfiled issue</summary>
-          <div className="mt-2">
-            <IssueForm onSubmit={(input) => createIssue.mutateAsync(input)} />
+      {canWrite && creatingIssue ? (
+        <section className="ui-surface mb-6 p-4" aria-labelledby="dashboard-new-issue-heading">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 id="dashboard-new-issue-heading" className="font-medium">New unfiled issue</h2>
+              <p className="mt-1 text-sm text-grey-500">Capture work now and organise it later.</p>
+            </div>
+            <Button onClick={() => setCreatingIssue(false)}>Cancel</Button>
           </div>
-        </details>
+          <IssueForm onSubmit={async (input) => {
+            await createIssue.mutateAsync(input)
+            setCreatingIssue(false)
+          }} />
+        </section>
       ) : null}
 
       {data.unread_mentions > 0 ? (
-        <p className="mb-4 border border-grey-300 px-2 py-1 text-sm">
+        <p className="ui-surface mb-6 bg-grey-100 px-3 py-2 text-sm">
           <NavLink to={`/w/${slug}/mentions`} className="underline">
             {data.unread_mentions} unread{' '}
             {data.unread_mentions === 1 ? 'mention' : 'mentions'}

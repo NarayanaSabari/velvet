@@ -108,7 +108,7 @@ function MilestoneCardContent({ milestone, owner }: { milestone: SprintMilestone
   return (
     <article
       data-testid={`milestone-card-${milestone.id}`}
-      className="h-full border border-grey-300 bg-paper p-3 shadow-[2px_2px_0_var(--color-grey-200)]"
+      className="h-full rounded-[var(--radius-surface)] border border-grey-200 bg-paper p-4 transition-colors duration-100"
     >
       <div className="flex items-start gap-3">
         <h3 className="min-w-0 flex-1 break-words text-sm font-medium text-ink [overflow-wrap:anywhere]">
@@ -120,14 +120,14 @@ function MilestoneCardContent({ milestone, owner }: { milestone: SprintMilestone
       </div>
 
       <div
-        className="mt-3 h-1 w-full bg-grey-200"
+        className="mt-3 h-1 w-full overflow-hidden rounded-full bg-grey-200"
         role="progressbar"
         aria-label={`${milestone.name} progress`}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={progress}
       >
-        <div className="h-full bg-ink" style={{ width: `${progress}%` }} />
+        <div className="h-full rounded-full bg-ink" style={{ width: `${progress}%` }} />
       </div>
 
       <div className="mt-3 flex min-h-10 items-start gap-2 text-sm">
@@ -147,7 +147,8 @@ function MilestoneCardContent({ milestone, owner }: { milestone: SprintMilestone
 
       {stale ? (
         // Words first, colour second: the state is readable without hue.
-        <p className="mt-3 inline-block border border-stale px-1 text-xs text-stale">
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-stale">
+          <span className="size-1.5 shrink-0 rounded-full bg-stale" aria-hidden="true" />
           {age === null ? 'No comment yet' : `No update in ${age} days`}
         </p>
       ) : null}
@@ -162,7 +163,7 @@ export function MilestoneCard({ milestone, slug, owner }: MilestoneCardProps) {
   return (
     <NavLink
       to={`/w/${slug}/milestones/${milestone.id}`}
-      className="block h-full min-w-0 text-ink no-underline hover:bg-grey-100"
+      className="group block h-full min-w-0 rounded-[var(--radius-surface)] text-ink no-underline hover:bg-grey-100"
     >
       {card}
     </NavLink>

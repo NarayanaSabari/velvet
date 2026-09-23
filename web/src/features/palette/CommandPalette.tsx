@@ -155,7 +155,7 @@ function NewIssueForm({
         <span className="mb-1 block text-grey-500">Title</span>
         <input
           data-testid={COMMAND_PALETTE_TEST_IDS.newIssueTitle}
-          className="w-full border border-grey-300 bg-paper px-2 py-1.5 text-sm"
+          className="ui-control w-full px-2 py-1.5 text-sm"
           autoFocus
           required
           value={title}
@@ -167,7 +167,7 @@ function NewIssueForm({
         <span className="mb-1 block text-grey-500">Milestone <span className="text-grey-500">(optional)</span></span>
         <select
           data-testid={COMMAND_PALETTE_TEST_IDS.newIssueMilestone}
-          className="w-full border border-grey-300 bg-paper px-2 py-1.5 text-sm"
+          className="ui-control w-full px-2 py-1.5 text-sm"
           value={milestoneId}
           onChange={(event) => setMilestoneId(event.target.value)}
           disabled={loadingMilestones}

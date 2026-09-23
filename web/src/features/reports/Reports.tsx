@@ -10,6 +10,7 @@ import type {
   StaleIssueRow,
 } from '../../lib/types'
 import { NavLink } from '../../app/nav'
+import { PageHeader, SectionHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
 
@@ -25,8 +26,8 @@ function Section({ title, note, children }: {
 }) {
   return (
     <section className="mb-8">
-      <h2 className="text-sm text-ink">{title}</h2>
-      {note ? <p className="mb-2 text-xs text-grey-500">{note}</p> : <div className="mb-2" />}
+      <SectionHeader title={title} />
+      {note ? <p className="mb-3 text-sm text-grey-500">{note}</p> : null}
       {children}
     </section>
   )
@@ -54,18 +55,20 @@ function ReportBody<T>({ query, name, children }: {
 
 function Table({ head, children }: { head: string[]; children: ReactNode }) {
   return (
-    <table className="w-full border-y border-grey-200 text-sm [overflow-wrap:anywhere]">
-      <thead>
-        <tr className="border-b border-grey-200 text-left text-xs text-grey-500">
-          {head.map((h) => (
-            <th key={h} className="py-1 pr-4 font-normal">
-              {h}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-grey-200">{children}</tbody>
-    </table>
+    <div className="max-w-full overflow-x-auto rounded-[var(--radius-surface)] border border-grey-200">
+      <table className="w-full min-w-[36rem] text-sm [overflow-wrap:anywhere]">
+        <thead className="bg-grey-100">
+          <tr className="border-b border-grey-200 text-left text-xs text-grey-500">
+            {head.map((h) => (
+              <th key={h} className="px-3 py-2 font-normal">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-grey-200 [&_td]:px-3 [&_td]:py-2">{children}</tbody>
+      </table>
+    </div>
   )
 }
 
@@ -177,7 +180,10 @@ export function Reports({ slug }: { slug: string }) {
 
   return (
     <div className="max-w-[80rem]">
-      <h1 className="mb-4 text-lg">Reports</h1>
+      <PageHeader
+        title="Reports"
+        description="See where work is moving, where it is quiet, and how each sprint is closing."
+      />
 
       <Section
         title="Stale work"
