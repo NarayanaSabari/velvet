@@ -18,7 +18,9 @@ export function DangerPanel({ slug, navigate = navigateTo }: { slug: string; nav
       <label className="block">Type {slug} to confirm deletion
         <input className="mt-1 block w-full border border-grey-300 bg-paper px-2 py-1" autoComplete="off" value={confirm} onChange={(event) => setConfirm(event.target.value)} />
       </label>
-      <Button variant="danger" type="submit" disabled={confirm !== slug || remove.isPending}>Delete organisation</Button>
+      <Button variant="danger" type="submit" disabled={confirm !== slug || remove.isPending}>
+        {remove.isPending ? 'Deleting organisation…' : 'Delete organisation'}
+      </Button>
       {remove.error ? <p role="alert" className="text-blocked">{remove.error.message}</p> : null}
     </form>
   </section>

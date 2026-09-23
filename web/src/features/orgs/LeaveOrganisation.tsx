@@ -42,7 +42,9 @@ export function LeaveOrganisation({
   return <div ref={containerRef} role={menuItem && !isConfirming ? 'none' : undefined} className={menuItem ? 'text-sm' : 'mt-3 text-sm'}>
     {isConfirming ? <div className="space-y-2">
       <p>Leave {slug}? You will need an invitation to rejoin.</p>
-      <Button variant="danger" disabled={leave.isPending} onClick={() => leave.mutate()}>Confirm leave</Button>{' '}
+      <Button variant="danger" disabled={leave.isPending} onClick={() => leave.mutate()}>
+        {leave.isPending ? 'Leaving organisation…' : 'Confirm leave'}
+      </Button>{' '}
       <Button disabled={leave.isPending} onClick={() => setConfirming(false)}>Cancel</Button>
     </div> : <button
       type="button"

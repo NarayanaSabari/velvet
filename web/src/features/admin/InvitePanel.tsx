@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import type { Invitation, Role } from '../../lib/types'
 import { Button } from '../../ui/Button'
+import { LoadingState } from '../../ui/QueryState'
 
 const roles: Role[] = ['admin', 'member', 'viewer']
 
@@ -50,12 +51,14 @@ export function InvitePanel({ slug }: { slug: string }) {
     </form>
     {error ? <p role="alert" className="mb-2 text-blocked">{error.message}</p> : null}
     {invites.error ? <p role="alert" className="text-blocked">Could not load invitations.</p> : null}
-    {invites.isPending ? <p>Loading invitations…</p> : null}
+    {invites.isPending ? <LoadingState label="Loading invitations…" /> : null}
     {invites.data?.invites.length === 0 ? <p className="text-grey-500">No pending invitations.</p> : null}
     <ul>{invites.data?.invites.map((invite) => <li key={invite.id} className="border-b border-grey-200 py-2">
       <div className="flex flex-wrap items-center gap-3">
         <span className="min-w-0 flex-1 break-all">{invite.email} <span className="text-grey-500">({invite.role})</span></span>
-        <Button aria-label={`Resend invitation to ${invite.email}`} disabled={busy} onClick={() => { create.reset(); revoke.reset(); resend.mutate(invite.id) }}>Resend</Button>
+        <Button aria-label={resend.isPending && resend.variables === invite.id ? `Resending invitation to ${invite.email}…` : `Resend invitation to ${invite.email}`} disabled={busy} onClick={() => { create.reset(); revoke.reset(); resend.mutate(invite.id) }}>
+          {resend.isPending && resend.variables === invite.id ? 'Resending…' : 'Resend'}
+        </Button>
         <Button variant="danger" aria-label={`Revoke invitation to ${invite.email}`} disabled={busy} onClick={() => { create.reset(); resend.reset(); revoke.reset(); setConfirmingId(invite.id) }}>Revoke</Button>
       </div>
       {confirmingId === invite.id ? <div className="mt-2 space-y-2">

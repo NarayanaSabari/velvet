@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -234,6 +234,30 @@ describe('Admin', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Confirm revoke invitation' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/invites/i1', expect.objectContaining({ method: 'DELETE' })))
     await waitFor(() => expect(screen.queryByText('pending@example.com')).not.toBeInTheDocument())
+  })
+
+  it('announces invitation loading and names a pending resend', async () => {
+    const fallback = adminFetch()
+    let resolveInvitations!: (value: Response) => void
+    const invitations = new Promise<Response>((resolve) => { resolveInvitations = resolve })
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/v1/w/lab/invites' && !init?.method) {
+        return invitations
+      }
+      if (url === '/api/v1/w/lab/invites/i1/resend' && init?.method === 'POST') {
+        return new Promise<Response>(() => {})
+      }
+      return fallback(input, init)
+    }))
+    renderAdmin()
+    expect(await screen.findByText('Loading invitations…')).toHaveAttribute('role', 'status')
+
+    await act(async () => {
+      resolveInvitations(await response({ invites: [{ id: 'i1', workspace_id: 'w1', workspace_name: 'Lab', workspace_slug: 'lab', email: 'pending@example.com', role: 'viewer', expires_at: '2026-09-15T00:00:00Z' }] }))
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Resend invitation to pending@example.com' }))
+    expect(await screen.findByRole('button', { name: 'Resending invitation to pending@example.com…' })).toBeDisabled()
   })
 
   it.each(['Resend', 'Revoke'])('clears a failed invite error when starting a successful %s', async (action) => {

@@ -104,6 +104,17 @@ test('destructive account and administration actions explain consequences inline
   await page.goto('/w/lab/admin')
   await expect(page.getByRole('heading', { name: 'Administration' })).toBeVisible()
 
+  let releaseResend!: () => void
+  await page.route('**/api/v1/w/lab/invites/*/resend', async (route) => {
+    await new Promise<void>((resolve) => { releaseResend = resolve })
+    await route.continue()
+  })
+  await page.getByRole('button', { name: `Resend invitation to ${inviteEmail}` }).click()
+  await expect(page.getByRole('button', { name: `Resending invitation to ${inviteEmail}…` })).toBeDisabled()
+  releaseResend()
+  await expect(page.getByRole('button', { name: `Resend invitation to ${inviteEmail}` })).toBeEnabled()
+  await page.unroute('**/api/v1/w/lab/invites/*/resend')
+
   await page.getByRole('button', { name: `Revoke invitation to ${inviteEmail}` }).click()
   await expect(page.getByText(/will no longer be able to join this organisation/i)).toBeVisible()
   expect(sql(`SELECT count(*) FROM invite WHERE email = '${inviteEmail}' AND revoked_at IS NULL`)).toBe('1')
@@ -126,6 +137,24 @@ test('destructive account and administration actions explain consequences inline
   await page.getByRole('button', { name: 'Confirm removal' }).click()
   await expect(page.getByText('Safety Member')).toHaveCount(0)
   expect(sql(`SELECT count(*) FROM membership m JOIN app_user u ON u.id = m.user_id WHERE u.email = '${memberEmail}'`)).toBe('0')
+
+  let releaseDelete!: () => void
+  await page.route('**/api/v1/w/lab', async (route) => {
+    if (route.request().method() !== 'DELETE') return route.continue()
+    await new Promise<void>((resolve) => { releaseDelete = resolve })
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 'unavailable', message: 'Deletion paused for this check' } }),
+    })
+  })
+  await page.getByLabel('Type lab to confirm deletion').fill('lab')
+  await page.getByRole('button', { name: 'Delete organisation' }).click()
+  await expect(page.getByRole('button', { name: 'Deleting organisation…' })).toBeDisabled()
+  releaseDelete()
+  await expect(page.getByRole('alert')).toHaveText('Deletion paused for this check')
+  await expect(page.getByLabel('Type lab to confirm deletion')).toHaveValue('lab')
+  await page.unroute('**/api/v1/w/lab')
 
   await page.goto('/w/lab/settings/profile')
   await expect(page.getByRole('heading', { level: 1, name: 'Profile', exact: true })).toBeVisible()
@@ -172,7 +201,21 @@ test('the product shell supports keyboard menus, skip navigation, titles, and on
   await page.keyboard.press('Enter')
   const leaveDialog = page.getByRole('alertdialog', { name: 'Leave lab' })
   await expect(leaveDialog.getByRole('button', { name: 'Confirm leave' })).toBeFocused()
+  let releaseLeave!: () => void
+  await page.route('**/api/v1/w/lab/leave', async (route) => {
+    await new Promise<void>((resolve) => { releaseLeave = resolve })
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 'unavailable', message: 'Leaving paused for this check' } }),
+    })
+  })
+  await leaveDialog.getByRole('button', { name: 'Confirm leave' }).click()
+  await expect(leaveDialog.getByRole('button', { name: 'Leaving organisation…' })).toBeDisabled()
+  releaseLeave()
+  await expect(leaveDialog.getByRole('alert')).toHaveText('Leaving paused for this check')
   await leaveDialog.getByRole('button', { name: 'Cancel' }).click()
+  await page.unroute('**/api/v1/w/lab/leave')
   await expect(accountMenu.getByRole('menuitem', { name: 'Leave organisation' })).toBeFocused()
   await page.keyboard.press('Escape')
 

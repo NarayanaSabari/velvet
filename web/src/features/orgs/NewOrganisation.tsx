@@ -46,7 +46,7 @@ export function NewOrganisation({ navigate = navigateTo, publicLayout = false }:
   const inputClass = publicLayout
     ? 'mt-2 block min-h-12 w-full rounded-[var(--radius-control)] border border-grey-300 bg-paper px-3 py-2'
     : 'mt-1 block w-full border border-grey-300 bg-paper px-2 py-1'
-  if (session.isLoading) return publicLayout ? layout(<p role="status" className="text-grey-500">Loading…</p>) : <p className="p-4 text-grey-500">Loading…</p>
+  if (session.isLoading) return publicLayout ? layout(<p role="status" className="text-grey-500">Loading…</p>) : <p role="status" className="p-4 text-grey-500">Loading…</p>
   if (publicLayout && (session.error || client.getQueryState(['session'])?.status === 'error')) return layout(<div className="space-y-4">
     {!sessionFetching ? <p role="alert" className="text-blocked">Could not load your session. Try again.</p> : null}
     <Button className={publicControl} disabled={sessionFetching} onClick={() => { void client.refetchQueries({ queryKey: ['session'], exact: true }) }}>{sessionFetching ? 'Retrying…' : 'Retry session'}</Button>
@@ -63,7 +63,7 @@ export function NewOrganisation({ navigate = navigateTo, publicLayout = false }:
     </header>
     <section aria-labelledby="pending-heading">
       <h2 id="pending-heading" className="mb-3 border-b border-grey-200 pb-1 text-base">Pending invitations</h2>
-      {(publicLayout ? invites.isFetching : invites.isPending) ? <p role={publicLayout ? 'status' : undefined}>Loading invitations…</p> : null}
+      {(publicLayout ? invites.isFetching : invites.isPending) ? <p role="status">Loading invitations…</p> : null}
       {invites.error && (!publicLayout || !invites.isFetching) ? <>
         <p role="alert" className="text-blocked">Could not load invitations.</p>
         {publicLayout ? <Button className={publicControl} disabled={invites.isFetching} onClick={() => { accept.reset(); void invites.refetch() }}>Retry invitations</Button> : null}
@@ -71,14 +71,14 @@ export function NewOrganisation({ navigate = navigateTo, publicLayout = false }:
       {invites.data?.invites.length === 0 ? <p className="text-grey-500">No pending invitations.</p> : null}
       <ul className="space-y-3">{invites.data?.invites.map((invite) => <li key={invite.id} className={`flex items-center justify-between gap-3${publicLayout ? ' min-w-0' : ''}`}>
         <span className={publicLayout ? 'min-w-0 [overflow-wrap:anywhere]' : undefined}>{invite.workspace_name} <span className="text-grey-500">({invite.role})</span></span>
-        <Button className={publicLayout ? 'min-h-12 shrink-0' : undefined} aria-label={`Accept ${invite.workspace_name} invitation`} disabled={accept.isPending} onClick={() => { if (publicLayout) accept.reset(); accept.mutate(invite.id) }}>{publicLayout && accept.isPending && accept.variables === invite.id ? 'Accepting…' : 'Accept'}</Button>
+        <Button className={publicLayout ? 'min-h-12 shrink-0' : undefined} aria-label={accept.isPending && accept.variables === invite.id ? `Accepting ${invite.workspace_name} invitation…` : `Accept ${invite.workspace_name} invitation`} disabled={accept.isPending} onClick={() => { if (publicLayout) accept.reset(); accept.mutate(invite.id) }}>{accept.isPending && accept.variables === invite.id ? 'Accepting…' : 'Accept'}</Button>
       </li>)}</ul>
-      {publicLayout && accept.isPending ? <p role="status" className="text-grey-500">Accepting invitation…</p> : null}
+      {accept.isPending ? <p role="status" className="text-grey-500">Accepting invitation…</p> : null}
       {accept.error ? <p role="alert" className="text-blocked">{accept.error.message}</p> : null}
     </section>
     <section aria-labelledby="create-heading">
       <h2 id="create-heading" className="mb-3 border-b border-grey-200 pb-1 text-base">Create an organisation</h2>
-      <form className="space-y-4" aria-busy={publicLayout ? create.isPending : undefined} onSubmit={(event) => { event.preventDefault(); if (valid && !create.isPending) create.mutate() }}>
+      <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (valid && !create.isPending) create.mutate() }}>
         <label className="block">Organisation name
           <input className={inputClass} required value={name} onChange={(event) => {
             setName(event.target.value)
@@ -95,7 +95,7 @@ export function NewOrganisation({ navigate = navigateTo, publicLayout = false }:
         </label>
         <p id="prefix-help" className="text-xs text-grey-500">2 to 6 uppercase letters, for example LAB.</p>
         <Button className={publicControl} variant="primary" type="submit" disabled={!valid || create.isPending}>{create.isPending ? 'Creating…' : 'Create organisation'}</Button>
-        {publicLayout && create.isPending ? <p role="status" className="text-grey-500">Creating organisation…</p> : null}
+        {create.isPending ? <p role="status" className="text-grey-500">Creating organisation…</p> : null}
         {create.error ? <p role="alert" className="text-blocked">{create.error.message}</p> : null}
       </form>
     </section>
