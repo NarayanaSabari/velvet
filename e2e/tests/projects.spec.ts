@@ -1,4 +1,5 @@
 import { test, expect, resetWorkspaceData, seedWorkspace, seededSessionToken, sql } from './fixtures'
+import { createHash } from 'node:crypto'
 
 /**
  * Projects and the cross-organisation work log, driven in a real browser
@@ -24,6 +25,7 @@ test.afterAll(() => {
   // shell's workspace name into a switcher, which changes what later specs
   // see on every page.
   sql(`DELETE FROM workspace WHERE slug = 'client'`)
+  sql(`DELETE FROM app_user WHERE email = 'viewer-projects@example.test'`)
   resetWorkspaceData()
 })
 
@@ -77,11 +79,57 @@ test('a project can be created, filed against, and archived', async ({ signedIn:
   // Archiving hides it by default without deleting the work it holds.
   await page.goto('/w/lab/projects')
   await page.getByTestId('project-row-velvet').getByRole('button', { name: 'Archive' }).click()
+  await expect(page.getByText('Archive Velvet worklog?')).toBeVisible()
+  await expect(page.getByTestId('project-row-velvet')).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.getByText('Archive Velvet worklog?')).toHaveCount(0)
+  await page.getByTestId('project-row-velvet').getByRole('button', { name: 'Archive' }).click()
+  await page.getByRole('button', { name: 'Confirm archive Velvet worklog' }).click()
   await expect(page.getByText('No active projects')).toBeVisible()
   await page.getByLabel('Show archived').check()
   await expect(page.getByTestId('project-row-velvet')).toBeVisible()
   await page.getByTestId('project-row-velvet').getByRole('button', { name: 'Restore' }).click()
   await expect(page.getByTestId('project-row-velvet').getByText('Archived')).toHaveCount(0)
+})
+
+test('viewers can read projects without being offered write actions', async ({ signedIn: page, baseURL }) => {
+  const token = 'viewer-projects-session'
+  const hashed = createHash('sha256').update(token).digest('hex')
+  sql(`
+    INSERT INTO app_user (email, name)
+    VALUES ('viewer-projects@example.test', 'Project Viewer')
+    ON CONFLICT DO NOTHING;
+
+    UPDATE app_user SET name = 'Project Viewer'
+    WHERE email = 'viewer-projects@example.test';
+
+    INSERT INTO membership (workspace_id, user_id, role)
+    SELECT w.id, u.id, 'viewer'
+    FROM workspace w, app_user u
+    WHERE w.slug = 'lab' AND u.email = 'viewer-projects@example.test'
+    ON CONFLICT DO NOTHING;
+
+    UPDATE membership SET role = 'viewer'
+    WHERE workspace_id = (SELECT id FROM workspace WHERE slug = 'lab')
+      AND user_id = (SELECT id FROM app_user WHERE email = 'viewer-projects@example.test');
+
+    INSERT INTO session (id, user_id, expires_at)
+    SELECT '${hashed}', id, now() + interval '2 hours'
+    FROM app_user WHERE email = 'viewer-projects@example.test'
+    ON CONFLICT (id) DO UPDATE SET expires_at = EXCLUDED.expires_at;
+  `)
+
+  await page.context().clearCookies()
+  const url = new URL(baseURL!)
+  await page.context().addCookies([
+    { name: 'ticket_session', value: token, domain: url.hostname, path: '/' },
+  ])
+  await page.goto('/w/lab/projects')
+
+  await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible()
+  await expect(page.getByTestId('project-row-velvet')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'New project' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Archive' })).toHaveCount(0)
 })
 
 test('the issues page filters by project and by unfiled work', async ({ signedIn: page }) => {
@@ -144,10 +192,17 @@ test('projects and the work log fit both viewports without overflow', async ({ s
       await page.setViewportSize(viewport)
       await page.goto(path)
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+      if (path === '/w/lab/projects') {
+        await page.getByTestId('project-row-velvet').getByRole('button', { name: 'Archive' }).click()
+        await expect(page.getByText('Archive Velvet worklog?')).toBeVisible()
+      }
       expect(
         await documentOverflows(page),
         `${path} overflowed at ${viewport.width}x${viewport.height}`,
       ).toBe(false)
+      if (path === '/w/lab/projects') {
+        await page.getByRole('button', { name: 'Cancel' }).click()
+      }
     }
   }
 })

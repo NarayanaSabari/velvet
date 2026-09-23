@@ -229,6 +229,9 @@ describe('Admin', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Resend invitation to pending@example.com' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/invites/i1/resend', expect.objectContaining({ method: 'POST' })))
     await userEvent.click(screen.getByRole('button', { name: 'Revoke invitation to pending@example.com' }))
+    expect(screen.getByText(/will no longer be able to join/i)).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/w/lab/invites/i1', expect.objectContaining({ method: 'DELETE' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm revoke invitation' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/invites/i1', expect.objectContaining({ method: 'DELETE' })))
     await waitFor(() => expect(screen.queryByText('pending@example.com')).not.toBeInTheDocument())
   })
@@ -249,6 +252,7 @@ describe('Admin', () => {
     await userEvent.click(screen.getByRole('button', { name: `${action} invitation to pending@example.com` }))
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
     if (action === 'Revoke') {
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm revoke invitation' }))
       expect(await screen.findByText('No pending invitations.')).toBeInTheDocument()
     } else {
       await waitFor(() => expect(screen.getByRole('button', { name: 'Resend invitation to pending@example.com' })).toBeEnabled())
@@ -265,6 +269,9 @@ describe('Admin', () => {
     }))
     renderAdmin()
     await userEvent.click(await screen.findByRole('button', { name: `${action} invitation to pending@example.com` }))
+    if (action === 'Revoke') {
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm revoke invitation' }))
+    }
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not update invitation')
 
     await userEvent.type(screen.getByLabelText('Invite email'), 'new-user@example.com')
@@ -278,6 +285,7 @@ describe('Admin', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderAdmin()
     await userEvent.click(await screen.findByRole('button', { name: 'Remove octocat@example.com' }))
+    expect(screen.getByText(/will lose access to this organisation/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Confirm removal' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/memberships/m2', expect.objectContaining({ method: 'DELETE' })))
     await waitFor(() => expect(screen.queryByLabelText('Role for octocat@example.com')).not.toBeInTheDocument())

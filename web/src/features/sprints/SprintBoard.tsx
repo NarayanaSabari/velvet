@@ -15,6 +15,7 @@ import { RelativeTime } from '../../ui/RelativeTime'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
 import { useSession } from '../auth/useSession'
 import { MilestoneForm, type MilestoneInput } from '../work/CoreForms'
+import { issuesForSprint } from './sprintIssues'
 
 /** Two weeks of silence on a milestone is the signal this product exists to
  * surface, so it is stated in words and only then reinforced with amber. */
@@ -181,14 +182,6 @@ function activityTimestamp(issue: SprintIssue): string | null {
   return issue.last_activity_at ?? issue.last_activity ?? issue.updated_at ?? null
 }
 
-function mergeSprintIssues(sprintIssues: SprintIssue[], unfiledIssues: SprintIssue[]): SprintIssue[] {
-  const merged = new Map(sprintIssues.map((issue) => [issue.id, issue]))
-  for (const issue of unfiledIssues) {
-    if (!issue.milestone_id) merged.set(issue.id, issue)
-  }
-  return [...merged.values()]
-}
-
 function IssueAssignee({ issue, members }: { issue: SprintIssue; members: Map<string, User> }) {
   const assignee = assigneeFor(issue, members)
   if (assignee) return <Avatar user={assignee} />
@@ -321,7 +314,9 @@ export function CloseSprintAction({
 
   return (
     <span className="flex flex-wrap items-center justify-end gap-2">
-      <span className="text-xs text-grey-500">Close this sprint?</span>
+      <span className="max-w-md text-right text-xs text-grey-500">
+        Closing freezes this sprint&apos;s report. Open issues keep their current status.
+      </span>
       <Button
         variant="danger"
         className="px-2 py-0.5 text-xs"
@@ -425,9 +420,9 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
     queryFn: () =>
       api.get<{ issues: SprintIssue[] }>(`/w/${slug}/issues?sprint_id=${encodeURIComponent(sprintId)}&limit=200`),
   })
-  // There is no nullable milestone filter in the current API. Fetching the
-  // workspace page separately keeps unfiled work reachable, then the merge
-  // below adds only issues without a milestone to this sprint's result.
+  // Active sprints also surface work that has no milestone. The API does not
+  // expose a nullable milestone filter, so fetch the workspace page and merge
+  // only truly unfiled issues into the active sprint below.
   const unfiledIssues = useQuery({
     queryKey: ['issues', slug, { milestone_id: null }],
     queryFn: () => api.get<{ issues: SprintIssue[] }>(`/w/${slug}/issues?limit=200`),
@@ -479,7 +474,8 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
 
   const sprintData = sprint.data
   const milestoneRows = milestones.data.milestones
-  const issueRows = mergeSprintIssues(
+  const issueRows = issuesForSprint(
+    sprintData.state,
     sprintIssues.data?.issues ?? [],
     unfiledIssues.data?.issues ?? [],
   )

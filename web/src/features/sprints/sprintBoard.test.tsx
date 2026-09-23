@@ -7,7 +7,9 @@ import {
   IssueGroups,
   MilestoneEmptyState,
   MilestoneRow,
+  type SprintIssue,
 } from './SprintBoard'
+import { issuesForSprint } from './sprintIssues'
 
 const base = {
   id: 'm1',
@@ -108,6 +110,17 @@ describe('IssueGroups', () => {
   })
 })
 
+describe('issuesForSprint', () => {
+  it('keeps unfiled work reachable only from the active sprint', () => {
+    const filed: SprintIssue = { ...issue('i1', 'in_progress'), milestone_id: 'm1' }
+    const unfiled: SprintIssue = issue('i2', 'todo')
+
+    expect(issuesForSprint('active', [filed], [unfiled])).toEqual([filed, unfiled])
+    expect(issuesForSprint('upcoming', [filed], [unfiled])).toEqual([filed])
+    expect(issuesForSprint('completed', [filed], [unfiled])).toEqual([filed])
+  })
+})
+
 describe('CloseSprintAction', () => {
   it('requires a second confirmation before invoking close', async () => {
     const confirm = vi.fn().mockResolvedValue(undefined)
@@ -116,6 +129,7 @@ describe('CloseSprintAction', () => {
 
     await user.click(screen.getByRole('button', { name: 'Close sprint' }))
     expect(confirm).not.toHaveBeenCalled()
+    expect(screen.getByText(/freezes this sprint's report/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Confirm close sprint' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Confirm close sprint' }))

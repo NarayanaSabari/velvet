@@ -31,9 +31,13 @@ export function ProfileRoute() {
 export function Profile({ slug }: { slug: string }) {
   const session = useSession(slug)
   const client = useQueryClient()
+  const [confirmingUnlink, setConfirmingUnlink] = useState(false)
   const unlink = useMutation({
     mutationFn: () => api.del('/me/github'),
-    onSuccess: () => refreshPrivateQueries(client),
+    onSuccess: async () => {
+      setConfirmingUnlink(false)
+      await refreshPrivateQueries(client)
+    },
   })
   if (session.isLoading) return <LoadingState label="Loading profile…" />
   if (!session.user) return null
@@ -45,7 +49,20 @@ export function Profile({ slug }: { slug: string }) {
     <p className="text-grey-500">Link your GitHub identity to attribute your work. Organisation installation ownership is verified separately in Administration.</p>
     {session.user.github_login ? <>
       <p>Linked to @{session.user.github_login}</p>
-      <Button disabled={unlink.isPending} onClick={() => unlink.mutate()}>Unlink GitHub profile</Button>
+      {!confirmingUnlink ? (
+        <Button disabled={unlink.isPending} onClick={() => { unlink.reset(); setConfirmingUnlink(true) }}>Unlink GitHub profile</Button>
+      ) : (
+        <div className="space-y-2 border-t border-grey-200 pt-3">
+          <p className="text-sm">Unlink @{session.user.github_login}?</p>
+          <p className="text-sm text-grey-500">Future GitHub activity will not be attributed to your profile until you link it again. Existing evidence remains.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="danger" disabled={unlink.isPending} onClick={() => unlink.mutate()}>
+              {unlink.isPending ? 'Unlinking…' : 'Confirm unlink GitHub profile'}
+            </Button>
+            <Button disabled={unlink.isPending} onClick={() => setConfirmingUnlink(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
     </> : <a className="underline" href="/api/v1/auth/github/link" onClick={async (event) => {
       event.preventDefault()
       await clearPrivateQueries(client)

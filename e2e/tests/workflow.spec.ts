@@ -63,6 +63,20 @@ test('closing a sprint freezes its numbers against later edits', async ({ reques
   expect(after.milestones_planned).toBe(before.milestones_planned)
 })
 
+test('a completed sprint does not absorb later unfiled work', async ({ request, signedIn: page }) => {
+  const { sprints } = await request.get('/api/v1/w/lab/sprints').then((r) => r.json())
+  const sprint = sprints[0]
+  const created = await request.post('/api/v1/w/lab/issues', {
+    data: { title: 'Work created after sprint close' },
+  })
+  expect(created.status()).toBe(201)
+
+  await page.goto(`/w/lab/sprints/${sprint.id}`)
+  await expect(page.getByRole('heading', { name: 'September 2026' })).toBeVisible()
+  await expect(page.getByText('Implement GitHub OAuth')).toBeVisible()
+  await expect(page.getByText('Work created after sprint close')).toHaveCount(0)
+})
+
 test('the reports page renders all four tables', async ({ signedIn: page }) => {
   await page.goto('/w/lab/reports')
 
