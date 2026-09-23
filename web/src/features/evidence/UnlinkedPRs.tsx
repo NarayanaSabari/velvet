@@ -7,6 +7,7 @@ import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
+import { pullRequestStateLabel } from './pullRequestState'
 
 /**
  * Pull requests the linker could not match to an issue.
@@ -89,7 +90,7 @@ function UnlinkedRow({ pr, slug }: { pr: PullRequest; slug: string }) {
         </a>
         <span className="min-w-0 flex-1 truncate">{pr.title}</span>
         <span className={merged ? 'text-done' : 'text-grey-500'}>
-          {merged ? 'Merged' : pr.state}
+          {pullRequestStateLabel(pr)}
         </span>
       </div>
 

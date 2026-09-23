@@ -141,6 +141,20 @@ describe('EvidenceCard', () => {
     expect(screen.getByText('-2')).toBeInTheDocument()
     expect(screen.getByText(/merged/i)).toBeInTheDocument()
   })
+
+  it('presents an open PR state as user-facing copy', () => {
+    render(<EvidenceCard
+      pr={{
+        id: 'p1', number: 42, title: 'Fix auth', state: 'open', draft: false,
+        author_login: 'sabari', additions: 10, deletions: 2,
+        html_url: '#', merged_at: null,
+      }}
+      issueStatus="in_progress"
+    />)
+
+    expect(screen.getByText('Open')).toBeInTheDocument()
+    expect(screen.queryByText('open', { exact: true })).toBeNull()
+  })
 })
 
 describe('EvidenceCard palette', () => {

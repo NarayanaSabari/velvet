@@ -185,6 +185,8 @@ describe('Admin', () => {
     expect(await screen.findByRole('heading', { name: 'Administration' })).toBeInTheDocument()
     expect(await screen.findByText('octocat@example.com')).toBeInTheDocument()
     expect(await screen.findByText('pending@example.com')).toBeInTheDocument()
+    expect(screen.getByText('(Viewer)', { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText('(viewer)', { exact: true })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'acme/widgets' })).toHaveAttribute(
       'href',
       'https://github.com/acme/widgets',

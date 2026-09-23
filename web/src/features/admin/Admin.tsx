@@ -76,7 +76,9 @@ export function Admin({ slug }: { slug: string }) {
             <li key={membership.id} className="border-b border-grey-200 px-2 py-2">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate">{userLabel(membership.user)}</div>
+                  <div className="break-words [overflow-wrap:anywhere]">
+                    {userLabel(membership.user)}
+                  </div>
                   {membership.user.github_login && userLabel(membership.user) !== `@${membership.user.github_login}` ? (
                     <div className="text-xs text-grey-500">@{membership.user.github_login}</div>
                   ) : null}

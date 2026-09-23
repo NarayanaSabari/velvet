@@ -2,6 +2,7 @@ import { test, expect, seededSessionToken, sql } from './fixtures'
 
 const inviteEmail = 'ui-safety-invite@example.test'
 const memberEmail = 'ui-safety-member@example.test'
+const longMemberEmail = 'viewer.with.a.long.address@northwind-consulting.example'
 const accessibilityRunId = `${Date.now()}-${process.pid}`
 const accessibilitySprintName = `Accessibility review ${accessibilityRunId}`
 const accessibilityIssueTitle = `Verify accessible shell behavior ${accessibilityRunId}`
@@ -47,7 +48,7 @@ test.beforeAll(() => {
     WHERE name = '${accessibilitySprintName}'
       AND workspace_id = (SELECT id FROM workspace WHERE slug = 'lab');
     DELETE FROM invite WHERE email = '${inviteEmail}';
-    DELETE FROM app_user WHERE email = '${memberEmail}';
+    DELETE FROM app_user WHERE email IN ('${memberEmail}', '${longMemberEmail}');
 
     INSERT INTO app_user (email, name)
     VALUES ('${memberEmail}', 'Safety Member');
@@ -56,6 +57,14 @@ test.beforeAll(() => {
     SELECT w.id, u.id, 'member'
     FROM workspace w, app_user u
     WHERE w.slug = 'lab' AND u.email = '${memberEmail}';
+
+    INSERT INTO app_user (email, name)
+    VALUES ('${longMemberEmail}', '');
+
+    INSERT INTO membership (workspace_id, user_id, role)
+    SELECT w.id, u.id, 'viewer'
+    FROM workspace w, app_user u
+    WHERE w.slug = 'lab' AND u.email = '${longMemberEmail}';
 
     INSERT INTO invite (workspace_id, email, role, token_hash, invited_by, expires_at)
     SELECT w.id, '${inviteEmail}', 'viewer', 'ui-safety-invite-token-hash', u.id, now() + interval '2 days'
@@ -95,7 +104,7 @@ test.afterAll(() => {
     WHERE name = '${accessibilitySprintName}'
       AND workspace_id = (SELECT id FROM workspace WHERE slug = 'lab');
     DELETE FROM invite WHERE email = '${inviteEmail}';
-    DELETE FROM app_user WHERE email = '${memberEmail}';
+    DELETE FROM app_user WHERE email IN ('${memberEmail}', '${longMemberEmail}');
   `)
 })
 
@@ -103,6 +112,8 @@ test('destructive account and administration actions explain consequences inline
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.goto('/w/lab/admin')
   await expect(page.getByRole('heading', { name: 'Administration' })).toBeVisible()
+  await expect(page.getByText('(Viewer)', { exact: true })).toBeVisible()
+  await expect(page.getByText('(viewer)', { exact: true })).toHaveCount(0)
 
   let releaseResend!: () => void
   await page.route('**/api/v1/w/lab/invites/*/resend', async (route) => {
@@ -121,6 +132,16 @@ test('destructive account and administration actions explain consequences inline
   await page.getByRole('button', { name: 'Cancel' }).click()
 
   await page.setViewportSize({ width: 390, height: 844 })
+  const longMember = page.getByText(longMemberEmail, { exact: true })
+  await expect(longMember).toBeVisible()
+  const longMemberMetrics = await longMember.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    textOverflow: getComputedStyle(element).textOverflow,
+  }))
+  expect(longMemberMetrics.textOverflow).not.toBe('ellipsis')
+  expect(longMemberMetrics.scrollWidth).toBeLessThanOrEqual(longMemberMetrics.clientWidth)
+  expect(await documentOverflows(page)).toBe(false)
   await page.getByRole('button', { name: `Revoke invitation to ${inviteEmail}` }).click()
   await expect(page.getByRole('button', { name: 'Confirm revoke invitation' })).toBeVisible()
   expect(await documentOverflows(page)).toBe(false)
