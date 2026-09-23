@@ -1,0 +1,37 @@
+import { Button } from './Button'
+
+/**
+ * Loading and failure copy for a data surface. Loading is announced as a
+ * status and failure as an alert, and the retry keeps the page in place rather
+ * than sending the person elsewhere to recover.
+ */
+export function LoadingState({ label = 'Loading…' }: { label?: string }) {
+  return (
+    <p role="status" className="text-sm text-grey-500">
+      {label}
+    </p>
+  )
+}
+
+export function ErrorState({
+  message,
+  onRetry,
+  retrying = false,
+}: {
+  message: string
+  onRetry?: () => void
+  retrying?: boolean
+}) {
+  return (
+    <div className="border border-grey-200 px-4 py-6">
+      <p role="alert" className="text-sm text-blocked">
+        {message}
+      </p>
+      {onRetry ? (
+        <Button className="mt-3" disabled={retrying} onClick={onRetry}>
+          {retrying ? 'Retrying…' : 'Try again'}
+        </Button>
+      ) : null}
+    </div>
+  )
+}

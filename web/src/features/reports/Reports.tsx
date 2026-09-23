@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, type UseQueryResult } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 
 import { api } from '../../lib/api'
 import { userLabel } from '../../lib/userLabel'
@@ -9,6 +10,7 @@ import type {
   StaleIssueRow,
 } from '../../lib/types'
 import { NavLink } from '../../app/nav'
+import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
 
 /** Four plain tables. Numbers in a monochrome table are read faster than a
@@ -19,7 +21,7 @@ import { STATUS_LABELS } from '../../ui/StatusBadge'
 function Section({ title, note, children }: {
   title: string
   note?: string
-  children: React.ReactNode
+  children: ReactNode
 }) {
   return (
     <section className="mb-8">
@@ -30,9 +32,29 @@ function Section({ title, note, children }: {
   )
 }
 
-function Table({ head, children }: { head: string[]; children: React.ReactNode }) {
+/** One report's own loading and failure, so a single failed request neither
+ *  blanks the page nor leaves its section waiting forever. */
+function ReportBody<T>({ query, name, children }: {
+  query: UseQueryResult<T>
+  name: string
+  children: (data: T) => ReactNode
+}) {
+  if (query.data !== undefined) return <>{children(query.data)}</>
+  if (query.error) {
+    return (
+      <ErrorState
+        message={`Could not load ${name}.`}
+        onRetry={() => void query.refetch()}
+        retrying={query.isRefetching}
+      />
+    )
+  }
+  return <LoadingState />
+}
+
+function Table({ head, children }: { head: string[]; children: ReactNode }) {
   return (
-    <table className="w-full border-y border-grey-200 text-sm">
+    <table className="w-full border-y border-grey-200 text-sm [overflow-wrap:anywhere]">
       <thead>
         <tr className="border-b border-grey-200 text-left text-xs text-grey-500">
           {head.map((h) => (
@@ -114,7 +136,7 @@ export function StaleTable({ rows, slug }: { rows: StaleIssueRow[]; slug?: strin
               row.key
             )}
           </td>
-          <td className="min-w-0 py-1 pr-4">{row.title ?? ''}</td>
+          <td className="py-1 pr-4">{row.title ?? ''}</td>
           <td className="py-1 pr-4 whitespace-nowrap">{STATUS_LABELS[row.status]}</td>
           <td className="py-1 pr-4 whitespace-nowrap">
             {row.assignee_email || row.assignee_login || row.assignee_name ? userLabel({
@@ -153,46 +175,35 @@ export function Reports({ slug }: { slug: string }) {
       api.get<{ issues: StaleIssueRow[] }>(`/w/${slug}/reports/stale?days=${STALE_DAYS}`),
   })
 
-  const failed = people.error || milestones.error || closed.error || stale.error
-
   return (
     <div className="max-w-[80rem]">
       <h1 className="mb-4 text-lg">Reports</h1>
-      {failed ? <p className="mb-4 text-blocked">Some reports could not be loaded.</p> : null}
 
       <Section
         title="Stale work"
         note={`Open issues with no comment, status change, or pull request activity in ${STALE_DAYS} days.`}
       >
-        {stale.data ? (
-          <StaleTable rows={stale.data.issues} slug={slug} />
-        ) : (
-          <p className="text-grey-500">Loading…</p>
-        )}
+        <ReportBody query={stale} name="stale work">
+          {(data) => <StaleTable rows={data.issues} slug={slug} />}
+        </ReportBody>
       </Section>
 
       <Section title="Activity per person">
-        {people.data ? (
-          <PersonActivityTable rows={people.data.people} />
-        ) : (
-          <p className="text-grey-500">Loading…</p>
-        )}
+        <ReportBody query={people} name="activity per person">
+          {(data) => <PersonActivityTable rows={data.people} />}
+        </ReportBody>
       </Section>
 
       <Section title="Milestone completion per sprint">
-        {milestones.data ? (
-          <MilestoneCompletionTable rows={milestones.data.sprints} />
-        ) : (
-          <p className="text-grey-500">Loading…</p>
-        )}
+        <ReportBody query={milestones} name="milestone completion">
+          {(data) => <MilestoneCompletionTable rows={data.sprints} />}
+        </ReportBody>
       </Section>
 
       <Section title="Issues closed per sprint">
-        {closed.data ? (
-          <ClosedPerSprintTable rows={closed.data.sprints} />
-        ) : (
-          <p className="text-grey-500">Loading…</p>
-        )}
+        <ReportBody query={closed} name="issues closed per sprint">
+          {(data) => <ClosedPerSprintTable rows={data.sprints} />}
+        </ReportBody>
       </Section>
     </div>
   )

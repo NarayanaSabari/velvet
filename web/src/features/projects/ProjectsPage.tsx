@@ -6,6 +6,7 @@ import { api } from '../../lib/api'
 import type { Project } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { ErrorState, LoadingState } from '../../ui/QueryState'
 
 /**
  * Projects are the durable unit of work inside an organisation. A milestone is
@@ -130,13 +131,13 @@ export function ProjectsPage({ slug }: { slug: string }) {
       </div>
 
       {query.isPending ? (
-        <p role="status" className="text-grey-500">
-          Loading projects…
-        </p>
+        <LoadingState label="Loading projects…" />
       ) : query.error ? (
-        <p role="alert" className="text-blocked">
-          Could not load projects.
-        </p>
+        <ErrorState
+          message="Could not load projects."
+          onRetry={() => void query.refetch()}
+          retrying={query.isRefetching}
+        />
       ) : query.data.projects.length === 0 ? (
         <EmptyState
           title={includeArchived ? 'No projects' : 'No active projects'}

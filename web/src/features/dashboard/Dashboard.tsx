@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import type { DashboardPayload, Issue, Milestone } from '../../lib/types'
 import { useStream } from '../../lib/useStream'
 import { EmptyState } from '../../ui/EmptyState'
+import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { StatusBadge } from '../../ui/StatusBadge'
 import { NavLink } from '../../app/nav'
 import { ActivityRow } from '../activity/ActivityRow'
@@ -22,11 +23,11 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function IssueLine({ slug, issue }: { slug: string; issue: Issue }) {
   return (
-    <div className="flex items-center gap-2 py-1">
-      <NavLink to={`/w/${slug}/issues/${issue.key}`} className="text-grey-500">
+    <div className="flex items-start gap-2 py-1">
+      <NavLink to={`/w/${slug}/issues/${issue.key}`} className="shrink-0 text-grey-500">
         {issue.key}
       </NavLink>
-      <span className="min-w-0 flex-1 truncate">{issue.title}</span>
+      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{issue.title}</span>
       <StatusBadge status={issue.status} />
     </div>
   )
@@ -53,11 +54,11 @@ function MilestoneSummary({ slug, milestone }: { slug: string; milestone: Milest
   const counts = milestone.issue_counts ?? {}
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
   return (
-    <div className="flex items-center gap-2 py-1">
-      <NavLink to={`/w/${slug}/milestones/${milestone.id}`} className="min-w-0 flex-1 truncate">
+    <div className="flex items-start gap-2 py-1">
+      <NavLink to={`/w/${slug}/milestones/${milestone.id}`} className="min-w-0 flex-1 [overflow-wrap:anywhere]">
         {milestone.name}
       </NavLink>
-      <span className="text-grey-500">
+      <span className="shrink-0 text-grey-500">
         {counts.done ?? 0}/{total}
       </span>
     </div>
@@ -78,8 +79,16 @@ export function Dashboard({ slug }: { slug: string }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['dashboard', slug] }),
   })
 
-  if (query.isPending) return <p className="text-grey-500">Loading…</p>
-  if (query.error) return <p className="text-blocked">Could not load the dashboard.</p>
+  if (query.isPending) return <LoadingState />
+  if (query.error) {
+    return (
+      <ErrorState
+        message="Could not load the dashboard."
+        onRetry={() => void query.refetch()}
+        retrying={query.isRefetching}
+      />
+    )
+  }
 
   const data = query.data
   const groups = groupByMilestone(data.my_issues, data.milestones)
@@ -107,10 +116,12 @@ export function Dashboard({ slug }: { slug: string }) {
       ) : null}
 
       <div className="grid gap-x-8 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,30rem)]">
-        <div>
+        <div className="min-w-0">
           <Section title={data.active_sprint ? `Sprint ${data.active_sprint.name}` : 'Sprint'}>
             {data.milestones.length === 0 ? (
-              <EmptyState title="No milestones in the current sprint" />
+              <EmptyState
+                title={data.active_sprint ? 'No milestones in the current sprint' : 'No active sprint'}
+              />
             ) : (
               <div className="divide-y divide-grey-200 border-y border-grey-200">
                 {data.milestones.map((m) => (
@@ -138,7 +149,7 @@ export function Dashboard({ slug }: { slug: string }) {
           </Section>
         </div>
 
-        <div>
+        <div className="min-w-0">
           <Section title="My recent activity">
             {data.activity.length === 0 ? (
               <EmptyState title="No activity yet" />

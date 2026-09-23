@@ -91,7 +91,7 @@ export function IssueMetadata({
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   const selectedAssignee = members.find((member) => member.id === assigneeId)
-  const selectClass = 'min-w-0 flex-1 border border-grey-300 bg-paper px-1.5 py-1 text-sm'
+  const selectClass = 'min-w-0 max-w-full flex-1 border border-grey-300 bg-paper px-1.5 py-1 text-sm'
 
   async function update(patch: IssueMetadataPatch) {
     setBusy(true)
@@ -154,7 +154,7 @@ export function IssueMetadata({
         <select
           id="issue-milestone"
           data-testid="issue-milestone-picker"
-          className={`${selectClass} mt-1`}
+          className={`${selectClass} mt-1 block w-full`}
           aria-label="Milestone"
           value={milestoneId ?? ''}
           disabled={busy}

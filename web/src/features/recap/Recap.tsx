@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import type { WorklogEntry } from '../../lib/types'
 import { EmptyState } from '../../ui/EmptyState'
+import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { StatusBadge } from '../../ui/StatusBadge'
 
 /**
@@ -125,13 +126,13 @@ export function Recap() {
       </div>
 
       {query.isPending ? (
-        <p role="status" className="text-grey-500">
-          Loading your work log…
-        </p>
+        <LoadingState label="Loading your work log…" />
       ) : query.error ? (
-        <p role="alert" className="text-blocked">
-          Could not load your work log.
-        </p>
+        <ErrorState
+          message="Could not load your work log."
+          onRetry={() => void query.refetch()}
+          retrying={query.isRefetching}
+        />
       ) : grouped.length === 0 ? (
         <EmptyState
           title="No recorded work in this period"

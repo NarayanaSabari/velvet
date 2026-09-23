@@ -6,6 +6,7 @@ import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { Markdown } from '../../ui/Markdown'
+import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
 
 export function Mentions({ slug }: { slug: string }) {
@@ -22,8 +23,16 @@ export function Mentions({ slug }: { slug: string }) {
     },
   })
 
-  if (query.isPending) return <p className="text-grey-500">Loading…</p>
-  if (query.error) return <p className="text-blocked">Could not load mentions.</p>
+  if (query.isPending) return <LoadingState />
+  if (query.error) {
+    return (
+      <ErrorState
+        message="Could not load mentions."
+        onRetry={() => void query.refetch()}
+        retrying={query.isRefetching}
+      />
+    )
+  }
 
   const mentions = query.data.mentions
   const unread = mentions.some((mention) => !mention.read_at)

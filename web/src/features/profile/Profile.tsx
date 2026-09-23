@@ -7,6 +7,7 @@ import { useSession } from '../auth/useSession'
 import { clearPrivateQueries, refreshPrivateQueries, navigateTo } from '../auth/sessionNavigation'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
 
 interface ApiToken {
@@ -34,7 +35,7 @@ export function Profile({ slug }: { slug: string }) {
     mutationFn: () => api.del('/me/github'),
     onSuccess: () => refreshPrivateQueries(client),
   })
-  if (session.isLoading) return <p>Loading profile…</p>
+  if (session.isLoading) return <LoadingState label="Loading profile…" />
   if (!session.user) return null
   return <div className="max-w-lg space-y-4">
     <h1 className="text-lg">Profile</h1>
@@ -180,9 +181,15 @@ export function ApiTokens() {
       ) : null}
 
       {create.error ? <p role="alert" className="text-blocked">{create.error.message}</p> : null}
-      {tokens.error ? <p role="alert" className="text-blocked">Could not load API tokens.</p> : null}
+      {tokens.error ? (
+        <ErrorState
+          message="Could not load API tokens."
+          onRetry={() => void tokens.refetch()}
+          retrying={tokens.isRefetching}
+        />
+      ) : null}
       {revoke.error ? <p role="alert" className="text-blocked">{revoke.error.message}</p> : null}
-      {tokens.isPending ? <p className="text-grey-500">Loading API tokens…</p> : null}
+      {tokens.isPending ? <LoadingState label="Loading API tokens…" /> : null}
 
       {tokens.data?.tokens.length === 0 ? (
         <EmptyState

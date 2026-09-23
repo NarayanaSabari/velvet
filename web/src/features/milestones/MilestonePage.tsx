@@ -8,6 +8,7 @@ import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { Markdown } from '../../ui/Markdown'
+import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { NavLink } from '../../app/nav'
 import { CommentComposer } from '../comments/CommentComposer'
 import { CommentThread } from '../comments/CommentThread'
@@ -125,9 +126,15 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
     },
   })
 
-  if (milestone.isPending) return <p className="text-grey-500">Loading…</p>
+  if (milestone.isPending) return <LoadingState />
   if (milestone.error || !milestone.data) {
-    return <p className="text-blocked">Could not load this milestone.</p>
+    return (
+      <ErrorState
+        message="Could not load this milestone."
+        onRetry={() => void milestone.refetch()}
+        retrying={milestone.isRefetching}
+      />
+    )
   }
 
   const data = milestone.data
@@ -144,7 +151,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
       <header className="flex items-start justify-between gap-3 border-b border-grey-200 pb-4" data-testid="milestone-header">
         <div className="min-w-0">
           <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase">Milestone</p>
-          <h1 className="text-lg">{data.name}</h1>
+          <h1 className="text-lg [overflow-wrap:anywhere]">{data.name}</h1>
         </div>
         {canWrite ? (
           <Button className="shrink-0" onClick={() => setEditingMilestone((open) => !open)}>
@@ -184,7 +191,13 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
       <section data-testid="milestone-log">
         <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Log</h2>
         {comments.isPending ? (
-          <p className="text-sm text-grey-500">Loading updates…</p>
+          <LoadingState label="Loading updates…" />
+        ) : comments.error ? (
+          <ErrorState
+            message="Could not load updates."
+            onRetry={() => void comments.refetch()}
+            retrying={comments.isRefetching}
+          />
         ) : milestoneComments.length ? (
           <CommentThread
             comments={milestoneComments}
@@ -271,7 +284,15 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
         ) : null}
 
         {issues.isPending ? (
-          <p className="mt-3 text-sm text-grey-500">Loading issues…</p>
+          <div className="mt-3"><LoadingState label="Loading issues…" /></div>
+        ) : issues.error ? (
+          <div className="mt-3">
+            <ErrorState
+              message="Could not load this milestone's issues."
+              onRetry={() => void issues.refetch()}
+              retrying={issues.isRefetching}
+            />
+          </div>
         ) : milestoneIssues.length ? (
           <div className="mt-3">
             <IssueList

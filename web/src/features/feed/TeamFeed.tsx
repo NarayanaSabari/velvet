@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useStream } from '../../lib/useStream'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { ActivityRow } from '../activity/ActivityRow'
 import { useActivity, type ActivityFilters } from '../activity/useActivity'
 import { useSession } from '../auth/useSession'
@@ -35,12 +36,13 @@ export function TeamFeed({ slug }: { slug: string }) {
   const query = useActivity(slug, filters)
 
   const rows = query.data?.pages.flatMap((page) => page.activity) ?? []
+  const hasFilters = Boolean(filters.actor_id || filters.verb || filters.target_type)
 
   return (
     <div className="max-w-[80rem]">
       <h1 className="mb-4 text-lg">Team feed</h1>
 
-      <div className="mb-3 flex gap-2 text-sm">
+      <div className="mb-3 flex flex-wrap gap-2 text-sm">
         <label>
           <span className="sr-only">Person</span>
           <select
@@ -90,9 +92,23 @@ export function TeamFeed({ slug }: { slug: string }) {
       </div>
 
       {query.isPending ? (
-        <p className="text-grey-500">Loading…</p>
+        <LoadingState />
+      ) : query.error && rows.length === 0 ? (
+        <ErrorState
+          message="Could not load the team feed."
+          onRetry={() => void query.refetch()}
+          retrying={query.isRefetching}
+        />
       ) : rows.length === 0 ? (
-        <EmptyState title="Nothing here yet" message="Activity appears as the team works." />
+        hasFilters ? (
+          <EmptyState
+            title="No matching activity"
+            message="Nothing matches these filters."
+            action={<Button onClick={() => setFilters({})}>Clear filters</Button>}
+          />
+        ) : (
+          <EmptyState title="Nothing here yet" message="Activity appears as the team works." />
+        )
       ) : (
         <div className="divide-y divide-grey-200 border-y border-grey-200">
           {rows.map((a) => (
@@ -102,6 +118,12 @@ export function TeamFeed({ slug }: { slug: string }) {
           ))}
         </div>
       )}
+
+      {query.error && rows.length > 0 ? (
+        <p role="alert" className="mt-3 text-sm text-blocked">
+          Could not load more activity. Try again.
+        </p>
+      ) : null}
 
       {query.hasNextPage ? (
         <Button

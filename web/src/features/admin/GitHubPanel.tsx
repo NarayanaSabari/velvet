@@ -4,6 +4,7 @@ import { api } from '../../lib/api'
 import type { Repo } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { LoadingState } from '../../ui/QueryState'
 
 export function GitHubPanel({
   slug,
@@ -45,7 +46,7 @@ export function GitHubPanel({
       <h2 id="repositories-heading" className="mb-3 border-b border-grey-200 pb-1 text-base">
         Repositories
       </h2>
-      {connection.isPending ? <p className="text-grey-500">Loading GitHub connection…</p> : null}
+      {connection.isPending ? <LoadingState label="Loading GitHub connection…" /> : null}
       {connection.error ? <p role="alert" className="text-blocked">Could not load GitHub connection.</p> : null}
       <div className="mb-4 text-sm">
         {status === 'syncing' ? <p role="status">Syncing repositories…</p> : null}
@@ -76,8 +77,8 @@ export function GitHubPanel({
       </div>
 
       {message ? <p className="mb-2 text-sm text-blocked" role="alert">{message}</p> : null}
-      {isLoading ? <p className="text-grey-500">Loading repositories…</p> : null}
-      {hasError ? <p className="text-blocked">Could not load repositories.</p> : null}
+      {isLoading ? <LoadingState label="Loading repositories…" /> : null}
+      {hasError ? <p role="alert" className="text-blocked">Could not load repositories.</p> : null}
       {!isLoading && !hasError && repos.length === 0 ? (
         <EmptyState title="No repositories connected" message="Repositories appear after GitHub ownership is verified and synchronization completes." />
       ) : null}
