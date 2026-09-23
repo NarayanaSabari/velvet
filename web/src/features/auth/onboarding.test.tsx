@@ -134,6 +134,15 @@ it('lets a viewer leave and clears organisation data before navigation', async (
   await waitFor(() => expect(navigate).toHaveBeenCalledWith('/'))
 })
 
+it('names the pending leave action', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>(() => {})))
+  show(<LeaveOrganisation slug="lab" />)
+  await userEvent.click(screen.getByRole('button', { name: 'Leave organisation' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Confirm leave' }))
+  const pending = await screen.findByRole('button', { name: 'Leaving organisation…' })
+  expect(pending).toBeDisabled()
+})
+
 it('requires the exact slug to delete an organisation', async () => {
   const fetchMock = vi.fn().mockImplementation(() => response(null, 204))
   vi.stubGlobal('fetch', fetchMock)
@@ -144,6 +153,27 @@ it('requires the exact slug to delete an organisation', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Delete organisation' }))
   await waitFor(() => expect(navigate).toHaveBeenCalledWith('/'))
   expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab', expect.objectContaining({ method: 'DELETE', body: JSON.stringify({ confirm: 'lab' }) }))
+})
+
+it('names the pending organisation deletion', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>(() => {})))
+  show(<DangerPanel slug="lab" />)
+  await userEvent.type(screen.getByLabelText('Type lab to confirm deletion'), 'lab')
+  await userEvent.click(screen.getByRole('button', { name: 'Delete organisation' }))
+  const pending = await screen.findByRole('button', { name: 'Deleting organisation…' })
+  expect(pending).toBeDisabled()
+})
+
+it('announces a pending invitation acceptance outside the public layout', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+    if (url === '/api/v1/me') return response({ user: identity, memberships: [], last_workspace: null })
+    if (url === '/api/v1/me/invites') return response({ invites: [invitation] })
+    return new Promise<Response>(() => {})
+  }))
+  show(<NewOrganisation />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Accept Lab invitation' }))
+  expect(await screen.findByRole('button', { name: 'Accepting Lab invitation…' })).toBeDisabled()
+  expect(screen.getByRole('status')).toHaveTextContent('Accepting invitation…')
 })
 
 it('links a profile through the distinct authorization endpoint and clears identity projections on unlink', async () => {
@@ -158,6 +188,9 @@ it('links a profile through the distinct authorization endpoint and clears ident
   client.setQueryData(['reports', 'lab'], ['octocat'])
   show(<Profile slug="lab" />, client)
   await userEvent.click(await screen.findByRole('button', { name: 'Unlink GitHub profile' }))
+  expect(screen.getByText(/future GitHub activity will not be attributed/i)).toBeInTheDocument()
+  expect(linked).toBe(true)
+  await userEvent.click(screen.getByRole('button', { name: 'Confirm unlink GitHub profile' }))
   expect(await screen.findByRole('link', { name: 'Link GitHub profile' })).toHaveAttribute('href', '/api/v1/auth/github/link')
   expect(client.getQueryData(['authors', 'lab'])).toBeUndefined()
   expect(client.getQueryData(['reports', 'lab'])).toBeUndefined()
@@ -229,7 +262,7 @@ it('retries public invitations without losing the organisation draft and announc
   await userEvent.click(screen.getByRole('button', { name: 'Retry invitations' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Accept Lab invitation' }))
   expect(await screen.findByRole('status')).toHaveTextContent('Accepting invitation')
-  expect(screen.getByRole('button', { name: 'Accept Lab invitation' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Accepting Lab invitation…' })).toBeDisabled()
   expect(screen.getByLabelText('Organisation name')).toHaveValue('My Draft')
   expect(screen.getByRole('link', { name: 'Back to Lab' })).toHaveAttribute('href', '/w/lab')
   expect(screen.queryByText('No password needed')).not.toBeInTheDocument()

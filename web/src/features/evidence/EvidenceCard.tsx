@@ -1,6 +1,7 @@
 import type { IssueStatus, PullRequest } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { RelativeTime } from '../../ui/RelativeTime'
+import { pullRequestStateLabel } from './pullRequestState'
 
 /** A merged PR is proof of work, not a decision that the work is finished, so
  *  the prompt is pointless once the issue has already been resolved. */
@@ -28,7 +29,7 @@ export function EvidenceCard({
         {/* Green means merged, and the word says so too: colour is never the
             only signal. */}
         <span className={merged ? 'text-done' : 'text-grey-500'}>
-          {pr.draft ? 'Draft' : merged ? 'Merged' : pr.state}
+          {pullRequestStateLabel(pr)}
         </span>
       </div>
 

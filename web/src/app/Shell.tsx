@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 import { useSession } from '../features/auth/useSession'
 import { SignIn } from '../features/auth/SignIn'
@@ -72,12 +72,81 @@ function WorkspaceSwitcher({
   )
 }
 
-function MenuLink({ to, children }: { to: string; children: ReactNode }) {
+function MenuLink({ to, children, onSelect }: { to: string; children: ReactNode; onSelect: () => void }) {
   return (
-    <NavLink to={to} className={MENU_ITEM} activeClassName="bg-grey-100 font-medium">
+    <NavLink
+      to={to}
+      role="menuitem"
+      tabIndex={-1}
+      onClick={onSelect}
+      className={MENU_ITEM}
+      activeClassName="bg-grey-100 font-medium"
+    >
       {children}
     </NavLink>
   )
+}
+
+function usePopupMenu(
+  open: boolean,
+  setOpen: (open: boolean) => void,
+  setConfirming: (confirming: boolean) => void,
+) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus()
+
+    function closeAndReturnFocus() {
+      setConfirming(false)
+      setOpen(false)
+      triggerRef.current?.focus()
+    }
+    function onPointerDown(event: PointerEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setConfirming(false)
+        setOpen(false)
+      }
+    }
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeAndReturnFocus()
+      }
+    }
+
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open, setConfirming, setOpen])
+
+  function onMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? [])]
+    if (items.length === 0) return
+    const current = items.indexOf(document.activeElement as HTMLElement)
+    let next: number | null = null
+    if (event.key === 'ArrowDown') next = current < 0 ? 0 : (current + 1) % items.length
+    if (event.key === 'ArrowUp') next = current <= 0 ? items.length - 1 : current - 1
+    if (event.key === 'Home') next = 0
+    if (event.key === 'End') next = items.length - 1
+    if (event.key === 'Tab') {
+      setConfirming(false)
+      setOpen(false)
+    }
+    if (next !== null) {
+      event.preventDefault()
+      items[next]?.focus()
+    }
+  }
+
+  return { containerRef, triggerRef, menuRef, onMenuKeyDown }
 }
 
 function AccountMenu({
@@ -91,11 +160,14 @@ function AccountMenu({
 }) {
   const [open, setOpen] = useState(false)
   const [openedByKeyboard, setOpenedByKeyboard] = useState(false)
+  const [leaveConfirming, setLeaveConfirming] = useState(false)
   const label = userLabel(user)
+  const { containerRef, triggerRef, menuRef, onMenuKeyDown } = usePopupMenu(open, setOpen, setLeaveConfirming)
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         className="flex w-full items-center gap-2 rounded-[6px] px-1 py-1.5 text-left text-sm hover:bg-grey-100 focus-visible:bg-grey-100"
         aria-label="Open account menu"
@@ -104,6 +176,7 @@ function AccountMenu({
         aria-controls="account-menu"
         onClick={(event) => {
           setOpenedByKeyboard(event.detail === 0)
+          if (open) setLeaveConfirming(false)
           setOpen((isOpen) => !isOpen)
         }}
       >
@@ -115,25 +188,31 @@ function AccountMenu({
       </button>
 
       <div
+        ref={menuRef}
         id="account-menu"
-        role="menu"
+        role={leaveConfirming ? 'alertdialog' : 'menu'}
+        aria-label={leaveConfirming ? `Leave ${workspaceSlug}` : undefined}
+        aria-hidden={!open}
         inert={!open}
+        onKeyDown={leaveConfirming ? undefined : onMenuKeyDown}
         className={`absolute bottom-[calc(100%+0.5rem)] left-0 z-40 w-52 origin-bottom-left rounded-[8px] border border-grey-200 bg-paper p-1 ${
-          openedByKeyboard ? 'transition-none' : 'transition-[opacity,transform] duration-[150ms] ease-[var(--ease-out)]'
+          openedByKeyboard ? 'transition-none' : 'shell-popup-menu transition-[opacity,transform] duration-[150ms] ease-[var(--ease-out)]'
         } ${
           open
             ? 'pointer-events-auto visible scale-100 opacity-100'
             : 'pointer-events-none invisible scale-[0.97] opacity-0'
         }`}
       >
-        <MenuLink to={`${base}/settings/profile`}>Profile</MenuLink>
-        <MenuLink to="/orgs/new">New organisation</MenuLink>
-        <div className="px-2 py-1.5 text-sm">
-          <LeaveOrganisation slug={workspaceSlug} />
-        </div>
-        <div className="px-2 py-1.5 text-sm">
-          <SignOutButton />
-        </div>
+        {!leaveConfirming ? <MenuLink to={`${base}/settings/profile`} onSelect={() => setOpen(false)}>Profile</MenuLink> : null}
+        {!leaveConfirming ? <MenuLink to="/orgs/new" onSelect={() => setOpen(false)}>New organisation</MenuLink> : null}
+        <LeaveOrganisation
+          key="leave-organisation"
+          slug={workspaceSlug}
+          menuItem
+          confirming={leaveConfirming}
+          onConfirmingChange={setLeaveConfirming}
+        />
+        {!leaveConfirming ? <SignOutButton menuItem /> : null}
       </div>
     </div>
   )
@@ -150,10 +229,13 @@ function MoreMenu({
 }) {
   const [open, setOpen] = useState(false)
   const [openedByKeyboard, setOpenedByKeyboard] = useState(false)
+  const [leaveConfirming, setLeaveConfirming] = useState(false)
+  const { containerRef, triggerRef, menuRef, onMenuKeyDown } = usePopupMenu(open, setOpen, setLeaveConfirming)
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         className={TAB_ITEM}
         aria-label="More"
@@ -162,6 +244,7 @@ function MoreMenu({
         aria-controls="mobile-more-menu"
         onClick={(event) => {
           setOpenedByKeyboard(event.detail === 0)
+          if (open) setLeaveConfirming(false)
           setOpen((isOpen) => !isOpen)
         }}
       >
@@ -172,33 +255,39 @@ function MoreMenu({
       </button>
 
       <div
+        ref={menuRef}
         id="mobile-more-menu"
-        role="menu"
+        role={leaveConfirming ? 'alertdialog' : 'menu'}
+        aria-label={leaveConfirming ? `Leave ${workspaceSlug}` : undefined}
         aria-hidden={!open}
+        inert={!open}
+        onKeyDown={leaveConfirming ? undefined : onMenuKeyDown}
         className={`absolute bottom-[calc(100%+0.5rem)] right-0 z-40 w-56 origin-bottom-right rounded-[8px] border border-grey-200 bg-paper p-1 ${
-          openedByKeyboard ? 'transition-none' : 'transition-[opacity,transform] duration-[150ms] ease-[var(--ease-out)]'
+          openedByKeyboard ? 'transition-none' : 'shell-popup-menu transition-[opacity,transform] duration-[150ms] ease-[var(--ease-out)]'
         } ${
           open
             ? 'pointer-events-auto visible scale-100 opacity-100'
             : 'pointer-events-none invisible scale-[0.97] opacity-0'
         }`}
       >
-        <MenuLink to={`${base}/feed`}>Team feed</MenuLink>
-        <MenuLink to={`${base}/projects`}>Projects</MenuLink>
-        <MenuLink to={`${base}/unlinked`}>Unlinked PRs</MenuLink>
-        <MenuLink to={`${base}/reports`}>Reports</MenuLink>
-        {isAdmin ? <MenuLink to={`${base}/admin`}>Administration</MenuLink> : null}
-        <div className="my-1 border-t border-grey-200" />
+        {!leaveConfirming ? <MenuLink to={`${base}/feed`} onSelect={() => setOpen(false)}>Team feed</MenuLink> : null}
+        {!leaveConfirming ? <MenuLink to={`${base}/projects`} onSelect={() => setOpen(false)}>Projects</MenuLink> : null}
+        {!leaveConfirming ? <MenuLink to={`${base}/unlinked`} onSelect={() => setOpen(false)}>Unlinked PRs</MenuLink> : null}
+        {!leaveConfirming ? <MenuLink to={`${base}/reports`} onSelect={() => setOpen(false)}>Reports</MenuLink> : null}
+        {!leaveConfirming && isAdmin ? <MenuLink to={`${base}/admin`} onSelect={() => setOpen(false)}>Administration</MenuLink> : null}
+        {!leaveConfirming ? <div role="separator" className="my-1 border-t border-grey-200" /> : null}
         {/* Outside the workspace: the work log spans every organisation. */}
-        <MenuLink to="/me/worklog">My work log</MenuLink>
-        <MenuLink to={`${base}/settings/profile`}>Profile</MenuLink>
-        <MenuLink to="/orgs/new">New organisation</MenuLink>
-        <div className="px-2 py-1.5 text-sm">
-          <LeaveOrganisation slug={workspaceSlug} />
-        </div>
-        <div className="px-2 py-1.5 text-sm">
-          <SignOutButton />
-        </div>
+        {!leaveConfirming ? <MenuLink to="/me/worklog" onSelect={() => setOpen(false)}>My work log</MenuLink> : null}
+        {!leaveConfirming ? <MenuLink to={`${base}/settings/profile`} onSelect={() => setOpen(false)}>Profile</MenuLink> : null}
+        {!leaveConfirming ? <MenuLink to="/orgs/new" onSelect={() => setOpen(false)}>New organisation</MenuLink> : null}
+        <LeaveOrganisation
+          key="leave-organisation"
+          slug={workspaceSlug}
+          menuItem
+          confirming={leaveConfirming}
+          onConfirmingChange={setLeaveConfirming}
+        />
+        {!leaveConfirming ? <SignOutButton menuItem /> : null}
       </div>
     </div>
   )
@@ -243,6 +332,12 @@ export function Shell({
 
   return (
     <div className="min-h-screen bg-paper sm:flex sm:items-start">
+      <a
+        href="#main-content"
+        className="sr-only z-50 rounded-[6px] border border-ink bg-paper px-3 py-2 text-sm focus:fixed focus:top-2 focus:left-2 focus:not-sr-only"
+      >
+        Skip to content
+      </a>
       <aside
         className="hidden w-full shrink-0 border-b border-grey-200 p-3 sm:sticky sm:top-0 sm:flex sm:h-screen sm:max-h-screen sm:w-48 sm:flex-col sm:overflow-hidden sm:border-r sm:border-b-0"
         data-testid="desktop-sidebar"
@@ -320,7 +415,7 @@ export function Shell({
         />
       </header>
 
-      <main className="min-w-0 flex-1 px-3 pb-24 pt-4 sm:p-4">{children}</main>
+      <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-3 pb-24 pt-4 sm:p-4">{children}</main>
 
       <nav
         aria-label="Mobile navigation"

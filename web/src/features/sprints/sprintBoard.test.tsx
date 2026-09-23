@@ -7,7 +7,9 @@ import {
   IssueGroups,
   MilestoneEmptyState,
   MilestoneRow,
+  type SprintIssue,
 } from './SprintBoard'
+import { issuesForSprint } from './sprintIssues'
 
 const base = {
   id: 'm1',
@@ -80,13 +82,23 @@ describe('MilestoneRow', () => {
     expect(screen.getByRole('progressbar', { name: 'Ship auth progress' })).toHaveAttribute('aria-valuenow', '38')
     expect(screen.getByText('3/8')).toBeInTheDocument()
   })
+
+  it('keeps a long milestone name readable instead of truncating it', () => {
+    const longName = 'A milestone name that must stay readable across narrow workspace layouts'
+    render(<MilestoneRow milestone={{ ...base, name: longName, issue_counts: {}, last_comment: null }} />)
+
+    expect(screen.getByRole('heading', { name: longName })).toHaveClass(
+      'break-words',
+      '[overflow-wrap:anywhere]',
+    )
+    expect(screen.getByRole('heading', { name: longName })).not.toHaveClass('truncate')
+  })
 })
 
 describe('IssueGroups', () => {
   it('renders every status in the fixed order with its count, including unfiled issues', () => {
     const { container } = render(
       <IssueGroups
-        slug="lab"
         issues={[issue('i5', 'done'), issue('i1', 'in_progress'), issue('i6', 'cancelled')]}
       />,
     )
@@ -106,6 +118,33 @@ describe('IssueGroups', () => {
     expect(screen.getByText('ENG-i5')).toBeInTheDocument()
     expect(screen.getByText('ENG-i6')).toBeInTheDocument()
   })
+
+  it('keeps long issue titles readable and moves compact metadata below on narrow layouts', () => {
+    const longTitle = 'Supercalifragilisticexpialidocious_identifier_that_never_breaks_across_lines'
+    render(
+      <IssueGroups
+        issues={[{ ...issue('i1', 'in_progress'), title: longTitle }]}
+      />,
+    )
+
+    expect(screen.getByText(longTitle)).toHaveClass(
+      'break-words',
+      '[overflow-wrap:anywhere]',
+    )
+    expect(screen.getByText(longTitle)).not.toHaveClass('truncate')
+    expect(screen.getByLabelText('Priority P2').parentElement).toHaveClass('col-start-2')
+  })
+})
+
+describe('issuesForSprint', () => {
+  it('keeps unfiled work reachable only from the active sprint', () => {
+    const filed: SprintIssue = { ...issue('i1', 'in_progress'), milestone_id: 'm1' }
+    const unfiled: SprintIssue = issue('i2', 'todo')
+
+    expect(issuesForSprint('active', [filed], [unfiled])).toEqual([filed, unfiled])
+    expect(issuesForSprint('upcoming', [filed], [unfiled])).toEqual([filed])
+    expect(issuesForSprint('completed', [filed], [unfiled])).toEqual([filed])
+  })
 })
 
 describe('CloseSprintAction', () => {
@@ -116,6 +155,7 @@ describe('CloseSprintAction', () => {
 
     await user.click(screen.getByRole('button', { name: 'Close sprint' }))
     expect(confirm).not.toHaveBeenCalled()
+    expect(screen.getByText(/freezes this sprint's report/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Confirm close sprint' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Confirm close sprint' }))

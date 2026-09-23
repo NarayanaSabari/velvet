@@ -93,6 +93,8 @@ test('expired and reused sign-in links, invite resend and revoke clear earlier e
   await failInvite()
   await page.getByRole('button', { name: `Revoke invitation to ${recipient}`, exact: true }).click()
   await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByText(/will no longer be able to join this organisation/i)).toBeVisible()
+  await page.getByRole('button', { name: 'Confirm revoke invitation', exact: true }).click()
   await expect(page.getByRole('button', { name: `Resend invitation to ${recipient}` })).toHaveCount(0)
   const expiredInvite = await invite(page, slug, `expired-invite-${suffix}@example.test`)
   const inviteToken = new URLSearchParams(new URL(expiredInvite).hash.slice(1)).get('token')!

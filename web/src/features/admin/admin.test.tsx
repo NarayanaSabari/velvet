@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -185,6 +185,8 @@ describe('Admin', () => {
     expect(await screen.findByRole('heading', { name: 'Administration' })).toBeInTheDocument()
     expect(await screen.findByText('octocat@example.com')).toBeInTheDocument()
     expect(await screen.findByText('pending@example.com')).toBeInTheDocument()
+    expect(screen.getByText('(Viewer)', { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText('(viewer)', { exact: true })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'acme/widgets' })).toHaveAttribute(
       'href',
       'https://github.com/acme/widgets',
@@ -229,8 +231,35 @@ describe('Admin', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Resend invitation to pending@example.com' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/invites/i1/resend', expect.objectContaining({ method: 'POST' })))
     await userEvent.click(screen.getByRole('button', { name: 'Revoke invitation to pending@example.com' }))
+    expect(screen.getByText(/will no longer be able to join/i)).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/w/lab/invites/i1', expect.objectContaining({ method: 'DELETE' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm revoke invitation' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/invites/i1', expect.objectContaining({ method: 'DELETE' })))
     await waitFor(() => expect(screen.queryByText('pending@example.com')).not.toBeInTheDocument())
+  })
+
+  it('announces invitation loading and names a pending resend', async () => {
+    const fallback = adminFetch()
+    let resolveInvitations!: (value: Response) => void
+    const invitations = new Promise<Response>((resolve) => { resolveInvitations = resolve })
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/v1/w/lab/invites' && !init?.method) {
+        return invitations
+      }
+      if (url === '/api/v1/w/lab/invites/i1/resend' && init?.method === 'POST') {
+        return new Promise<Response>(() => {})
+      }
+      return fallback(input, init)
+    }))
+    renderAdmin()
+    expect(await screen.findByText('Loading invitations…')).toHaveAttribute('role', 'status')
+
+    await act(async () => {
+      resolveInvitations(await response({ invites: [{ id: 'i1', workspace_id: 'w1', workspace_name: 'Lab', workspace_slug: 'lab', email: 'pending@example.com', role: 'viewer', expires_at: '2026-09-15T00:00:00Z' }] }))
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Resend invitation to pending@example.com' }))
+    expect(await screen.findByRole('button', { name: 'Resending invitation to pending@example.com…' })).toBeDisabled()
   })
 
   it.each(['Resend', 'Revoke'])('clears a failed invite error when starting a successful %s', async (action) => {
@@ -249,6 +278,7 @@ describe('Admin', () => {
     await userEvent.click(screen.getByRole('button', { name: `${action} invitation to pending@example.com` }))
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
     if (action === 'Revoke') {
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm revoke invitation' }))
       expect(await screen.findByText('No pending invitations.')).toBeInTheDocument()
     } else {
       await waitFor(() => expect(screen.getByRole('button', { name: 'Resend invitation to pending@example.com' })).toBeEnabled())
@@ -265,6 +295,9 @@ describe('Admin', () => {
     }))
     renderAdmin()
     await userEvent.click(await screen.findByRole('button', { name: `${action} invitation to pending@example.com` }))
+    if (action === 'Revoke') {
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm revoke invitation' }))
+    }
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not update invitation')
 
     await userEvent.type(screen.getByLabelText('Invite email'), 'new-user@example.com')
@@ -278,6 +311,7 @@ describe('Admin', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderAdmin()
     await userEvent.click(await screen.findByRole('button', { name: 'Remove octocat@example.com' }))
+    expect(screen.getByText(/will lose access to this organisation/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Confirm removal' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/memberships/m2', expect.objectContaining({ method: 'DELETE' })))
     await waitFor(() => expect(screen.queryByLabelText('Role for octocat@example.com')).not.toBeInTheDocument())

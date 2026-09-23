@@ -48,6 +48,8 @@ describe('UnlinkedPRs', () => {
     expect(await screen.findByText('Unrelated dependency bump')).toBeInTheDocument()
     expect(screen.getByText('#46')).toBeInTheDocument()
     expect(screen.getByText('chore/bump-deps')).toBeInTheDocument()
+    expect(screen.getByText('Open')).toBeInTheDocument()
+    expect(screen.queryByText('open', { exact: true })).toBeNull()
   })
 
   it('says so plainly when nothing is unlinked', async () => {

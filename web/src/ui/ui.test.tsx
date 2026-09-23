@@ -67,6 +67,22 @@ describe('Markdown', () => {
     const link = container.querySelector('a')
     expect(link?.getAttribute('href') ?? '').not.toContain('javascript:')
   })
+
+  it('preserves readable document structure and names task-list state', () => {
+    const { container } = render(
+      <Markdown
+        source={
+          '## Context\n\n```go\nfunc main() {}\n```\n\n- [ ] Link account\n  - [x] Add callback'
+        }
+      />,
+    )
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Context' })).toBeInTheDocument()
+    expect(screen.getByText('func main() {}').closest('pre')).not.toBeNull()
+    expect(screen.getByRole('checkbox', { name: 'Incomplete task: Link account' })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'Completed task: Add callback' })).toBeDisabled()
+    expect(container.firstElementChild).toHaveClass('markdown')
+  })
 })
 
 describe('RelativeTime', () => {
@@ -121,5 +137,20 @@ describe('List', () => {
     await user.keyboard('kkk')
     await user.keyboard('{Enter}')
     expect(onActivate).toHaveBeenCalledWith(items[0])
+  })
+
+  it('keeps a visible focus treatment and a non-colour selected marker', () => {
+    render(
+      <List
+        items={items}
+        keyExtractor={(i) => i.id}
+        renderItem={(i) => <span>{i.label}</span>}
+      />,
+    )
+
+    const listbox = screen.getByRole('listbox')
+    expect(listbox).not.toHaveClass('focus:outline-none')
+    expect(listbox.className).toContain('focus-visible:')
+    expect(screen.getAllByRole('option')[0]).toHaveClass('border-l-ink')
   })
 })

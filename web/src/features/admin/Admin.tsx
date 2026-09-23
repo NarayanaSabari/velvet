@@ -73,33 +73,40 @@ export function Admin({ slug }: { slug: string }) {
         {remove.error ? <p role="alert" className="text-blocked">{remove.error.message}</p> : null}
         <ul className="border-t border-grey-200">
           {members.data?.memberships.map((membership) => (
-            <li key={membership.id} className="flex flex-wrap items-center gap-3 border-b border-grey-200 px-2 py-2">
-              <div className="min-w-0 flex-1">
-                <div className="truncate">{userLabel(membership.user)}</div>
-                {membership.user.github_login && userLabel(membership.user) !== `@${membership.user.github_login}` ? (
-                  <div className="text-xs text-grey-500">@{membership.user.github_login}</div>
-                ) : null}
+            <li key={membership.id} className="border-b border-grey-200 px-2 py-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="break-words [overflow-wrap:anywhere]">
+                    {userLabel(membership.user)}
+                  </div>
+                  {membership.user.github_login && userLabel(membership.user) !== `@${membership.user.github_login}` ? (
+                    <div className="text-xs text-grey-500">@{membership.user.github_login}</div>
+                  ) : null}
+                </div>
+                <label>
+                  <span className="sr-only">Role for {userLabel(membership.user)}</span>
+                  <select
+                    className="border border-grey-300 bg-paper px-2 py-1 text-sm"
+                    value={membership.role}
+                    disabled={updateRole.isPending || remove.isPending}
+                    onChange={(event) => updateRole.mutate({ id: membership.id, role: event.target.value as Role })}
+                  >
+                    {ROLES.map((role) => <option key={role} value={role}>{role.charAt(0).toUpperCase() + role.slice(1)}</option>)}
+                  </select>
+                </label>
+                <Button variant="danger" aria-label={`Remove ${userLabel(membership.user)}`} disabled={remove.isPending || updateRole.isPending} onClick={() => { remove.reset(); setRemoving(membership) }}>Remove</Button>
               </div>
-              <label>
-                <span className="sr-only">Role for {userLabel(membership.user)}</span>
-                <select
-                  className="border border-grey-300 bg-paper px-2 py-1 text-sm"
-                  value={membership.role}
-                  disabled={updateRole.isPending || remove.isPending}
-                  onChange={(event) => updateRole.mutate({ id: membership.id, role: event.target.value as Role })}
-                >
-                  {ROLES.map((role) => <option key={role} value={role}>{role.charAt(0).toUpperCase() + role.slice(1)}</option>)}
-                </select>
-              </label>
-              <Button variant="danger" aria-label={`Remove ${userLabel(membership.user)}`} disabled={remove.isPending || updateRole.isPending} onClick={() => { remove.reset(); setRemoving(membership) }}>Remove</Button>
+              {removing?.id === membership.id ? <div className="mt-2 space-y-2 border-t border-grey-200 pt-2">
+                <p className="text-sm">Remove {userLabel(removing.user)} from this organisation?</p>
+                <p className="text-sm text-grey-500">They will lose access to this organisation. Their authored work remains.</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="danger" disabled={remove.isPending} onClick={() => remove.mutate(removing)}>{remove.isPending ? 'Removing…' : 'Confirm removal'}</Button>
+                  <Button disabled={remove.isPending} onClick={() => setRemoving(null)}>Cancel</Button>
+                </div>
+              </div> : null}
             </li>
           ))}
         </ul>
-        {removing ? <div className="mt-3 space-y-2">
-          <p>Remove {userLabel(removing.user)} from this organisation?</p>
-          <Button variant="danger" disabled={remove.isPending} onClick={() => remove.mutate(removing)}>Confirm removal</Button>{' '}
-          <Button disabled={remove.isPending} onClick={() => setRemoving(null)}>Cancel</Button>
-        </div> : null}
       </section>
       <GitHubPanel slug={slug} repos={repos.data?.repos ?? []} isLoading={repos.isPending} hasError={Boolean(repos.error)} />
       <DangerPanel slug={slug} />

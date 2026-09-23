@@ -7,6 +7,7 @@ import type { Project } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
+import { useSession } from '../auth/useSession'
 
 /**
  * Projects are the durable unit of work inside an organisation. A milestone is
@@ -97,7 +98,10 @@ function NewProjectForm({ slug }: { slug: string }) {
 
 export function ProjectsPage({ slug }: { slug: string }) {
   const queryClient = useQueryClient()
+  const { workspace } = useSession(slug)
+  const canWrite = workspace?.role === 'admin' || workspace?.role === 'member'
   const [includeArchived, setIncludeArchived] = useState(false)
+  const [archivingKey, setArchivingKey] = useState<string | null>(null)
 
   const query = useQuery({
     queryKey: ['projects', slug, includeArchived],
@@ -111,6 +115,7 @@ export function ProjectsPage({ slug }: { slug: string }) {
     mutationFn: ({ key, status }: { key: string; status: Project['status'] }) =>
       api.patch<Project>(`/w/${slug}/projects/${key}`, { status }),
     onSuccess: () => {
+      setArchivingKey(null)
       void queryClient.invalidateQueries({ queryKey: ['projects', slug] })
     },
   })
@@ -119,7 +124,7 @@ export function ProjectsPage({ slug }: { slug: string }) {
     <div className="max-w-[80rem] min-w-0">
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <h1 className="text-lg">Projects</h1>
-        <NewProjectForm slug={slug} />
+        {canWrite ? <NewProjectForm slug={slug} /> : null}
         <label className="flex items-center gap-2 text-sm text-grey-500">
           <input
             type="checkbox"
@@ -144,8 +149,14 @@ export function ProjectsPage({ slug }: { slug: string }) {
           message="A project is the durable thing work belongs to, and it outlives the sprints its issues are scheduled into."
         />
       ) : (
-        <ul className="divide-y divide-grey-200 border-y border-grey-200">
-          {query.data.projects.map((project) => (
+        <>
+          {setStatus.error ? (
+            <p role="alert" className="mb-3 text-sm text-blocked">
+              {setStatus.error.message}
+            </p>
+          ) : null}
+          <ul className="divide-y divide-grey-200 border-y border-grey-200">
+            {query.data.projects.map((project) => (
             <li key={project.id} data-testid={`project-row-${project.key}`} className="px-2 py-3">
               <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_8rem_10rem] md:items-center">
                 <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -163,23 +174,59 @@ export function ProjectsPage({ slug }: { slug: string }) {
                 >
                   {openCount(project)} open
                 </NavLink>
-                <div>
-                  <Button
-                    disabled={setStatus.isPending}
-                    onClick={() =>
-                      setStatus.mutate({
-                        key: project.key,
-                        status: project.status === 'archived' ? 'active' : 'archived',
-                      })
-                    }
-                  >
-                    {project.status === 'archived' ? 'Restore' : 'Archive'}
-                  </Button>
-                </div>
+                {canWrite ? (
+                  <div>
+                    <Button
+                      disabled={setStatus.isPending}
+                      onClick={() => {
+                        setStatus.reset()
+                        if (project.status === 'archived') {
+                          setStatus.mutate({ key: project.key, status: 'active' })
+                        } else {
+                          setArchivingKey(project.key)
+                        }
+                      }}
+                    >
+                      {project.status === 'archived'
+                        ? setStatus.isPending && setStatus.variables?.key === project.key
+                          ? 'Restoring…'
+                          : 'Restore'
+                        : 'Archive'}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
+              {archivingKey === project.key ? (
+                <div className="mt-3 space-y-2 border-t border-grey-200 pt-3">
+                  <p className="text-sm font-medium">Archive {project.name}?</p>
+                  <p className="text-sm text-grey-500">
+                    It will be hidden from the active list. Its issues and history stay available.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="danger"
+                      aria-label={`Confirm archive ${project.name}`}
+                      disabled={setStatus.isPending}
+                      onClick={() => setStatus.mutate({ key: project.key, status: 'archived' })}
+                    >
+                      {setStatus.isPending ? 'Archiving…' : 'Confirm archive'}
+                    </Button>
+                    <Button
+                      disabled={setStatus.isPending}
+                      onClick={() => {
+                        setStatus.reset()
+                        setArchivingKey(null)
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </li>
-          ))}
-        </ul>
+            ))}
+          </ul>
+        </>
       )}
     </div>
   )

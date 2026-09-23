@@ -1,5 +1,5 @@
 import { test, expect, resetWorkspaceData, seededSessionToken } from './fixtures'
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 
 /**
  * Long user text must wrap, never widen the page.
@@ -14,6 +14,7 @@ test.describe.configure({ mode: 'serial' })
 
 const UNBROKEN = 'Supercalifragilisticexpialidocious_identifier_that_never_breaks_across_lines_in_narrow_viewports'
 const LONG_MILESTONE = 'Recap export and the agent-facing work log API that external coding agents call after each session'
+const LONG_SPRINT = `October 2026 ${UNBROKEN}`
 
 const ids = { sprint: '', milestone: '', issueKey: '' }
 
@@ -33,6 +34,7 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 
   const sprint = await post<{ id: string }>('/sprints', { name: 'September 2026', starts_on: '2026-09-01', ends_on: '2026-09-30' })
   await post(`/sprints/${sprint.id}/activate`)
+  await post('/sprints', { name: LONG_SPRINT, starts_on: '2026-10-01', ends_on: '2026-10-31' })
   const milestone = await post<{ id: string }>(`/sprints/${sprint.id}/milestones`, { name: LONG_MILESTONE })
   const issue = await post<{ key: string }>('/issues', {
     title: UNBROKEN,
@@ -56,6 +58,7 @@ async function overflow(page: Page): Promise<number> {
 const pages = () => [
   { name: 'dashboard', path: '/w/lab', ready: 'Dashboard' },
   { name: 'team feed', path: '/w/lab/feed', ready: 'Team feed' },
+  { name: 'sprints', path: '/w/lab/sprints', ready: 'Sprints' },
   { name: 'sprint board', path: `/w/lab/sprints/${ids.sprint}`, ready: 'September 2026' },
   { name: 'milestone', path: `/w/lab/milestones/${ids.milestone}`, ready: LONG_MILESTONE },
   { name: 'issue', path: `/w/lab/issues/${ids.issueKey}`, ready: UNBROKEN },
@@ -74,6 +77,57 @@ for (const viewport of [
       await page.waitForLoadState('networkidle')
       expect(await overflow(page), `${target.name} overflowed at ${viewport.width}px`).toBeLessThanOrEqual(0)
     }
+  })
+}
+
+async function occupiesMultipleLines(locator: Locator): Promise<boolean> {
+  return locator.evaluate((element) => {
+    const style = getComputedStyle(element)
+    const lineHeight = Number.parseFloat(style.lineHeight)
+    return element.getBoundingClientRect().height > lineHeight * 1.5
+  })
+}
+
+for (const colorScheme of ['light', 'dark'] as const) {
+  test(`important titles remain fully readable on mobile in ${colorScheme} mode`, async ({ signedIn: page }) => {
+    await page.emulateMedia({ colorScheme })
+    await page.setViewportSize({ width: 390, height: 844 })
+
+    await page.goto('/w/lab/sprints')
+    const sprintName = page.getByText(LONG_SPRINT, { exact: true })
+    await expect(sprintName).toBeVisible()
+    expect(await occupiesMultipleLines(sprintName)).toBe(true)
+
+    await page.goto(`/w/lab/sprints/${ids.sprint}`)
+    const milestoneName = page.getByText(LONG_MILESTONE, { exact: true })
+    const sprintIssueTitle = page.getByText(UNBROKEN, { exact: true })
+    await expect(milestoneName).toBeVisible()
+    await expect(sprintIssueTitle).toBeVisible()
+    expect(await occupiesMultipleLines(milestoneName)).toBe(true)
+    expect(await occupiesMultipleLines(sprintIssueTitle)).toBe(true)
+    const sprintPriority = page.getByLabel(/^Priority P/).first()
+    const [sprintTitleBox, sprintPriorityBox] = await Promise.all([
+      sprintIssueTitle.boundingBox(),
+      sprintPriority.boundingBox(),
+    ])
+    expect(sprintPriorityBox!.y).toBeGreaterThanOrEqual(
+      sprintTitleBox!.y + sprintTitleBox!.height - 1,
+    )
+
+    await page.goto(`/w/lab/milestones/${ids.milestone}`)
+    const milestoneIssues = page.getByRole('listbox')
+    const milestoneIssueTitle = milestoneIssues.getByText(UNBROKEN, { exact: true })
+    const milestoneIssueStatus = milestoneIssues.getByText('Backlog', { exact: true })
+    await expect(milestoneIssueTitle).toBeVisible()
+    expect(await occupiesMultipleLines(milestoneIssueTitle)).toBe(true)
+    const [milestoneTitleBox, milestoneStatusBox] = await Promise.all([
+      milestoneIssueTitle.boundingBox(),
+      milestoneIssueStatus.boundingBox(),
+    ])
+    expect(milestoneStatusBox!.y).toBeGreaterThanOrEqual(
+      milestoneTitleBox!.y + milestoneTitleBox!.height - 1,
+    )
+    expect(await overflow(page)).toBeLessThanOrEqual(0)
   })
 }
 

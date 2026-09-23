@@ -78,9 +78,9 @@ describe('Shell', () => {
     await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
     expect(screen.queryByRole('link', { name: 'Administration' })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Open account menu' }))
-    expect(screen.getByRole('link', { name: 'New organisation' })).toHaveAttribute('href', '/orgs/new')
-    expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/w/lab/settings/profile')
-    expect(screen.getByRole('button', { name: 'Leave organisation' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'New organisation' })).toHaveAttribute('href', '/orgs/new')
+    expect(screen.getByRole('menuitem', { name: 'Profile' })).toHaveAttribute('href', '/w/lab/settings/profile')
+    expect(screen.getByRole('menuitem', { name: 'Leave organisation' })).toBeInTheDocument()
   })
 
   it('marks the current desktop navigation item as active', async () => {
@@ -127,12 +127,98 @@ describe('Shell', () => {
     const moreMenu = document.getElementById('mobile-more-menu')
     expect(moreMenu).not.toBeNull()
     if (!moreMenu) return
-    expect(within(moreMenu).getByRole('link', { name: 'Team feed' })).toBeInTheDocument()
-    expect(within(moreMenu).getByRole('link', { name: 'Unlinked PRs' })).toBeInTheDocument()
-    expect(within(moreMenu).getByRole('link', { name: 'Reports' })).toBeInTheDocument()
-    expect(within(moreMenu).getByRole('link', { name: 'Administration' })).toBeInTheDocument()
-    expect(within(moreMenu).getByRole('link', { name: 'Profile' })).toBeInTheDocument()
-    expect(within(moreMenu).getByRole('link', { name: 'New organisation' })).toBeInTheDocument()
+    expect(within(moreMenu).getByRole('menuitem', { name: 'Team feed' })).toBeInTheDocument()
+    expect(within(moreMenu).getByRole('menuitem', { name: 'Unlinked PRs' })).toBeInTheDocument()
+    expect(within(moreMenu).getByRole('menuitem', { name: 'Reports' })).toBeInTheDocument()
+    expect(within(moreMenu).getByRole('menuitem', { name: 'Administration' })).toBeInTheDocument()
+    expect(within(moreMenu).getByRole('menuitem', { name: 'Profile' })).toBeInTheDocument()
+    expect(within(moreMenu).getByRole('menuitem', { name: 'New organisation' })).toBeInTheDocument()
+  })
+
+  it('moves focus into the account menu and dismisses it with Escape or an outside click', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
+        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'admin' }],
+      }),
+    } as Response))
+    const user = userEvent.setup()
+
+    renderShell('lab')
+    await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
+
+    const trigger = screen.getByRole('button', { name: 'Open account menu' })
+    const menu = document.getElementById('account-menu')
+    expect(menu).not.toBeNull()
+    if (!menu) return
+
+    await user.click(trigger)
+    expect(within(menu).getByRole('menuitem', { name: 'Profile' })).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(within(menu).getByRole('menuitem', { name: 'New organisation' })).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(trigger).toHaveFocus()
+    expect(menu).toHaveAttribute('aria-hidden', 'true')
+
+    await user.click(trigger)
+    await user.click(screen.getByText('content'))
+    expect(menu).toHaveAttribute('aria-hidden', 'true')
+
+    await user.click(trigger)
+    const leave = within(menu).getByRole('menuitem', { name: 'Leave organisation' })
+    leave.focus()
+    await user.keyboard('{Enter}')
+    expect(menu).toHaveAttribute('role', 'alertdialog')
+    expect(within(menu).getByRole('button', { name: 'Confirm leave' })).toHaveFocus()
+    await user.click(within(menu).getByRole('button', { name: 'Cancel' }))
+    expect(menu).toHaveAttribute('role', 'menu')
+    expect(within(menu).getByRole('menuitem', { name: 'Leave organisation' })).toHaveFocus()
+  })
+
+  it('manages focus and Escape dismissal for the mobile More menu', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
+        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'admin' }],
+      }),
+    } as Response))
+    const user = userEvent.setup()
+
+    renderShell('lab')
+    await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
+
+    const trigger = screen.getByRole('button', { name: 'More' })
+    const menu = document.getElementById('mobile-more-menu')
+    expect(menu).not.toBeNull()
+    if (!menu) return
+
+    await user.click(trigger)
+    expect(within(menu).getByRole('menuitem', { name: 'Team feed' })).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(trigger).toHaveFocus()
+    expect(menu).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('offers a skip link to the single product content landmark', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
+        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'admin' }],
+      }),
+    } as Response))
+
+    renderShell('lab')
+    await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
+
+    expect(screen.getByRole('link', { name: 'Skip to content' })).toHaveAttribute('href', '#main-content')
+    expect(document.querySelectorAll('main#main-content')).toHaveLength(1)
   })
 
   it('marks the Issues tab active on mobile without selecting Team feed', async () => {

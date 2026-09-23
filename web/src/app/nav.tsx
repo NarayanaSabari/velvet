@@ -3,7 +3,9 @@ import {
   createContext,
   isValidElement,
   useContext,
+  type AriaRole,
   type ReactElement,
+  type MouseEventHandler,
   type ReactNode,
 } from 'react'
 
@@ -12,6 +14,9 @@ export interface NavLinkProps {
   children: ReactNode
   className?: string
   activeClassName?: string
+  role?: AriaRole
+  tabIndex?: number
+  onClick?: MouseEventHandler<HTMLAnchorElement>
 }
 
 function normalisePath(path: string) {
@@ -38,8 +43,8 @@ function isNavLinkActive(to: string, pathname?: string) {
  * stays testable on its own. The router provides the real implementation.
  */
 const NavLinkContext = createContext<(props: NavLinkProps) => ReactNode>(
-  ({ to, children, className }) => (
-    <a href={to} className={className}>
+  ({ to, children, className, role, tabIndex, onClick }) => (
+    <a href={to} className={className} role={role} tabIndex={tabIndex} onClick={onClick}>
       {children}
     </a>
   ),

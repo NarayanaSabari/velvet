@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import type { Invitation, Role } from '../../lib/types'
 import { Button } from '../../ui/Button'
+import { LoadingState } from '../../ui/QueryState'
 
 const roles: Role[] = ['admin', 'member', 'viewer']
 
@@ -10,6 +11,7 @@ export function InvitePanel({ slug }: { slug: string }) {
   const client = useQueryClient()
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<Role>('member')
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const invites = useQuery({
     queryKey: ['invites', slug],
     queryFn: () => api.get<{ invites: Invitation[] }>(`/w/${slug}/invites`),
@@ -25,7 +27,10 @@ export function InvitePanel({ slug }: { slug: string }) {
   })
   const revoke = useMutation({
     mutationFn: (id: string) => api.del(`/w/${slug}/invites/${id}`),
-    onSuccess: refresh,
+    onSuccess: async () => {
+      setConfirmingId(null)
+      await refresh()
+    },
   })
   const busy = create.isPending || resend.isPending || revoke.isPending
   const error = create.error ?? resend.error ?? revoke.error
@@ -46,12 +51,30 @@ export function InvitePanel({ slug }: { slug: string }) {
     </form>
     {error ? <p role="alert" className="mb-2 text-blocked">{error.message}</p> : null}
     {invites.error ? <p role="alert" className="text-blocked">Could not load invitations.</p> : null}
-    {invites.isPending ? <p>Loading invitations…</p> : null}
+    {invites.isPending ? <LoadingState label="Loading invitations…" /> : null}
     {invites.data?.invites.length === 0 ? <p className="text-grey-500">No pending invitations.</p> : null}
-    <ul>{invites.data?.invites.map((invite) => <li key={invite.id} className="flex flex-wrap items-center gap-3 border-b border-grey-200 py-2">
-      <span className="min-w-0 flex-1 break-all">{invite.email} <span className="text-grey-500">({invite.role})</span></span>
-      <Button aria-label={`Resend invitation to ${invite.email}`} disabled={busy} onClick={() => { create.reset(); revoke.reset(); resend.mutate(invite.id) }}>Resend</Button>
-      <Button variant="danger" aria-label={`Revoke invitation to ${invite.email}`} disabled={busy} onClick={() => { create.reset(); resend.reset(); revoke.mutate(invite.id) }}>Revoke</Button>
+    <ul>{invites.data?.invites.map((invite) => <li key={invite.id} className="border-b border-grey-200 py-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="min-w-0 flex-1 break-all">
+          {invite.email}{' '}
+          <span className="text-grey-500">
+            ({invite.role.charAt(0).toUpperCase() + invite.role.slice(1)})
+          </span>
+        </span>
+        <Button aria-label={resend.isPending && resend.variables === invite.id ? `Resending invitation to ${invite.email}…` : `Resend invitation to ${invite.email}`} disabled={busy} onClick={() => { create.reset(); revoke.reset(); resend.mutate(invite.id) }}>
+          {resend.isPending && resend.variables === invite.id ? 'Resending…' : 'Resend'}
+        </Button>
+        <Button variant="danger" aria-label={`Revoke invitation to ${invite.email}`} disabled={busy} onClick={() => { create.reset(); resend.reset(); revoke.reset(); setConfirmingId(invite.id) }}>Revoke</Button>
+      </div>
+      {confirmingId === invite.id ? <div className="mt-2 space-y-2">
+        <p className="text-sm text-grey-500">{invite.email} will no longer be able to join this organisation with this invitation.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="danger" disabled={busy} onClick={() => revoke.mutate(invite.id)}>
+            {revoke.isPending ? 'Revoking…' : 'Confirm revoke invitation'}
+          </Button>
+          <Button disabled={busy} onClick={() => setConfirmingId(null)}>Cancel</Button>
+        </div>
+      </div> : null}
     </li>)}</ul>
   </section>
 }
