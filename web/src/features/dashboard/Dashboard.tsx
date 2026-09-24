@@ -97,7 +97,7 @@ export function Dashboard({ slug }: { slug: string }) {
   const groups = groupByMilestone(data.my_issues, data.milestones)
 
   return (
-    <div className="max-w-[80rem]">
+    <div className="w-full min-w-0">
       <PageHeader
         title="Dashboard"
         description="Your current sprint, assigned work, and latest activity in one view."

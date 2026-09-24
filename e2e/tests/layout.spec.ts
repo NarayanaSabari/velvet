@@ -87,6 +87,23 @@ for (const viewport of [
   })
 }
 
+test('every workspace page fills the main area on a wide monitor', async ({ signedIn: page }) => {
+  // A fixed page cap left a wide empty band beside every page on large
+  // screens. Each page's root must span the whole padded main region.
+  await page.setViewportSize({ width: 2560, height: 1440 })
+  for (const target of pages()) {
+    await page.goto(target.path)
+    await expect(page.getByRole('heading', { level: 1, name: target.ready })).toBeVisible()
+    const widths = await page.evaluate(() => {
+      const main = document.querySelector('main')!
+      const style = getComputedStyle(main)
+      const available = main.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+      return { available, root: main.firstElementChild!.getBoundingClientRect().width }
+    })
+    expect(widths.root, `${target.name} left part of the main area empty`).toBeGreaterThanOrEqual(widths.available - 1)
+  }
+})
+
 test('public authentication keeps the sign-in task primary at both viewports', async ({ page }) => {
   for (const viewport of [
     { width: 1280, height: 900 },

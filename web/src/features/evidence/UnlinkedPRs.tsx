@@ -37,7 +37,7 @@ export function UnlinkedPRs({ slug }: { slug: string }) {
   const prs = query.data.pull_requests ?? []
 
   return (
-    <div className="max-w-[80rem]">
+    <div className="w-full min-w-0">
       <PageHeader
         title="Unlinked PRs"
         description={<>Pull requests with no matching issue. Name the branch after an issue key, such as <span className="font-mono text-grey-700">sabari/eng-42-fix-auth</span>, and they link themselves.</>}

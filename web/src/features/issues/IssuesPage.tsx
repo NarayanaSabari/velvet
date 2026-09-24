@@ -182,7 +182,7 @@ export function IssuesPage({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="w-full max-w-[80rem]" data-testid="issues-page">
+    <div className="w-full min-w-0" data-testid="issues-page">
       <PageHeader
         title="Issues"
         description="Search, triage, and move the concrete work that belongs to this organisation."

@@ -95,13 +95,15 @@ The installed Tailwind default breakpoints used by the web package are `sm` 640p
 
 The shell sidebar is `sm:w-52 xl:w-60`, which is 208px from the `sm` breakpoint and 240px at `xl` and above.
 
-Workspace pages use `max-w-[80rem]`, which is 1280px.
+Workspace pages fill the main region with `w-full min-w-0` and have no page-level maximum width, so wide monitors are not left with an empty band beside the content.
+
+Readable-measure caps apply only to prose and single inputs inside a page, never to the page itself.
 
 The issue detail rail is `lg:grid-cols-[minmax(0,1fr)_17rem]`, which gives the metadata rail 272px and a 32px `gap-8` at 1024px and above.
 
-The profile surface uses `max-w-lg`, which is 512px.
+The profile page fills the workspace width like its siblings, and only its API-token name field keeps a `max-w-2xl` (672px) measure.
 
-Markdown content uses `max-w-[46rem]`, which is 736px.
+Markdown content uses `max-w-[46rem]`, which is 736px, so long descriptions keep a readable line length inside a full-width page.
 
 The dashboard's secondary column is constrained between 20rem and 30rem, which is 320px to 480px, at `xl` and above.
 
@@ -177,7 +179,7 @@ The issue status is an explicit user action, and linked pull requests are eviden
 
 Settings should use clear sections, visible labels, and row-based records rather than dashboard-style cards.
 
-Profile uses a readable 512px content column for identity, GitHub linking, and API-token management.
+Profile uses the full workspace width for identity, GitHub linking, and API-token rows, with the token name field kept to a readable width.
 
 Administration uses the wider workspace content width for organisation settings, invitations, member rows, GitHub connections, and the separated danger section.
 

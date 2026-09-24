@@ -128,7 +128,7 @@ export function ProjectsPage({ slug }: { slug: string }) {
   })
 
   return (
-    <div className="max-w-[80rem] min-w-0">
+    <div className="w-full min-w-0">
       <PageHeader
         title="Projects"
         description="Keep long-running bodies of work intact while sprints and milestones change around them."

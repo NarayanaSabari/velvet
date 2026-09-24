@@ -165,7 +165,7 @@ function buildTimeline(
 
 export function IssuePageLayout({ main, sidebar }: { main: ReactNode; sidebar: ReactNode }) {
   return (
-    <div className="w-full max-w-[80rem]" data-testid="issue-page">
+    <div className="w-full min-w-0" data-testid="issue-page">
       <div
         className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_17rem]"
         data-testid="issue-page-columns"

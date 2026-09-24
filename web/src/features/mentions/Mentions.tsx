@@ -50,7 +50,7 @@ export function Mentions({ slug }: { slug: string }) {
   }
 
   return (
-    <div className="max-w-[80rem]">
+    <div className="w-full min-w-0">
       <PageHeader
         title="Mentions"
         description="Comments that need your attention, gathered into one inbox."

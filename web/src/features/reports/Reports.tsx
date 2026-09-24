@@ -179,7 +179,7 @@ export function Reports({ slug }: { slug: string }) {
   })
 
   return (
-    <div className="max-w-[80rem]">
+    <div className="w-full min-w-0">
       <PageHeader
         title="Reports"
         description="See where work is moving, where it is quiet, and how each sprint is closing."

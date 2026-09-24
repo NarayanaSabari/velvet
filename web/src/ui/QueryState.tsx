@@ -52,7 +52,7 @@ export function NotFoundState({
   backLabel: string
 }) {
   return (
-    <div className="max-w-[80rem]">
+    <div className="w-full min-w-0">
       <div className="ui-surface max-w-xl px-6 py-8">
         <h1 className="text-lg font-medium tracking-[-0.02em]">{title}</h1>
         <p className="mt-2 text-sm text-grey-700">{message}</p>

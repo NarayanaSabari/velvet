@@ -104,7 +104,7 @@ export function Recap() {
   const grouped = useMemo(() => groupEntries(query.data?.entries ?? []), [query.data])
 
   return (
-    <div className="max-w-[80rem] min-w-0">
+    <div className="w-full min-w-0">
       <PageHeader
         title="Work log"
         description="Rebuild your week from notes, tickets, pull requests, and agent progress across every organisation."

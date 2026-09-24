@@ -495,7 +495,7 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
   )
 
   return (
-    <div className="max-w-[80rem] space-y-8">
+    <div className="w-full min-w-0 space-y-8">
       <SprintHeader
         sprint={sprintData}
         isAdmin={isAdmin}
@@ -525,7 +525,7 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
             slug={slug}
           />
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {milestoneRows.map((milestone) => (
               <MilestoneCard
                 key={milestone.id}

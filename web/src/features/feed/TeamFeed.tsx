@@ -40,7 +40,7 @@ export function TeamFeed({ slug }: { slug: string }) {
   const hasFilters = Boolean(filters.actor_id || filters.verb || filters.target_type)
 
   return (
-    <div className="max-w-[80rem]">
+    <div className="w-full min-w-0">
       <PageHeader
         title="Team feed"
         description="Follow the comments, status changes, evidence, and planning updates made across the organisation."
