@@ -12,11 +12,7 @@ import (
 
 var organisationSlug = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$`)
 var organisationPrefix = regexp.MustCompile(`^[A-Z]{2,6}$`)
-var reservedOrganisationSlugs = map[string]bool{
-	"admin": true, "api": true, "auth": true, "check-email": true, "expired": true,
-	"invite": true, "invites": true, "me": true, "new": true, "orgs": true,
-	"settings": true, "signin": true, "signout": true, "w": true, "webhooks": true,
-}
+var reservedOrganisationSlugs = store.ReservedWorkspaceSlugs
 
 func (s *Server) registerOrganisationRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /api/v1/orgs", s.RequireAuth(http.HandlerFunc(s.handleCreateOrganisation)))

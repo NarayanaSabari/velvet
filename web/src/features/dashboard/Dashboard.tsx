@@ -12,6 +12,7 @@ import { StatusBadge } from '../../ui/StatusBadge'
 import { NavLink } from '../../app/nav'
 import { ActivityRow } from '../activity/ActivityRow'
 import { useSession } from '../auth/useSession'
+import { ConnectAgentCard } from '../onboarding/ConnectAgentCard'
 import { IssueForm, type IssueInput } from '../work/CoreForms'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -105,6 +106,8 @@ export function Dashboard({ slug }: { slug: string }) {
           <Button variant="primary" onClick={() => setCreatingIssue(true)}>New issue</Button>
         ) : undefined}
       />
+
+      <ConnectAgentCard />
 
       {canWrite && creatingIssue ? (
         <section className="ui-surface mb-6 p-4" aria-labelledby="dashboard-new-issue-heading">

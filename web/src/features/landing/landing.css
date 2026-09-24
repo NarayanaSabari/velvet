@@ -89,6 +89,12 @@
   padding-block: 24px;
 }
 
+/* Inside the bordered auth card the content uses the card's width, so long
+   values such as agent setup commands are not clipped to a narrow column. */
+.landing-layout-auth.landing-layout-expanded .landing-signin-form {
+  max-width: none;
+}
+
 .landing-client, .landing-lab {
   display: flex;
   flex-direction: column;

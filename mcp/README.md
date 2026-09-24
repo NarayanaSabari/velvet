@@ -1,5 +1,8 @@
 # Velvet MCP server
 
+> Most people should use the hosted server instead, which needs nothing installed: point an agent at `https://<velvet>/api/v1/w/<organisation>/mcp` with `Authorization: Bearer <token>`, or follow the setup at `/onboarding`.
+> This local stdio server remains for resolving the organisation from a checkout's git remote.
+
 `velvet-mcp` is a private stdio MCP server that gives coding agents typed tools for the Velvet work-log API.
 It uses the same `/api/v1` endpoints as [`cli/velvet`](../cli/velvet), without browser cookies or an `Origin` header.
 

@@ -38,7 +38,8 @@ export async function signup(page: Page, email: string): Promise<string> {
   const before = await page.request.get('/api/v1/me')
   expect(before.status()).toBe(401)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
-  await expect(page).toHaveURL(/\/orgs\/new$/)
+  // A person with no organisation is guided through setup first.
+  await expect(page).toHaveURL(/\/onboarding$/)
   return link
 }
 

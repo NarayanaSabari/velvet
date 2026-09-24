@@ -52,6 +52,28 @@ Nothing is ever created to satisfy a reference: an unsynced pull request is a 40
 Without it, the organisation and project are resolved from the checkout's git remote, so one agent configuration serves every repository.
 A remote that matches no connected repository, or matches two organisations, is refused rather than guessed at.
 
+### Connecting an agent
+
+The API hosts an MCP server, so a coding agent needs nothing installed: one URL per organisation and one personal API token.
+
+```
+https://velvet.example.com/api/v1/w/{slug}/mcp
+Authorization: Bearer velvet_...
+```
+
+```bash
+claude mcp add --transport http --scope user velvet https://velvet.example.com/api/v1/w/lab/mcp \
+  --header "Authorization: Bearer $VELVET_TOKEN"
+```
+
+A new account is walked through this after sign-in at `/onboarding`: an organisation named after the person, a key shown once, and a ready-to-paste setup for Claude Code, Codex, Cursor, VS Code, or any agent through `mcp-remote`.
+The screen confirms the connection when the agent first calls Velvet.
+
+The hosted server is stateless and dispatches every tool through the same REST handlers a direct request reaches, so membership, role, validation, and `source=agent` attribution are unchanged.
+It accepts API tokens only; a browser session cookie is refused.
+Because the server cannot see a local checkout, `velvet_current_ticket` takes the branch name as an argument.
+The local stdio server in [`mcp/`](mcp/) remains for resolving the organisation from a git remote.
+
 ## Being told what to work on
 
 A manager names a sprint and a goal. Neither has to exist yet, and none of it requires administration: running a sprint is the work, not administration of it, so a member can do it and every change names who made it.

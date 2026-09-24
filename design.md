@@ -187,6 +187,20 @@ Keep destructive settings visually and structurally separate from ordinary setti
 
 Do not reveal a secret again after the one-time display that the existing API-token flow provides.
 
+### Onboarding
+
+`/onboarding` uses the public auth layout, outside the workspace shell, because a new person has no organisation to put a shell around.
+
+It has three steps shown as a numbered progress list with `aria-current="step"`: create the organisation, create an API key, and connect an agent.
+
+The organisation step shows the suggested name, address, and ticket prefix as a preview with one primary action, and only reveals editable fields on "Change these", so the common path is a single click.
+
+Pending invitations appear above the create form, because joining an existing organisation is usually what an invited person wants.
+
+The connect step shows the key once, the MCP URL, and a tab list of per-agent setups with arrow-key navigation, followed by a live status region that announces when the agent first connects.
+
+Every step offers a way to skip to the dashboard, where a dismissible connect card remains until an agent connects.
+
 ## Components and interaction rules
 
 Prefer the existing primitives before adding a local variant.
