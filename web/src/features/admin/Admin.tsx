@@ -55,7 +55,7 @@ export function Admin({ slug }: { slug: string }) {
   if (!isAdmin) return <EmptyState title="Admin access required" message="Only organisation admins can manage members and repository connections." />
 
   return (
-    <div className="max-w-[80rem]">
+    <div className="w-full min-w-0">
       <PageHeader
         title="Administration"
         description="Manage who can enter this organisation and which GitHub repositories supply work evidence."

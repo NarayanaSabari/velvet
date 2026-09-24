@@ -43,7 +43,7 @@ export function SprintList({ slug }: { slug: string }) {
   const sprints = query.data.sprints
 
   return (
-    <div className="max-w-[80rem]">
+    <div className="w-full min-w-0">
       <PageHeader
         title="Sprints"
         description="Time-box the work without losing the longer project history."

@@ -148,7 +148,8 @@ describe('IssuesPage', () => {
     renderPage()
 
     const page = await screen.findByTestId('issues-page')
-    expect(page).toHaveClass('w-full', 'max-w-[80rem]')
+    expect(page).toHaveClass('w-full', 'min-w-0')
+    expect(page.className).not.toMatch(/max-w-/)
     expect(page).not.toHaveClass('mx-auto')
     expect(screen.queryByText('Workspace', { exact: true })).toBeNull()
     expect(screen.queryByText(/Every issue in/)).toBeNull()

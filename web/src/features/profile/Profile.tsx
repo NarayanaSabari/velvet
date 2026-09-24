@@ -42,7 +42,7 @@ export function Profile({ slug }: { slug: string }) {
   })
   if (session.isLoading) return <LoadingState label="Loading profile…" />
   if (!session.user) return null
-  return <div className="max-w-2xl">
+  return <div className="w-full min-w-0">
     <PageHeader
       title="Profile"
       description="Manage your linked identity and personal access for tools and coding agents."
@@ -93,7 +93,7 @@ function TokenForm({
   isPending: boolean
 }) {
   return (
-    <form className="flex flex-col gap-2 sm:flex-row sm:items-end" onSubmit={onSubmit}>
+    <form className="flex max-w-2xl flex-col gap-2 sm:flex-row sm:items-end" onSubmit={onSubmit}>
       <label className="min-w-0 flex-1">
         <span className="mb-0.5 block text-xs text-grey-500">Token name</span>
         <input
