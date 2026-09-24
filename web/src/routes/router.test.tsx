@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, RouterProvider } from '@tanstack/react-router'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -92,6 +92,23 @@ it('gives product routes a page-specific browser title', async () => {
 
   expect(await screen.findByRole('heading', { level: 1, name: 'Projects' })).toBeInTheDocument()
   await waitFor(() => expect(document.title).toBe('Projects · Velvet'))
+})
+
+it('marks only the current page in the workspace navigation on a nested route', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => Promise.resolve({
+    ok: true,
+    status: 200,
+    json: async () => url === '/api/v1/me'
+      ? { user: { id: 'u1', email: 'person@example.com', github_login: null, name: '', avatar_url: '' }, memberships: [first], last_workspace: first }
+      : { projects: [] },
+  } as Response)))
+
+  show('/w/first/projects')
+
+  const navigation = await screen.findByRole('navigation', { name: 'Workspace navigation' })
+  await waitFor(() => expect(within(navigation).getByRole('link', { name: 'Projects' })).toHaveAttribute('aria-current', 'page'))
+  expect(within(navigation).getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current')
+  expect(within(navigation).getAllByRole('link').filter((link) => link.hasAttribute('aria-current'))).toHaveLength(1)
 })
 
 it('refreshes a stale session and clears old identity projections before rendering the current account', async () => {

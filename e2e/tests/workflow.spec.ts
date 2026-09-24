@@ -182,9 +182,10 @@ test('the workspace navigation does not consume half a phone screen', async ({ s
 
 test('the desktop sidebar stays contained at normal and short viewport heights', async ({ signedIn: page }) => {
   for (const viewport of [
-    { width: 1024, height: 900 },
+    { width: 1280, height: 900, sidebarWidth: 240 },
+    { width: 1024, height: 900, sidebarWidth: 208 },
     // A narrower viewport approximates the CSS viewport at increased browser zoom.
-    { width: 768, height: 640 },
+    { width: 768, height: 640, sidebarWidth: 208 },
   ]) {
     await page.setViewportSize(viewport)
     await page.goto('/w/lab')
@@ -209,7 +210,9 @@ test('the desktop sidebar stays contained at normal and short viewport heights',
         viewportWidth: window.innerWidth,
         sidebarTop: sidebarRect.top,
         sidebarHeight: sidebarRect.height,
+        sidebarWidth: sidebarRect.width,
         sidebarRight: sidebarRect.right,
+        sidebarBackground: getComputedStyle(sidebar).backgroundColor,
         headerTop: headerRect.top,
         footerBottom: footerRect.bottom,
         sidebarBottom: sidebarRect.bottom,
@@ -217,6 +220,9 @@ test('the desktop sidebar stays contained at normal and short viewport heights',
         navFlexGrow: navStyle.flexGrow,
         mainLeft: mainRect.left,
         mainRight: mainRect.right,
+        sectionLabels: [...nav.querySelectorAll('ul[aria-labelledby]')].map((list) =>
+          document.getElementById(list.getAttribute('aria-labelledby') ?? '')?.textContent),
+        iconsPerLink: [...nav.querySelectorAll('a')].every((link) => link.querySelector('svg[aria-hidden="true"]')),
       }
     })
 
@@ -225,13 +231,31 @@ test('the desktop sidebar stays contained at normal and short viewport heights',
     expect(metrics?.viewportWidth).toBe(viewport.width)
     expect(metrics?.sidebarTop).toBe(0)
     expect(metrics?.sidebarHeight).toBe(viewport.height)
+    expect(metrics?.sidebarWidth).toBe(viewport.sidebarWidth)
+    // The sidebar sits on the quiet grey surface, separate from the paper page.
+    expect(metrics?.sidebarBackground).toBe('rgb(245, 245, 245)')
     expect(metrics?.headerTop).toBeGreaterThanOrEqual(metrics?.sidebarTop ?? 0)
     expect(metrics?.footerBottom).toBeLessThanOrEqual(metrics?.sidebarBottom ?? 0)
     expect(metrics?.navOverflowY).toBe('auto')
     expect(metrics?.navFlexGrow).toBe('1')
     expect(metrics?.mainLeft).toBeGreaterThanOrEqual(metrics?.sidebarRight ?? 0)
     expect(metrics?.mainRight).toBeLessThanOrEqual(metrics?.viewportWidth ?? 0)
+    expect(metrics?.sectionLabels).toEqual(['Workspace', 'Activity', 'Across organisations'])
+    expect(metrics?.iconsPerLink).toBe(true)
   }
+
+  // Only the current page is announced, including on nested routes where the
+  // dashboard link is an ancestor of the current path.
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto('/w/lab/sprints')
+  const navigation = page.getByRole('navigation', { name: 'Workspace navigation' })
+  await expect(navigation.getByRole('link', { name: 'Sprints' })).toHaveAttribute('aria-current', 'page')
+  await expect(navigation.locator('[aria-current="page"]')).toHaveCount(1)
+
+  await page.getByTestId('command-palette-trigger').click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('command-palette-trigger')).toBeFocused()
 })
 
 test('uses readable type at 100% zoom without disturbing responsive layout', async ({ signedIn: page }) => {
@@ -261,7 +285,8 @@ test('uses readable type at 100% zoom without disturbing responsive layout', asy
         body: size('body'),
         heading: size('h1'),
         nav: size('[data-testid="desktop-sidebar-nav"] a'),
-        footerButton: size('[data-testid="desktop-sidebar-footer"] > button'),
+        search: size('[data-testid="command-palette-trigger"]'),
+        footerButton: size('[data-testid="desktop-sidebar-footer"] button'),
         formInput: size('section[aria-labelledby="dashboard-new-issue-heading"] input'),
         formButton: size('section[aria-labelledby="dashboard-new-issue-heading"] button'),
         documentWidth: document.documentElement.scrollWidth,
@@ -276,6 +301,7 @@ test('uses readable type at 100% zoom without disturbing responsive layout', asy
     expect(metrics.body).toBe('16px')
     expect(metrics.heading).toBe('24px')
     expect(Number.parseFloat(metrics.nav ?? '0')).toBeGreaterThanOrEqual(14)
+    expect(Number.parseFloat(metrics.search ?? '0')).toBeGreaterThanOrEqual(14)
     expect(Number.parseFloat(metrics.footerButton ?? '0')).toBeGreaterThanOrEqual(14)
     expect(metrics.formInput).toBe('16px')
     expect(metrics.formButton).toBe('16px')

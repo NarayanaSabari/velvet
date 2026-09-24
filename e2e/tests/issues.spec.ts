@@ -26,7 +26,9 @@ async function readPageGeometry(page: Page, kind: 'issues' | 'feed'): Promise<Pa
           '[data-testid="issues-assignee-filter"]',
           '[data-testid="issues-priority-filter"]',
         ].map((selector) => document.querySelector(selector))
-      : [...document.querySelectorAll('select')]
+      // Scoped to the page itself: the shell's organisation switcher is also a
+      // select, but it belongs to the sidebar rather than the page's controls.
+      : [...document.querySelectorAll('main select')]
     const rect = (element: Element | null) => {
       const box = element?.getBoundingClientRect()
       return box ? { left: box.left, right: box.right, top: box.top, height: box.height } : null

@@ -100,7 +100,58 @@ describe('Shell', () => {
     const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
     const sprints = within(navigation).getByRole('link', { name: 'Sprints' })
     expect(sprints).toHaveAttribute('aria-current', 'page')
-    expect(sprints).toHaveClass('bg-grey-100', 'border-l-ink')
+    expect(sprints).toHaveClass('bg-paper', 'font-medium', 'border-grey-200')
+    expect(within(navigation).getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page')).toEqual([sprints])
+  })
+
+  it('groups desktop navigation into labelled sections with the work log kept apart', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        user: { id: 'u1', github_login: 'sabari', name: 'Sabari', email: 'sabari@example.test', avatar_url: '' },
+        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'admin' }],
+      }),
+    } as Response))
+
+    renderShell('lab')
+    await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
+
+    const navigation = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    const section = (name: string) => within(within(navigation).getByRole('list', { name }))
+      .getAllByRole('link')
+      .map((link) => link.textContent)
+    expect(section('Workspace')).toEqual(['Dashboard', 'Issues', 'Projects', 'Sprints', 'Reports', 'Administration'])
+    expect(section('Activity')).toEqual(['Team feed', 'Mentions', 'Unlinked PRs'])
+    expect(section('Across organisations')).toEqual(['My work log'])
+
+    const header = screen.getByTestId('desktop-sidebar-header')
+    expect(within(header).getByText('Admin')).toBeInTheDocument()
+    expect(within(header).getByRole('button', { name: /Search/ })).toHaveAttribute('aria-keyshortcuts', 'Meta+K Control+K')
+    expect(within(screen.getByTestId('desktop-sidebar-footer')).getByText('sabari@example.test')).toBeInTheDocument()
+  })
+
+  it('offers the organisation switcher only when there is more than one organisation', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
+        memberships: [
+          { id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'admin' },
+          { id: 'm2', workspace_id: 'w2', workspace_slug: 'ops', workspace_name: 'Ops', issue_prefix: 'OPS', role: 'viewer' },
+        ],
+      }),
+    } as Response))
+
+    renderShell('ops')
+    await waitFor(() => expect(screen.getAllByText('Ops').length).toBeGreaterThan(0))
+
+    const header = screen.getByTestId('desktop-sidebar-header')
+    const switcher = within(header).getByRole('combobox', { name: 'Organisation' })
+    expect(switcher).toHaveValue('ops')
+    expect(within(switcher).getAllByRole('option').map((option) => option.textContent)).toEqual(['Lab', 'Ops'])
+    expect(within(header).getByText('Viewer')).toBeInTheDocument()
   })
 
   it('renders the compact mobile tab bar and reveals More items', async () => {
