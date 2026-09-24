@@ -40,7 +40,7 @@ it('requests an email sign-in and navigates to check email', async () => {
 
 it('does not consume a confirmation token until the explicit Sign in click, then clears private data and fragment', async () => {
   window.history.replaceState(null, '', '/signin/confirm#token=secret')
-  const fetchMock = vi.fn().mockImplementation(() => response({ next: '/orgs/new' }))
+  const fetchMock = vi.fn().mockImplementation(() => response({ next: '/onboarding' }))
   vi.stubGlobal('fetch', fetchMock)
   const client = new QueryClient()
   client.setQueryData(['feed', 'old'], ['private'])
@@ -53,7 +53,7 @@ it('does not consume a confirmation token until the explicit Sign in click, then
   expect(fetchMock).not.toHaveBeenCalled()
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
   expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/magic', expect.objectContaining({ method: 'POST', body: JSON.stringify({ token: 'secret' }) }))
-  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/orgs/new'))
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/onboarding'))
 })
 
 it('routes an expired sign-in link to the expiry page after an explicit click', async () => {

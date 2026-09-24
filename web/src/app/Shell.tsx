@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 
 import { useSession } from '../features/auth/useSession'
 import { SignIn } from '../features/auth/SignIn'
-import { NewOrganisation } from '../features/orgs/NewOrganisation'
+import { Onboarding } from '../features/onboarding/Onboarding'
 import { LeaveOrganisation } from '../features/orgs/LeaveOrganisation'
 import { SignOutButton } from '../features/auth/SignOutButton'
 import { CommandPalette } from '../features/palette/CommandPalette'
@@ -395,7 +395,7 @@ export function Shell({
   // sign-in prompt flashing on every refresh.
   if (isLoading) return <div className="p-4"><LoadingState /></div>
   if (!isSignedIn) return <SignIn />
-  if (!slug && memberships.length === 0) return <NewOrganisation />
+  if (!slug && memberships.length === 0) return <Onboarding />
   if (!workspace) {
     return (
       <div className="mx-auto mt-24 max-w-sm border border-grey-200 px-6 py-8">

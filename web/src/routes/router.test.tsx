@@ -51,7 +51,7 @@ it.each([
 })
 
 it.each([
-  { memberships: [], last_workspace: null, path: '/orgs/new' },
+  { memberships: [], last_workspace: null, path: '/onboarding' },
   { memberships: [first, last], last_workspace: last, path: '/w/last' },
   { memberships: [first], last_workspace: last, path: '/w/first' },
   { memberships: [first, last], last_workspace: { ...last, workspace_slug: 'stale', role: 'admin' }, path: '/w/last' },

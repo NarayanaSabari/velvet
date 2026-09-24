@@ -15,6 +15,7 @@ import { Expired } from '../features/auth/Expired'
 import { Invite } from '../features/auth/Invite'
 import { landingWorkspace, sessionQueryOptions } from '../features/auth/useSession'
 import { NewOrganisation } from '../features/orgs/NewOrganisation'
+import { Onboarding } from '../features/onboarding/Onboarding'
 import { ProfileRoute } from '../features/profile/Profile'
 import { LandingPage } from '../features/landing/LandingPage'
 import { RootLayout, RootNotFound } from './root'
@@ -46,7 +47,7 @@ const indexRoute = createRoute({
     const workspace = landingWorkspace(session)
     // `href` rather than a typed `to`: the route tree is still being built
     // here, so its literal paths are not yet known to the type checker.
-    throw redirect({ href: workspace ? `/w/${workspace.workspace_slug}` : '/orgs/new' })
+    throw redirect({ href: workspace ? `/w/${workspace.workspace_slug}` : '/onboarding' })
   },
   component: LandingPage,
   pendingComponent: PublicSessionPending,
@@ -225,6 +226,11 @@ const routes = [
     getParentRoute: () => rootRoute,
     path: '/orgs/new',
     component: () => <NewOrganisation publicLayout />,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/onboarding',
+    component: () => <Onboarding />,
   }),
   createRoute({
     getParentRoute: () => rootRoute,
