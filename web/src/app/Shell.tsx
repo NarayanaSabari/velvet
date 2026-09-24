@@ -8,56 +8,110 @@ import { SignOutButton } from '../features/auth/SignOutButton'
 import { CommandPalette } from '../features/palette/CommandPalette'
 import { COMMAND_PALETTE_TEST_IDS } from '../features/palette/paletteTestIds'
 import { Avatar } from '../ui/Avatar'
+import { Icon, type IconName } from '../ui/Icon'
 import { LoadingState } from '../ui/QueryState'
 import { userLabel } from '../lib/userLabel'
+import type { Membership, Role } from '../lib/types'
 import { NavLink } from './nav'
 
-const NAV = [
-  { label: 'Dashboard', path: '' },
-  { label: 'Issues', path: '/issues' },
-  { label: 'Projects', path: '/projects' },
-  { label: 'Team feed', path: '/feed' },
-  { label: 'Sprints', path: '/sprints' },
-  { label: 'Mentions', path: '/mentions' },
-  { label: 'Unlinked PRs', path: '/unlinked' },
-  { label: 'Reports', path: '/reports' },
-] as const
+interface NavItem {
+  label: string
+  path: string
+  icon: IconName
+}
 
-const MOBILE_NAV = [
-  { label: 'Dashboard', path: '' },
-  { label: 'Issues', path: '/issues' },
-  { label: 'Sprints', path: '/sprints' },
-  { label: 'Mentions', path: '/mentions' },
-] as const
+// Planning surfaces first, then the streams of what happened. The work log is
+// kept apart because it leaves this organisation and spans every one.
+const WORKSPACE_NAV: NavItem[] = [
+  { label: 'Dashboard', path: '', icon: 'dashboard' },
+  { label: 'Issues', path: '/issues', icon: 'issues' },
+  { label: 'Projects', path: '/projects', icon: 'projects' },
+  { label: 'Sprints', path: '/sprints', icon: 'sprints' },
+  { label: 'Reports', path: '/reports', icon: 'reports' },
+]
+const ADMIN_NAV: NavItem = { label: 'Administration', path: '/admin', icon: 'admin' }
+const ACTIVITY_NAV: NavItem[] = [
+  { label: 'Team feed', path: '/feed', icon: 'feed' },
+  { label: 'Mentions', path: '/mentions', icon: 'mentions' },
+  { label: 'Unlinked PRs', path: '/unlinked', icon: 'pullRequest' },
+]
 
+const MOBILE_NAV: NavItem[] = [
+  { label: 'Dashboard', path: '', icon: 'dashboard' },
+  { label: 'Issues', path: '/issues', icon: 'issues' },
+  { label: 'Sprints', path: '/sprints', icon: 'sprints' },
+  { label: 'Mentions', path: '/mentions', icon: 'mentions' },
+]
+
+const ROLE_LABEL: Record<Role, string> = { admin: 'Admin', member: 'Member', viewer: 'Viewer' }
+
+// The sidebar sits on the quiet grey surface. Hover steps one shade darker,
+// and the current page lifts onto a bordered paper surface with heavier type,
+// so selection is carried by shape and weight rather than by fill alone.
+// Supporting text on this surface uses grey-700: grey-500 on grey-100 falls
+// below 4.5:1 in the light scheme.
+const SIDEBAR_HOVER = 'hover:bg-grey-200/60 focus-visible:bg-grey-200/60'
 const NAV_ITEM =
-  'flex min-h-8 items-center rounded-[var(--radius-control)] border-l-2 border-transparent px-2 py-1 text-sm hover:bg-grey-100 focus-visible:bg-grey-100'
-const NAV_ACTIVE = 'border-l-ink bg-grey-100 font-medium'
+  `group flex min-h-8 items-center gap-2.5 rounded-[var(--radius-control)] border border-transparent px-2 py-1 text-sm text-ink ${SIDEBAR_HOVER}`
+const NAV_ACTIVE =
+  'border-grey-200 bg-paper font-medium shadow-[0_1px_2px_rgba(0,0,0,0.06)] hover:bg-paper focus-visible:bg-paper'
+const NAV_ICON = 'size-4 shrink-0 text-grey-500 group-hover:text-ink group-aria-[current=page]:text-ink'
 const MENU_ITEM =
   'block rounded-[var(--radius-control)] px-2 py-1.5 text-sm hover:bg-grey-100 focus-visible:bg-grey-100'
 const TAB_ITEM =
-  'flex min-h-12 flex-col items-center justify-center rounded-[var(--radius-control)] px-1 py-1 text-xs leading-tight text-grey-700 hover:bg-grey-100 focus-visible:bg-grey-100'
+  'group flex min-h-12 flex-col items-center justify-center gap-1 rounded-[var(--radius-control)] px-1 py-1 text-xs leading-tight text-grey-700 hover:bg-grey-100 focus-visible:bg-grey-100'
+const TAB_ICON = 'size-5 shrink-0 text-grey-500 group-aria-[current=page]:text-ink'
+
+function shortcutLabel() {
+  const platform = typeof navigator === 'undefined' ? '' : navigator.platform || navigator.userAgent
+  return /Mac|iPhone|iPad/.test(platform) ? '⌘K' : 'Ctrl K'
+}
+
+function WorkspaceMark({ name }: { name: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-control)] bg-ink text-sm font-semibold text-paper"
+    >
+      {name.trim().charAt(0).toUpperCase() || '?'}
+    </span>
+  )
+}
 
 function WorkspaceSwitcher({
   memberships,
-  workspaceSlug,
-  workspaceName,
+  workspace,
 }: {
-  memberships: { id: string; workspace_slug: string; workspace_name: string }[]
-  workspaceSlug: string
-  workspaceName: string
+  memberships: Membership[]
+  workspace: Membership
 }) {
+  const identity = (
+    <>
+      <WorkspaceMark name={workspace.workspace_name} />
+      <span className="min-w-0 flex-1 leading-tight">
+        <span className="block truncate text-sm font-medium text-ink">{workspace.workspace_name}</span>
+        <span className="block truncate text-xs text-grey-700">{ROLE_LABEL[workspace.role]}</span>
+      </span>
+    </>
+  )
+
   if (memberships.length <= 1) {
-    return <span className="block truncate font-medium text-ink">{workspaceName}</span>
+    return <div className="flex min-w-0 items-center gap-2.5 p-1">{identity}</div>
   }
 
+  // The native select stays the real control, stretched invisibly over the
+  // identity row, so keyboard, screen reader, and mobile pickers all behave
+  // natively while the row carries the visible design and focus ring.
   return (
-    <label className="block">
-      <span className="sr-only">Organisation</span>
+    <label
+      className={`relative flex min-w-0 cursor-pointer items-center gap-2.5 rounded-[var(--radius-control)] p-1 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-ink ${SIDEBAR_HOVER}`}
+    >
+      {identity}
+      <Icon name="selector" className="size-4 shrink-0 text-grey-500" />
       <select
         aria-label="Organisation"
-        className="ui-control w-full px-2 py-1 text-sm"
-        value={workspaceSlug}
+        className="absolute inset-0 w-full cursor-pointer text-sm opacity-0"
+        value={workspace.workspace_slug}
         onChange={(event) => {
           window.location.href = `/w/${event.target.value}`
         }}
@@ -69,6 +123,36 @@ function WorkspaceSwitcher({
         ))}
       </select>
     </label>
+  )
+}
+
+function SidebarLink({ to, item }: { to: string; item: NavItem }) {
+  return (
+    <NavLink to={to} className={NAV_ITEM} activeClassName={NAV_ACTIVE}>
+      <Icon name={item.icon} className={NAV_ICON} />
+      <span className="min-w-0 truncate">{item.label}</span>
+    </NavLink>
+  )
+}
+
+function SidebarSection({
+  id,
+  label,
+  children,
+}: {
+  id: string
+  label: string
+  children: ReactNode
+}) {
+  return (
+    <div className="pt-4 first:pt-0">
+      <p id={id} className="px-2 pb-1 text-xs font-medium text-grey-700">
+        {label}
+      </p>
+      <ul aria-labelledby={id} className="space-y-0.5">
+        {children}
+      </ul>
+    </div>
   )
 }
 
@@ -169,7 +253,7 @@ function AccountMenu({
       <button
         ref={triggerRef}
         type="button"
-        className="flex w-full items-center gap-2 rounded-[6px] px-1 py-1.5 text-left text-sm hover:bg-grey-100 focus-visible:bg-grey-100"
+        className={`flex w-full items-center gap-2.5 rounded-[var(--radius-control)] p-1 text-left ${SIDEBAR_HOVER}`}
         aria-label="Open account menu"
         aria-expanded={open}
         aria-haspopup="menu"
@@ -180,11 +264,14 @@ function AccountMenu({
           setOpen((isOpen) => !isOpen)
         }}
       >
-        <Avatar user={user} size="md" />
-        <span className="min-w-0 flex-1 truncate text-grey-700">{label}</span>
-        <span aria-hidden="true" className="text-grey-500">
-          {open ? '−' : '+'}
+        <Avatar user={user} size="lg" />
+        <span className="min-w-0 flex-1 leading-tight">
+          <span className="block truncate text-sm font-medium text-ink">{label}</span>
+          {user?.email && user.email !== label ? (
+            <span className="block truncate text-xs text-grey-700">{user.email}</span>
+          ) : null}
         </span>
+        <Icon name="selector" className="size-4 shrink-0 text-grey-500" />
       </button>
 
       <div
@@ -195,7 +282,7 @@ function AccountMenu({
         aria-hidden={!open}
         inert={!open}
         onKeyDown={leaveConfirming ? undefined : onMenuKeyDown}
-        className={`absolute bottom-[calc(100%+0.5rem)] left-0 z-40 w-52 origin-bottom-left rounded-[8px] border border-grey-200 bg-paper p-1 ${
+        className={`absolute bottom-[calc(100%+0.5rem)] left-0 z-40 w-full min-w-52 origin-bottom-left rounded-[var(--radius-surface)] border border-grey-200 bg-paper p-1 shadow-[0_8px_24px_rgba(0,0,0,0.08)] ${
           openedByKeyboard ? 'transition-none' : 'shell-popup-menu transition-[opacity,transform] duration-[150ms] ease-[var(--ease-out)]'
         } ${
           open
@@ -237,7 +324,7 @@ function MoreMenu({
       <button
         ref={triggerRef}
         type="button"
-        className={TAB_ITEM}
+        className={`${TAB_ITEM} aria-expanded:bg-grey-100 aria-expanded:text-ink`}
         aria-label="More"
         aria-expanded={open}
         aria-haspopup="menu"
@@ -248,9 +335,7 @@ function MoreMenu({
           setOpen((isOpen) => !isOpen)
         }}
       >
-        <span aria-hidden="true" className="text-base leading-none">
-          {open ? '−' : '+'}
-        </span>
+        <Icon name="more" className={TAB_ICON} />
         <span>More</span>
       </button>
 
@@ -262,7 +347,7 @@ function MoreMenu({
         aria-hidden={!open}
         inert={!open}
         onKeyDown={leaveConfirming ? undefined : onMenuKeyDown}
-        className={`absolute bottom-[calc(100%+0.5rem)] right-0 z-40 w-56 origin-bottom-right rounded-[8px] border border-grey-200 bg-paper p-1 ${
+        className={`absolute bottom-[calc(100%+0.5rem)] right-0 z-40 w-56 origin-bottom-right rounded-[var(--radius-surface)] border border-grey-200 bg-paper p-1 shadow-[0_8px_24px_rgba(0,0,0,0.08)] ${
           openedByKeyboard ? 'transition-none' : 'shell-popup-menu transition-[opacity,transform] duration-[150ms] ease-[var(--ease-out)]'
         } ${
           open
@@ -323,6 +408,7 @@ export function Shell({
   }
 
   const base = `/w/${workspace.workspace_slug}`
+  const shortcut = shortcutLabel()
   const navigateTo = navigate ?? ((to: string) => {
     // Shell is also rendered directly in unit tests without a router provider.
     // Keep that harness navigable without forcing a full-page reload.
@@ -339,66 +425,60 @@ export function Shell({
         Skip to content
       </a>
       <aside
-        className="hidden w-full shrink-0 border-b border-grey-200 p-3 sm:sticky sm:top-0 sm:flex sm:h-screen sm:max-h-screen sm:w-48 sm:flex-col sm:overflow-hidden sm:border-r sm:border-b-0"
+        className="hidden w-full shrink-0 border-b border-grey-200 bg-grey-100 p-3 sm:sticky sm:top-0 sm:flex sm:h-screen sm:max-h-screen sm:w-52 sm:flex-col sm:overflow-hidden sm:border-r sm:border-b-0 xl:w-60"
         data-testid="desktop-sidebar"
       >
-        <div className="mb-4 shrink-0" data-testid="desktop-sidebar-header">
-          <WorkspaceSwitcher
-            memberships={memberships}
-            workspaceSlug={workspace.workspace_slug}
-            workspaceName={workspace.workspace_name}
-          />
+        <div className="mb-4 shrink-0 space-y-3" data-testid="desktop-sidebar-header">
+          <WorkspaceSwitcher memberships={memberships} workspace={workspace} />
+          <button
+            type="button"
+            data-testid={COMMAND_PALETTE_TEST_IDS.trigger}
+            aria-keyshortcuts="Meta+K Control+K"
+            className="flex min-h-9 w-full items-center gap-2 rounded-[var(--radius-control)] border border-grey-200 bg-paper px-2 text-left text-sm text-grey-700 hover:border-grey-300 hover:text-ink"
+            onClick={() => setPaletteOpen(true)}
+          >
+            <Icon name="search" className="size-4 shrink-0 text-grey-500" />
+            <span className="min-w-0 flex-1 truncate">Search</span>
+            <kbd aria-hidden="true" className="shrink-0 rounded-[4px] border border-grey-200 px-1 font-sans text-xs text-grey-700">
+              {shortcut}
+            </kbd>
+          </button>
         </div>
 
         <nav
           aria-label="Workspace navigation"
-          className="min-h-0 flex-1 overflow-y-auto"
+          className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 py-0.5"
           data-testid="desktop-sidebar-nav"
         >
-          <ul className="space-y-1">
-            {NAV.map((item) => (
+          <SidebarSection id="sidebar-workspace" label="Workspace">
+            {WORKSPACE_NAV.map((item) => (
               <li key={item.label}>
-                <NavLink
-                  to={base + item.path}
-                  className={NAV_ITEM}
-                  activeClassName={NAV_ACTIVE}
-                >
-                  {item.label}
-                </NavLink>
+                <SidebarLink to={base + item.path} item={item} />
               </li>
             ))}
             {workspace.role === 'admin' ? (
               <li>
-                <NavLink
-                  to={`${base}/admin`}
-                  className={NAV_ITEM}
-                  activeClassName={NAV_ACTIVE}
-                >
-                  Administration
-                </NavLink>
+                <SidebarLink to={base + ADMIN_NAV.path} item={ADMIN_NAV} />
               </li>
             ) : null}
-            {/* Separated because it leaves the workspace: the work log spans
-                every organisation this person belongs to. */}
-            <li className="pt-2">
-              <NavLink to="/me/worklog" className={NAV_ITEM} activeClassName={NAV_ACTIVE}>
-                My work log
-              </NavLink>
+          </SidebarSection>
+          <SidebarSection id="sidebar-activity" label="Activity">
+            {ACTIVITY_NAV.map((item) => (
+              <li key={item.label}>
+                <SidebarLink to={base + item.path} item={item} />
+              </li>
+            ))}
+          </SidebarSection>
+          {/* Separated because it leaves the workspace: the work log spans
+              every organisation this person belongs to. */}
+          <SidebarSection id="sidebar-personal" label="Across organisations">
+            <li>
+              <SidebarLink to="/me/worklog" item={{ label: 'My work log', path: '/me/worklog', icon: 'worklog' }} />
             </li>
-          </ul>
+          </SidebarSection>
         </nav>
 
         <div className="mt-auto shrink-0 border-t border-grey-200 pt-3" data-testid="desktop-sidebar-footer">
-          <button
-            type="button"
-            data-testid={COMMAND_PALETTE_TEST_IDS.trigger}
-            aria-label="Open command palette (⌘K)"
-            className="mb-2 flex w-full items-center justify-between rounded-[var(--radius-control)] px-2 py-1.5 text-left text-xs text-grey-500 hover:bg-grey-100 hover:text-ink"
-            onClick={() => setPaletteOpen(true)}
-          >
-            <span>Command palette</span>
-            <kbd className="rounded border border-grey-300 px-1 py-0.5 font-mono text-xs">⌘K</kbd>
-          </button>
           <AccountMenu
             base={base}
             user={user}
@@ -407,12 +487,19 @@ export function Shell({
         </div>
       </aside>
 
-      <header className="border-b border-grey-200 p-3 sm:hidden">
-        <WorkspaceSwitcher
-          memberships={memberships}
-          workspaceSlug={workspace.workspace_slug}
-          workspaceName={workspace.workspace_name}
-        />
+      <header className="flex items-center gap-2 border-b border-grey-200 bg-grey-100 p-2 sm:hidden">
+        <div className="min-w-0 flex-1">
+          <WorkspaceSwitcher memberships={memberships} workspace={workspace} />
+        </div>
+        <button
+          type="button"
+          aria-label="Search"
+          aria-keyshortcuts="Meta+K Control+K"
+          className="flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-grey-700 hover:bg-grey-200/60 hover:text-ink"
+          onClick={() => setPaletteOpen(true)}
+        >
+          <Icon name="search" className="size-5" />
+        </button>
       </header>
 
       <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-3 pb-24 pt-4 sm:p-4">{children}</main>
@@ -429,7 +516,8 @@ export function Shell({
               className={TAB_ITEM}
               activeClassName="bg-grey-100 font-medium text-ink"
             >
-              {item.label}
+              <Icon name={item.icon} className={TAB_ICON} />
+              <span>{item.label}</span>
             </NavLink>
           ))}
           <MoreMenu

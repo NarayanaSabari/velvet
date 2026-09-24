@@ -93,7 +93,7 @@ The shared focus contract is a `2px` ink outline with a `1px` offset from `:focu
 
 The installed Tailwind default breakpoints used by the web package are `sm` 640px, `md` 768px, `lg` 1024px, and `xl` 1280px.
 
-The shell sidebar is `sm:w-48`, which is 192px at the desktop breakpoint.
+The shell sidebar is `sm:w-52 xl:w-60`, which is 208px from the `sm` breakpoint and 240px at `xl` and above.
 
 Workspace pages use `max-w-[80rem]`, which is 1280px.
 
@@ -123,13 +123,21 @@ For wide-layout work, compare the changed page and its closest sibling side by s
 
 Use `Shell` and `NavLink` rather than recreating workspace navigation inside a page.
 
-At 640px and above, the shell shows a sticky 192px sidebar with scrollable navigation, the workspace switcher, the command-palette trigger, and the account menu.
+At 640px and above, the shell shows a sticky sidebar on the `grey-100` surface with the organisation identity and switcher, a Search control that opens the command palette, scrollable navigation, and the account menu pinned to the bottom.
 
-Below 640px, the shell shows a workspace header and a fixed five-slot bottom navigation with a safe-area inset.
+The sidebar navigation is grouped under visible section labels: Workspace for planning surfaces and Administration, Activity for the team feed, mentions, and unlinked pull requests, and Across organisations for the work log.
+
+Each navigation link pairs a 16px icon from `web/src/ui/Icon.tsx` with its text label, and the icon never replaces the label.
+
+The current page is lifted onto a bordered paper surface with medium weight and ink icon, so selection is carried by shape and weight rather than by fill alone.
+
+Supporting text on the grey sidebar surface uses `grey-700`, because `grey-500` on `grey-100` falls below 4.5:1 in the light scheme.
+
+Below 640px, the shell shows a workspace header with a 44px Search button and a fixed five-slot bottom navigation with icons, labels, and a safe-area inset.
 
 The current mobile tabs expose Dashboard, Issues, Sprints, Mentions, and More, with the remaining links in the More menu.
 
-Active navigation must expose `aria-current="page"` and a visible non-color-only selected treatment.
+Active navigation must expose `aria-current="page"` on exactly one link and a visible non-color-only selected treatment.
 
 Page content must remain `min-w-0` inside the shell so long titles and controls cannot widen the document.
 

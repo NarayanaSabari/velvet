@@ -1,9 +1,9 @@
 import type { User } from '../lib/types'
 import { userLabel } from '../lib/userLabel'
 
-const SIZES = { sm: 'h-4 w-4 text-xs', md: 'h-6 w-6 text-xs' } as const
+const SIZES = { sm: 'h-4 w-4 text-xs', md: 'h-6 w-6 text-xs', lg: 'h-8 w-8 text-sm' } as const
 
-export function Avatar({ user, size = 'sm' }: { user: User | null; size?: 'sm' | 'md' }) {
+export function Avatar({ user, size = 'sm' }: { user: User | null; size?: keyof typeof SIZES }) {
   const label = userLabel(user)
   const cls = `${SIZES[size]} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-grey-300 bg-grey-100 align-middle object-cover`
 
