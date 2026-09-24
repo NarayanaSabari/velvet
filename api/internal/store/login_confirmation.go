@@ -45,7 +45,9 @@ func (s *Store) ConfirmLogin(ctx context.Context, token string) (LoginResult, er
 		}
 
 		var workspaceID *uuid.UUID
-		result.Next = "/orgs/new"
+		// Someone with no organisation yet is guided through creating one and
+		// connecting their agent, rather than dropped on a blank form.
+		result.Next = "/onboarding"
 		if inviteID != nil {
 			m, err := AcceptInviteTx(ctx, tx, *inviteID, userID)
 			if errors.Is(err, ErrForbidden) {

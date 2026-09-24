@@ -69,6 +69,17 @@ func (s *Server) Handler() http.Handler {
 	s.registerGitHubAuthorizationRoutes(mux)
 	s.registerReportRoutes(mux)
 	s.registerWorklogRoutes(mux)
+	s.registerOnboardingRoutes(mux)
 
-	return RequestID(Logging(Recover(s.browserMutations(mux))))
+	// MCP tools call the REST routes in-process through the same browser and
+	// recovery middleware, so an agent gets exactly the checks a direct API
+	// request would. The MCP route lives only on the outer mux, so a tool can
+	// never reach MCP recursively. MCP itself refuses every cookie, which is
+	// what makes it safe outside the browser same-origin guard.
+	rest := s.browserMutations(mux)
+	outer := http.NewServeMux()
+	outer.Handle("/", rest)
+	s.registerMCPRoutes(outer, rest)
+
+	return RequestID(Logging(Recover(outer)))
 }

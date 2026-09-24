@@ -57,7 +57,7 @@ func TestMagicConfirmationCreatesOneSessionAndGETDoesNotConsume(t *testing.T) {
 	require.Empty(t, get.Result().Cookies())
 	post := authRequest(h, http.MethodPost, "/api/v1/auth/magic", map[string]string{"token": token})
 	require.Equal(t, 200, post.Code, post.Body.String())
-	require.JSONEq(t, `{"next":"/orgs/new"}`, post.Body.String())
+	require.JSONEq(t, `{"next":"/onboarding"}`, post.Body.String())
 	cookies := post.Result().Cookies()
 	require.Len(t, cookies, 1)
 	c := cookies[0]
