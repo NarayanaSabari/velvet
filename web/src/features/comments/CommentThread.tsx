@@ -57,14 +57,24 @@ export function ReplyEditor({ commentId, onReply }: {
   }
 
   if (!open) {
-    return <button className="mb-2 text-xs text-grey-500 underline" onClick={() => setOpen(true)}>Reply</button>
+    return (
+      <button
+        className="mb-2 min-h-7 rounded-[var(--radius-control)] px-2 text-xs text-grey-500 hover:bg-grey-100 hover:text-ink"
+        onClick={() => setOpen(true)}
+      >
+        Reply
+      </button>
+    )
   }
   return (
-    <form className="mb-2" onSubmit={(event) => void submit(event)}>
-      <div className="flex gap-2">
-        <input className="min-w-0 flex-1 border border-grey-300 bg-paper px-2 py-1 text-sm"
+    <form className="mb-3 rounded-[var(--radius-surface)] bg-grey-100 p-2" onSubmit={(event) => void submit(event)}>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input className="ui-control min-h-9 min-w-0 flex-1 px-2 py-1 text-sm"
           placeholder="Write a reply…" value={body} onChange={(event) => setBody(event.target.value)} />
-        <Button type="submit" disabled={busy || !body.trim()}>Post reply</Button>
+        <div className="flex gap-2">
+          <Button type="submit" disabled={busy || !body.trim()}>{busy ? 'Posting…' : 'Post reply'}</Button>
+          <Button type="button" disabled={busy} onClick={() => { setOpen(false); setFailed(false) }}>Cancel</Button>
+        </div>
       </div>
       {failed ? (
         <p className="mt-1 text-xs text-blocked" role="alert">
@@ -83,12 +93,12 @@ export function CommentThread({ comments, onReply }: {
     return <EmptyState title="No updates yet" message="The first comment starts the log." />
   }
   return (
-    <div className="divide-y divide-grey-200 border-y border-grey-200">
+    <div className="divide-y divide-grey-200 rounded-[var(--radius-surface)] border border-grey-200 px-3">
       {comments.map((comment) => (
         <div key={comment.id}>
           <CommentBody comment={comment} />
           {comment.replies?.length ? (
-            <div className="border-l border-grey-200 pb-2 pl-4">
+            <div className="ml-4 border-l-2 border-grey-200 pb-2 pl-4">
               {comment.replies.map((reply) => (
                 <CommentBody key={reply.id} comment={reply} />
               ))}

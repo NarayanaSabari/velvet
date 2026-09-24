@@ -9,5 +9,5 @@ const VARIANTS: Record<ButtonVariant, string> = {
 }
 
 export function buttonClassName(variant: ButtonVariant = 'secondary', className = '') {
-  return `ui-button rounded-[6px] border px-2 py-1 text-sm disabled:opacity-40 ${VARIANTS[variant]} ${className}`
+  return `ui-button rounded-[var(--radius-control)] border px-2.5 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-40 ${VARIANTS[variant]} ${className}`
 }

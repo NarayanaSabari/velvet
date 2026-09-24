@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import type { WorklogEntry } from '../../lib/types'
 import { EmptyState } from '../../ui/EmptyState'
+import { PageHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { StatusBadge } from '../../ui/StatusBadge'
 
@@ -104,12 +105,14 @@ export function Recap() {
 
   return (
     <div className="max-w-[80rem] min-w-0">
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="text-lg">Work log</h1>
+      <PageHeader
+        title="Work log"
+        description="Rebuild your week from notes, tickets, pull requests, and agent progress across every organisation."
+        actions={<>
         <label className="text-sm text-grey-500">
           <span className="sr-only">Period</span>
           <select
-            className="min-h-10 border border-grey-300 bg-paper px-1 py-0.5 text-sm text-ink md:min-h-8"
+            className="ui-control min-h-10 px-2 py-1 text-sm md:min-h-8"
             value={days}
             onChange={(event) => setDays(Number(event.target.value))}
           >
@@ -123,7 +126,8 @@ export function Recap() {
         <a className="text-sm underline" href={`/api/v1/me/worklog.md?days=${days}`}>
           Copy as Markdown
         </a>
-      </div>
+        </>}
+      />
 
       {query.isPending ? (
         <LoadingState label="Loading your work log…" />
@@ -141,14 +145,14 @@ export function Recap() {
       ) : (
         <div className="space-y-6">
           {grouped.map((day) => (
-            <section key={day.day}>
-              <h2 className="text-sm font-medium text-ink">{dayLabel(day.day)}</h2>
+            <section key={day.day} className="space-y-3">
+              <h2 className="border-b border-grey-200 pb-2 text-sm font-medium text-ink">{dayLabel(day.day)}</h2>
               {day.workspaces.map((workspace) => (
-                <div key={`${day.day}-${workspace.slug}`} className="mt-2">
-                  <h3 className="text-xs uppercase tracking-wide text-grey-500">
+                <div key={`${day.day}-${workspace.slug}`}>
+                  <h3 className="mb-1 text-xs font-medium text-grey-500">
                     {workspace.name}
                   </h3>
-                  <ul className="divide-y divide-grey-200 border-y border-grey-200">
+                  <ul className="divide-y divide-grey-200 rounded-[var(--radius-surface)] border border-grey-200 px-3">
                     {workspace.entries.map((entry, index) => (
                       <EntryRow key={`${entry.at}-${entry.kind}-${index}`} entry={entry} />
                     ))}

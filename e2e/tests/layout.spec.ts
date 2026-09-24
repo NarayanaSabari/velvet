@@ -57,12 +57,19 @@ async function overflow(page: Page): Promise<number> {
 
 const pages = () => [
   { name: 'dashboard', path: '/w/lab', ready: 'Dashboard' },
+  { name: 'projects', path: '/w/lab/projects', ready: 'Projects' },
   { name: 'team feed', path: '/w/lab/feed', ready: 'Team feed' },
   { name: 'sprints', path: '/w/lab/sprints', ready: 'Sprints' },
   { name: 'sprint board', path: `/w/lab/sprints/${ids.sprint}`, ready: 'September 2026' },
   { name: 'milestone', path: `/w/lab/milestones/${ids.milestone}`, ready: LONG_MILESTONE },
   { name: 'issue', path: `/w/lab/issues/${ids.issueKey}`, ready: UNBROKEN },
   { name: 'issues', path: '/w/lab/issues', ready: 'Issues' },
+  { name: 'mentions', path: '/w/lab/mentions', ready: 'Mentions' },
+  { name: 'unlinked pull requests', path: '/w/lab/unlinked', ready: 'Unlinked PRs' },
+  { name: 'reports', path: '/w/lab/reports', ready: 'Reports' },
+  { name: 'administration', path: '/w/lab/admin', ready: 'Administration' },
+  { name: 'profile', path: '/w/lab/settings/profile', ready: 'Profile' },
+  { name: 'work log', path: '/me/worklog', ready: 'Work log' },
 ]
 
 for (const viewport of [
@@ -79,6 +86,25 @@ for (const viewport of [
     }
   })
 }
+
+test('public authentication keeps the sign-in task primary at both viewports', async ({ page }) => {
+  for (const viewport of [
+    { width: 1280, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/signin')
+    await expect(page.getByRole('heading', { level: 1, name: 'Sign in to Velvet' })).toBeVisible()
+    await expect(page.getByLabel('Email')).toBeVisible()
+    await expect(page.locator('.landing-layout-auth')).toBeVisible()
+    await expect(page.locator('.landing-intro')).toBeHidden()
+    expect(await overflow(page)).toBeLessThanOrEqual(0)
+    await page.screenshot({
+      path: `test-results/sign-in-${viewport.width}-light.png`,
+      fullPage: true,
+    })
+  }
+})
 
 async function occupiesMultipleLines(locator: Locator): Promise<boolean> {
   return locator.evaluate((element) => {

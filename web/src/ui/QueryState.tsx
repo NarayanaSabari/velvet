@@ -8,9 +8,10 @@ import { Button } from './Button'
  */
 export function LoadingState({ label = 'Loading…' }: { label?: string }) {
   return (
-    <p role="status" className="text-sm text-grey-500">
+    <div role="status" className="ui-surface flex min-h-24 items-center px-4 py-6 text-sm text-grey-500">
+      <span className="mr-2 inline-block size-1.5 rounded-full bg-grey-500" aria-hidden="true" />
       {label}
-    </p>
+    </div>
   )
 }
 
@@ -24,8 +25,8 @@ export function ErrorState({
   retrying?: boolean
 }) {
   return (
-    <div className="border border-grey-200 px-4 py-6">
-      <p role="alert" className="text-sm text-blocked">
+    <div className="ui-surface px-4 py-6">
+      <p role="alert" className="font-medium text-blocked">
         {message}
       </p>
       {onRetry ? (
@@ -52,11 +53,13 @@ export function NotFoundState({
 }) {
   return (
     <div className="max-w-[80rem]">
-      <h1 className="mb-2 text-lg">{title}</h1>
-      <p className="text-sm text-grey-700">{message}</p>
-      <p className="mt-3 text-sm">
-        <NavLink to={backTo} className="underline">{backLabel}</NavLink>
-      </p>
+      <div className="ui-surface max-w-xl px-6 py-8">
+        <h1 className="text-lg font-medium tracking-[-0.02em]">{title}</h1>
+        <p className="mt-2 text-sm text-grey-700">{message}</p>
+        <p className="mt-4 text-sm">
+          <NavLink to={backTo} className="underline underline-offset-4">{backLabel}</NavLink>
+        </p>
+      </div>
     </div>
   )
 }

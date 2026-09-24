@@ -74,7 +74,7 @@ export function PublicPageLayout({ children, signingIn = false, title = 'Know wh
 
       <main
         id="main-content"
-        className={`landing-layout${expanded ? ' landing-layout-expanded' : ''}`}
+        className={`landing-layout${signingIn ? ' landing-layout-auth' : ''}${expanded ? ' landing-layout-expanded' : ''}`}
       >
         <section className="landing-intro">
           <div className="min-w-0">
@@ -84,12 +84,12 @@ export function PublicPageLayout({ children, signingIn = false, title = 'Know wh
             <p className="landing-description text-xs text-grey-700 lg:text-base">
               Your notes, tickets, and agent progress. GitHub proof. One work record across organisations.
             </p>
-            <div className="landing-actions mt-4 hidden flex-wrap gap-2 sm:flex lg:mt-6">
+            {!signingIn ? <div className="landing-actions mt-4 hidden flex-wrap gap-2 sm:flex lg:mt-6">
               <NavLink
-                to={signingIn ? '/' : '/signin'}
+                to="/signin"
                 className={buttonClassName('primary', 'inline-flex min-h-11 items-center px-4 no-underline')}
               >
-                {signingIn ? 'About Velvet' : 'Sign in'}
+                Sign in
               </NavLink>
               <a
                 className={buttonClassName('secondary', 'inline-flex min-h-11 items-center px-4 no-underline')}
@@ -99,7 +99,7 @@ export function PublicPageLayout({ children, signingIn = false, title = 'Know wh
               >
                 View source
               </a>
-            </div>
+            </div> : null}
             <p className="mt-2 text-xs text-grey-500 lg:mt-3">
               No estimates. No time tracking.
             </p>

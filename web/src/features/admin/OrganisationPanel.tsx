@@ -30,7 +30,7 @@ export function OrganisationPanel({ slug, workspace }: { slug: string; workspace
           <span className="mb-0.5 block text-xs text-grey-500">Name</span>
           <span className="flex flex-wrap gap-2">
             <input
-              className="min-w-0 flex-1 border border-grey-300 bg-paper px-2 py-1"
+              className="ui-control min-h-10 min-w-0 flex-1 px-2 py-1"
               aria-label="Organisation name"
               value={name}
               onChange={(event) => { update.reset(); setName(event.target.value) }}

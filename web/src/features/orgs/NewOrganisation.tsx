@@ -45,7 +45,7 @@ export function NewOrganisation({ navigate = navigateTo, publicLayout = false }:
   const publicControl = publicLayout ? 'min-h-12' : undefined
   const inputClass = publicLayout
     ? 'mt-2 block min-h-12 w-full rounded-[var(--radius-control)] border border-grey-300 bg-paper px-3 py-2'
-    : 'mt-1 block w-full border border-grey-300 bg-paper px-2 py-1'
+    : 'ui-control mt-1 block min-h-10 w-full px-2 py-1'
   if (session.isLoading) return publicLayout ? layout(<p role="status" className="text-grey-500">Loading…</p>) : <p role="status" className="p-4 text-grey-500">Loading…</p>
   if (publicLayout && (session.error || client.getQueryState(['session'])?.status === 'error')) return layout(<div className="space-y-4">
     {!sessionFetching ? <p role="alert" className="text-blocked">Could not load your session. Try again.</p> : null}

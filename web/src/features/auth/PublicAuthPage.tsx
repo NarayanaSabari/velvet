@@ -11,8 +11,8 @@ export function PublicAuthPage({ title, children, note = 'No password needed', e
   return (
     <PublicPageLayout signingIn title={title} expanded={expanded}>
       <section aria-labelledby={headingId} className="landing-signin">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1 border-b border-grey-200 py-2">
-          <h1 id={headingId} className="text-sm font-medium">{title}</h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-grey-200 pb-4">
+          <h1 id={headingId} className="text-lg font-medium tracking-[-0.02em]">{title}</h1>
           {note ? <p className="text-xs text-grey-500">{note}</p> : null}
         </div>
         <div className="landing-signin-form">{children}</div>

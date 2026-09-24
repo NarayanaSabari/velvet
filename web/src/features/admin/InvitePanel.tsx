@@ -39,11 +39,11 @@ export function InvitePanel({ slug }: { slug: string }) {
     <form className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem_auto]" onSubmit={(event) => { event.preventDefault(); resend.reset(); revoke.reset(); create.mutate() }}>
       <label>
         <span className="mb-0.5 block text-xs text-grey-500">Invite email</span>
-        <input className="w-full border border-grey-300 bg-paper px-2 py-1" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
+        <input className="ui-control min-h-10 w-full px-2 py-1" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
       </label>
       <label>
         <span className="mb-0.5 block text-xs text-grey-500">Invite role</span>
-        <select className="w-full border border-grey-300 bg-paper px-2 py-1" value={role} onChange={(event) => setRole(event.target.value as Role)}>
+        <select className="ui-control min-h-10 w-full px-2 py-1" value={role} onChange={(event) => setRole(event.target.value as Role)}>
           {roles.map((value) => <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>)}
         </select>
       </label>

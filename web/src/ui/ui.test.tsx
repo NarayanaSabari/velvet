@@ -7,6 +7,24 @@ import { Markdown } from './Markdown'
 import { RelativeTime } from './RelativeTime'
 import { List } from './List'
 import { Button } from './Button'
+import { PageHeader, SectionHeader } from './PageHeader'
+
+describe('Page hierarchy', () => {
+  it('keeps one primary heading and associates section headings with actions', () => {
+    render(
+      <div>
+        <PageHeader title="Issues" description="Search and triage work." actions={<Button>New issue</Button>} />
+        <SectionHeader id="open-work" title="Open work" meta="3 issues" action={<a href="#all">View all</a>} />
+      </div>,
+    )
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Issues' })).toBeInTheDocument()
+    expect(screen.getByText('Search and triage work.')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'Open work' })).toHaveAttribute('id', 'open-work')
+    expect(screen.getByRole('button', { name: 'New issue' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'View all' })).toBeInTheDocument()
+  })
+})
 
 describe('Button', () => {
   it('exposes the four monochrome variants and press feedback contract', () => {
@@ -22,7 +40,7 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'Primary' })).toHaveClass(
       'bg-ink',
       'text-paper',
-      'rounded-[6px]',
+      'rounded-[var(--radius-control)]',
       'ui-button',
     )
     expect(screen.getByRole('button', { name: 'Secondary' })).toHaveClass(

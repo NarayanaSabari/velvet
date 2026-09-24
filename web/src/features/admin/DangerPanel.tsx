@@ -16,7 +16,7 @@ export function DangerPanel({ slug, navigate = navigateTo }: { slug: string; nav
     <p className="text-grey-500">Permanently delete this organisation, its issues, sprints, invitations and repository connections. This cannot be undone.</p>
     <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); if (confirm === slug) remove.mutate() }}>
       <label className="block">Type {slug} to confirm deletion
-        <input className="mt-1 block w-full border border-grey-300 bg-paper px-2 py-1" autoComplete="off" value={confirm} onChange={(event) => setConfirm(event.target.value)} />
+        <input className="ui-control mt-1 block min-h-10 w-full px-2 py-1" autoComplete="off" value={confirm} onChange={(event) => setConfirm(event.target.value)} />
       </label>
       <Button variant="danger" type="submit" disabled={confirm !== slug || remove.isPending}>
         {remove.isPending ? 'Deleting organisation…' : 'Delete organisation'}

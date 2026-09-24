@@ -7,6 +7,7 @@ import { NavLink } from '../../app/nav'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { Markdown } from '../../ui/Markdown'
+import { PageHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
 
@@ -50,23 +51,29 @@ export function Mentions({ slug }: { slug: string }) {
 
   return (
     <div className="max-w-[80rem]">
-      <div className="mb-4 flex items-center gap-3">
-        <h1 className="text-lg">Mentions</h1>
-        {unread ? (
+      <PageHeader
+        title="Mentions"
+        description="Comments that need your attention, gathered into one inbox."
+        actions={unread ? (
           <Button disabled={markRead.isPending} onClick={() => markRead.mutate()}>
-            Mark all read
+            {markRead.isPending ? 'Marking read…' : 'Mark all read'}
           </Button>
-        ) : null}
-      </div>
+        ) : undefined}
+      />
       {mentions.length === 0 ? (
         <EmptyState title="No mentions" message="Updates that name you appear here." />
       ) : (
-        <ul className="divide-y divide-grey-200 border-y border-grey-200">
+        <ul className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
           {mentions.map((mention) => {
             const { comment, read_at: readAt } = mention
             const href = targetHref(mention)
             return (
-              <li key={comment.id} className="py-2 text-sm">
+              <li
+                key={comment.id}
+                className={`border-t border-l-2 border-t-grey-200 px-3 py-3 text-sm first:border-t-0 ${
+                  readAt ? 'border-l-transparent' : 'border-l-ink bg-grey-100'
+                }`}
+              >
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <span className={readAt ? 'text-grey-500' : 'font-medium'}>
                     {userLabel(comment.author)}

@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import type { Issue, PullRequest } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { PageHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
 import { pullRequestStateLabel } from './pullRequestState'
@@ -37,11 +38,10 @@ export function UnlinkedPRs({ slug }: { slug: string }) {
 
   return (
     <div className="max-w-[80rem]">
-      <h1 className="mb-1 text-lg">Unlinked PRs</h1>
-      <p className="mb-4 text-grey-500">
-        Pull requests with no matching issue. Name the branch after an issue key, such as{' '}
-        <span className="text-grey-700">sabari/eng-42-fix-auth</span>, and they link themselves.
-      </p>
+      <PageHeader
+        title="Unlinked PRs"
+        description={<>Pull requests with no matching issue. Name the branch after an issue key, such as <span className="font-mono text-grey-700">sabari/eng-42-fix-auth</span>, and they link themselves.</>}
+      />
 
       {prs.length === 0 ? (
         <EmptyState
@@ -49,7 +49,7 @@ export function UnlinkedPRs({ slug }: { slug: string }) {
           message="Every pull request is attached to an issue."
         />
       ) : (
-        <ul className="border-t border-grey-200">
+        <ul className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
           {prs.map((pr) => (
             <UnlinkedRow key={pr.id} pr={pr} slug={slug} />
           ))}
@@ -83,18 +83,18 @@ function UnlinkedRow({ pr, slug }: { pr: PullRequest; slug: string }) {
   const merged = pr.state === 'merged' || Boolean(pr.merged_at)
 
   return (
-    <li className="border-b border-grey-200 px-2 py-1.5 text-sm">
-      <div className="flex items-baseline gap-2">
+    <li className="border-t border-grey-200 px-3 py-3 text-sm first:border-t-0">
+      <div className="flex flex-wrap items-baseline gap-2">
         <a className="text-grey-500 underline" href={pr.html_url} target="_blank" rel="noreferrer">
           #{pr.number}
         </a>
-        <span className="min-w-0 flex-1 truncate">{pr.title}</span>
+        <span className="min-w-[12rem] flex-1 break-words font-medium [overflow-wrap:anywhere]">{pr.title}</span>
         <span className={merged ? 'text-done' : 'text-grey-500'}>
           {pullRequestStateLabel(pr)}
         </span>
       </div>
 
-      <div className="mt-0.5 flex items-center gap-2 text-grey-500">
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-grey-500">
         <span>{pr.author_login}</span>
         <span className="text-grey-700">+{pr.additions}</span>
         <span className="text-grey-700">-{pr.deletions}</span>
@@ -103,7 +103,7 @@ function UnlinkedRow({ pr, slug }: { pr: PullRequest; slug: string }) {
       </div>
 
       <form
-        className="mt-1.5 flex items-center gap-2"
+        className="mt-3 flex flex-wrap items-center gap-2"
         onSubmit={(event) => {
           event.preventDefault()
           if (key.trim()) attach.mutate(key)
@@ -114,7 +114,7 @@ function UnlinkedRow({ pr, slug }: { pr: PullRequest; slug: string }) {
         </label>
         <input
           id={`attach-${pr.id}`}
-          className="w-32 border border-grey-300 bg-paper px-1.5 py-0.5 text-sm"
+          className="ui-control min-h-9 w-32 px-2 py-1 text-sm"
           placeholder="ENG-42"
           value={key}
           onChange={(event) => {

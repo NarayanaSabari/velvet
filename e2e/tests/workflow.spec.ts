@@ -242,6 +242,8 @@ test('uses readable type at 100% zoom without disturbing responsive layout', asy
     await page.setViewportSize(viewport)
     await page.goto('/w/lab')
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+    await page.getByRole('button', { name: 'New issue' }).click()
+    await expect(page.getByRole('heading', { level: 2, name: 'New unfiled issue' })).toBeVisible()
 
     const metrics = await page.evaluate(() => {
       const sidebar = document.querySelector<HTMLElement>('[data-testid="desktop-sidebar"]')
@@ -260,8 +262,8 @@ test('uses readable type at 100% zoom without disturbing responsive layout', asy
         heading: size('h1'),
         nav: size('[data-testid="desktop-sidebar-nav"] a'),
         footerButton: size('[data-testid="desktop-sidebar-footer"] > button'),
-        formInput: size('details input'),
-        formButton: size('details button'),
+        formInput: size('section[aria-labelledby="dashboard-new-issue-heading"] input'),
+        formButton: size('section[aria-labelledby="dashboard-new-issue-heading"] button'),
         documentWidth: document.documentElement.scrollWidth,
         viewportWidth: window.innerWidth,
         footerPinned: sidebarRect && footerRect && paddingBottom !== null

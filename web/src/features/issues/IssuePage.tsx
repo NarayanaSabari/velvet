@@ -479,7 +479,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
               <label className="min-w-0 flex-1">
                 <span className="sr-only">New label name</span>
                 <input
-                  className="w-full border border-grey-300 bg-paper px-2 py-1 text-sm"
+                  className="ui-control min-h-9 w-full px-2 py-1 text-sm"
                   placeholder="New label"
                   value={newLabel}
                   onChange={(event) => setNewLabel(event.target.value)}

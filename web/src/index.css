@@ -48,6 +48,21 @@
     transition: transform 160ms ease-out;
   }
 
+  .ui-control {
+    min-width: 0;
+    max-width: 100%;
+    border: 1px solid var(--color-grey-300);
+    border-radius: var(--radius-control);
+    background: var(--color-paper);
+    color: var(--color-ink);
+  }
+
+  .ui-surface {
+    border: 1px solid var(--color-grey-200);
+    border-radius: var(--radius-surface);
+    background: var(--color-paper);
+  }
+
   .ui-button:active {
     transform: scale(0.97);
   }
@@ -159,6 +174,17 @@
     font-family: var(--font-sans);
     font-size: var(--text-base);
     -webkit-font-smoothing: antialiased;
+  }
+
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    border-radius: var(--radius-control);
+  }
+
+  ::selection {
+    background: var(--color-ink);
+    color: var(--color-paper);
   }
 
   /* Dark mode inverts the same palette rather than introducing a second one. */

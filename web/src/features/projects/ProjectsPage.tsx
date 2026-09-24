@@ -6,6 +6,7 @@ import { api } from '../../lib/api'
 import type { Project } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
+import { PageHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { useSession } from '../auth/useSession'
 
@@ -16,7 +17,7 @@ import { useSession } from '../auth/useSession'
  */
 
 const controlClass =
-  'min-h-10 w-full border border-grey-300 bg-paper px-1 py-0.5 text-sm text-ink md:min-h-8'
+  'ui-control min-h-10 w-full px-2 py-1 text-sm md:min-h-8'
 
 const OPEN_STATUSES = ['backlog', 'todo', 'in_progress', 'in_review'] as const
 
@@ -25,9 +26,14 @@ function openCount(project: Project): number {
   return OPEN_STATUSES.reduce((total, status) => total + (counts[status] ?? 0), 0)
 }
 
-function NewProjectForm({ slug }: { slug: string }) {
+function NewProjectForm({
+  slug,
+  onClose,
+}: {
+  slug: string
+  onClose: () => void
+}) {
   const queryClient = useQueryClient()
-  const [open, setOpen] = useState(false)
   const [key, setKey] = useState('')
   const [name, setName] = useState('')
   const [error, setError] = useState('')
@@ -39,26 +45,26 @@ function NewProjectForm({ slug }: { slug: string }) {
       setKey('')
       setName('')
       setError('')
-      setOpen(false)
+      onClose()
       void queryClient.invalidateQueries({ queryKey: ['projects', slug] })
     },
     onError: (err: Error) => setError(err.message),
   })
 
-  if (!open) {
-    return <Button onClick={() => setOpen(true)}>New project</Button>
-  }
-
   return (
     <form
-      className="w-full max-w-md space-y-2"
+      className="ui-surface mb-6 max-w-2xl space-y-4 p-4"
       onSubmit={(event) => {
         event.preventDefault()
         create.mutate()
       }}
     >
+      <div>
+        <h2 className="text-sm font-medium">New project</h2>
+        <p className="mt-1 text-sm text-grey-500">Create a durable home for work that spans several sprints.</p>
+      </div>
       <label className="block text-sm">
-        Project name
+        <span className="mb-1 block text-xs text-grey-500">Project name</span>
         <input
           className={controlClass}
           value={name}
@@ -67,7 +73,7 @@ function NewProjectForm({ slug }: { slug: string }) {
         />
       </label>
       <label className="block text-sm">
-        Project key
+        <span className="mb-1 block text-xs text-grey-500">Project key</span>
         <input
           className={controlClass}
           value={key}
@@ -88,7 +94,7 @@ function NewProjectForm({ slug }: { slug: string }) {
         <Button type="submit" disabled={create.isPending}>
           {create.isPending ? 'Creating…' : 'Create project'}
         </Button>
-        <Button type="button" onClick={() => setOpen(false)}>
+        <Button type="button" onClick={onClose}>
           Cancel
         </Button>
       </div>
@@ -100,6 +106,7 @@ export function ProjectsPage({ slug }: { slug: string }) {
   const queryClient = useQueryClient()
   const { workspace } = useSession(slug)
   const canWrite = workspace?.role === 'admin' || workspace?.role === 'member'
+  const [creatingProject, setCreatingProject] = useState(false)
   const [includeArchived, setIncludeArchived] = useState(false)
   const [archivingKey, setArchivingKey] = useState<string | null>(null)
 
@@ -122,10 +129,14 @@ export function ProjectsPage({ slug }: { slug: string }) {
 
   return (
     <div className="max-w-[80rem] min-w-0">
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="text-lg">Projects</h1>
-        {canWrite ? <NewProjectForm slug={slug} /> : null}
-        <label className="flex items-center gap-2 text-sm text-grey-500">
+      <PageHeader
+        title="Projects"
+        description="Keep long-running bodies of work intact while sprints and milestones change around them."
+        actions={<>
+        {canWrite && !creatingProject ? (
+          <Button variant="primary" onClick={() => setCreatingProject(true)}>New project</Button>
+        ) : null}
+        <label className="flex min-h-8 items-center gap-2 text-sm text-grey-500">
           <input
             type="checkbox"
             checked={includeArchived}
@@ -133,7 +144,10 @@ export function ProjectsPage({ slug }: { slug: string }) {
           />
           Show archived
         </label>
-      </div>
+        </>}
+      />
+
+      {creatingProject ? <NewProjectForm slug={slug} onClose={() => setCreatingProject(false)} /> : null}
 
       {query.isPending ? (
         <LoadingState label="Loading projects…" />
@@ -155,9 +169,9 @@ export function ProjectsPage({ slug }: { slug: string }) {
               {setStatus.error.message}
             </p>
           ) : null}
-          <ul className="divide-y divide-grey-200 border-y border-grey-200">
+          <ul className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
             {query.data.projects.map((project) => (
-            <li key={project.id} data-testid={`project-row-${project.key}`} className="px-2 py-3">
+            <li key={project.id} data-testid={`project-row-${project.key}`} className="border-t border-grey-200 px-3 py-3 first:border-t-0">
               <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_8rem_10rem] md:items-center">
                 <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
                   <span className="shrink-0 font-mono text-xs text-grey-500">{project.key}</span>
