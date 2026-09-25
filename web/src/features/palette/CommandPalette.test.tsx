@@ -98,6 +98,16 @@ describe('CommandPalette', () => {
     expect(input).not.toBeInTheDocument()
   })
 
+  it('offers agent setup by the words people search for', async () => {
+    const user = userEvent.setup()
+    const { navigate } = renderPalette({ initialOpen: true })
+
+    await user.type(screen.getByTestId(COMMAND_PALETTE_TEST_IDS.input), 'mcp')
+    expect(screen.getByRole('option', { name: /Agent config/ })).toBeInTheDocument()
+    await user.keyboard('{Enter}')
+    expect(navigate).toHaveBeenCalledWith('/w/lab/settings/profile#agent-config')
+  })
+
   it('offers a direct command for an issue key', async () => {
     const user = userEvent.setup()
     const { navigate } = renderPalette({ initialOpen: true })

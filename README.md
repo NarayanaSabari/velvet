@@ -68,6 +68,7 @@ claude mcp add --transport http --scope user velvet https://velvet.example.com/a
 
 A new account is walked through this after sign-in at `/onboarding`: an organisation named after the person, a key shown once, and a ready-to-paste setup for Claude Code, Codex, Cursor, VS Code, or any agent through `mcp-remote`.
 The screen confirms the connection when the agent first calls Velvet.
+Anyone who skips that step, or wants to connect another agent, finds the same setup in Profile under Agent config, which creates a fresh key per agent.
 
 The hosted server is stateless and dispatches every tool through the same REST handlers a direct request reaches, so membership, role, validation, and `source=agent` attribution are unchanged.
 It accepts API tokens only; a browser session cookie is refused.

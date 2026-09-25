@@ -23,9 +23,11 @@ function show(children: ReactNode) {
 }
 
 /** A small fake server: the session starts empty and gains an organisation
- *  once it is created, and the token becomes used once `connect()` is called. */
+ *  once it is created, and the created key becomes used once `connect()` is
+ *  called, as the API's token list reports after an agent's first call. */
 function fakeServer() {
   let memberships: typeof org[] = []
+  let tokens: { id: string; name: string; created_at: string; last_used_at: string | null }[] = []
   let connected = false
   const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
@@ -42,7 +44,14 @@ function fakeServer() {
       memberships = [org]
       return response(org, 201)
     }
-    if (url === '/api/v1/me/tokens' && method === 'POST') return response({ id: 't1', name: 'Coding agent', token: TOKEN }, 201)
+    if (url === '/api/v1/me/tokens' && method === 'POST') {
+      const name = (JSON.parse(String(init?.body)) as { name: string }).name
+      tokens = [...tokens, { id: 't1', name, created_at: '2026-09-25T07:00:00Z', last_used_at: null }]
+      return response({ id: 't1', name, token: TOKEN }, 201)
+    }
+    if (url === '/api/v1/me/tokens') {
+      return response({ tokens: tokens.map((token) => ({ ...token, last_used_at: connected ? '2026-09-25T07:01:00Z' : null })) })
+    }
     return response({ error: { code: 'not_found', message: `unexpected ${method} ${url}` } }, 404)
   })
   return { fetchMock, connect: () => { connected = true } }
@@ -101,20 +110,22 @@ describe('Onboarding', () => {
     await user.click(await screen.findByRole('button', { name: 'Create API key' }))
 
     // Step 3: the key and config are shown, and the screen waits for the agent.
-    expect(await screen.findByTestId('onboarding-token')).toHaveTextContent(TOKEN)
-    expect(screen.getByTestId('onboarding-mcp-url')).toHaveTextContent('https://velvet.example.com/api/v1/w/priya-raman/mcp')
+    expect(await screen.findByTestId('agent-token')).toHaveTextContent(TOKEN)
+    expect(screen.getByTestId('agent-mcp-url')).toHaveTextContent('https://velvet.example.com/api/v1/w/priya-raman/mcp')
     expect(screen.getByRole('tab', { name: 'Claude Code' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('onboarding-snippet')).toHaveTextContent('claude mcp add --transport http')
-    expect(screen.getByTestId('onboarding-connection')).toHaveAttribute('data-connected', 'false')
+    expect(screen.getByTestId('agent-snippet')).toHaveTextContent('claude mcp add --transport http')
+    expect(screen.getByTestId('agent-connection')).toHaveAttribute('data-connected', 'false')
+    expect(server.fetchMock).toHaveBeenCalledWith('/api/v1/me/tokens',
+      expect.objectContaining({ method: 'POST', body: expect.stringMatching(/"name":"Coding agent \d{4}-\d{2}-\d{2} \d{2}:\d{2}"/) }))
 
     // Arrow keys move between agents, as a tab list should.
     screen.getByRole('tab', { name: 'Claude Code' }).focus()
     await user.keyboard('{ArrowRight}')
     expect(screen.getByRole('tab', { name: 'Codex' })).toHaveFocus()
-    expect(screen.getByTestId('onboarding-snippet')).toHaveTextContent('codex mcp add velvet')
+    expect(screen.getByTestId('agent-snippet')).toHaveTextContent('codex mcp add velvet')
 
     server.connect()
-    await waitFor(() => expect(screen.getByTestId('onboarding-connection')).toHaveAttribute('data-connected', 'true'), { timeout: 5000 })
+    await waitFor(() => expect(screen.getByTestId('agent-connection')).toHaveAttribute('data-connected', 'true'), { timeout: 5000 })
     expect(screen.getByText('Your agent is connected.')).toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Go to your dashboard' })[0]).toHaveAttribute('href', '/w/priya-raman')
   }, 10000)
@@ -181,6 +192,7 @@ describe('Onboarding', () => {
     expect(await screen.findByRole('button', { name: 'Create API key' })).toBeInTheDocument()
     expect(screen.getByText(/only shown when it is created/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Skip for now and go to your dashboard' })).toHaveAttribute('href', '/w/priya-raman')
+    expect(screen.getByText('You can connect an agent later from Profile, under Agent config.')).toBeInTheDocument()
   })
 })
 
@@ -196,10 +208,10 @@ describe('ConnectAgentCard', () => {
   it('invites a person without a connected agent to set one up, and can be dismissed', async () => {
     stubState(false)
     const user = userEvent.setup()
-    show(<ConnectAgentCard />)
+    show(<ConnectAgentCard slug="priya-raman" />)
 
     const card = await screen.findByTestId('connect-agent-card')
-    expect(within(card).getByRole('link', { name: 'Connect an agent' })).toHaveAttribute('href', '/onboarding')
+    expect(within(card).getByRole('link', { name: 'Connect an agent' })).toHaveAttribute('href', '/w/priya-raman/settings/profile#agent-config')
     await user.click(within(card).getByRole('button', { name: 'Not now' }))
     expect(screen.queryByTestId('connect-agent-card')).not.toBeInTheDocument()
     expect(window.localStorage.getItem('velvet:agent-card-dismissed')).toBe('1')
@@ -207,7 +219,7 @@ describe('ConnectAgentCard', () => {
 
   it('stays hidden once an agent has connected', async () => {
     stubState(true)
-    const client = show(<ConnectAgentCard />)
+    const client = show(<ConnectAgentCard slug="priya-raman" />)
     await waitFor(() => expect(client.getQueryData(['onboarding'])).toBeDefined())
     expect(screen.queryByTestId('connect-agent-card')).not.toBeInTheDocument()
   })

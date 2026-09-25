@@ -107,7 +107,7 @@ export function Dashboard({ slug }: { slug: string }) {
         ) : undefined}
       />
 
-      <ConnectAgentCard />
+      <ConnectAgentCard slug={slug} />
 
       {canWrite && creatingIssue ? (
         <section className="ui-surface mb-6 p-4" aria-labelledby="dashboard-new-issue-heading">
