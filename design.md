@@ -187,6 +187,10 @@ It shows whether any agent key has been used, the organisation's MCP URL, and on
 A key is never shown twice, so setting up again always makes a new key, which is also listed under API tokens.
 Viewers see a note that their agent can read but not write.
 
+Below the key setup, Agent config offers repository instructions: a project picker, or an inline form to create the first project, and a tab list of the generated block for `AGENTS.md`, `CLAUDE.md`, and a Cursor rule.
+The block names the organisation and project and never contains a key, and the section says it is safe to commit.
+Onboarding shows the same repository instructions only after the agent connects, so each moment asks for one thing.
+
 Administration uses the wider workspace content width for organisation settings, invitations, member rows, GitHub connections, and the separated danger section.
 
 Keep destructive settings visually and structurally separate from ordinary settings.

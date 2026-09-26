@@ -120,7 +120,11 @@ test('a person who skips the agent connects one later from Profile > Agent confi
 
   // A real agent call with that key flips the section to connected.
   const call = mcpAgent(page.request, url, token)
-  await call(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'e2e-agent', version: '1' } })
+  const init = await call(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'e2e-agent', version: '1' } })
+  // What the agent is told on connect names this organisation, and there are
+  // no projects yet, so it is told to ask rather than invent one.
+  expect(init.result.instructions).toContain(`(${slug})`)
+  expect(init.result.instructions).toContain('has no projects yet')
   const where = await call(2, 'tools/call', { name: 'velvet_where_am_i', arguments: {} })
   expect(where.result.content[0].text).toContain(`(${slug})`)
   await expect(connection).toHaveAttribute('data-connected', 'true', { timeout: 15000 })
@@ -128,6 +132,30 @@ test('a person who skips the agent connects one later from Profile > Agent confi
   await section.getByRole('button', { name: 'Done' }).click()
   await expect(section.getByTestId('agent-token')).toHaveCount(0)
   await expect(section.getByRole('button', { name: 'Set up another agent' })).toBeVisible()
+
+  // Tell the agent which project a repository is: create the first project in
+  // place, then take the generated block for the repository's AGENTS.md.
+  const repo = section.getByTestId('repo-instructions-section')
+  await expect(repo.getByText('No projects yet')).toBeVisible()
+  await repo.getByRole('button', { name: 'Create a project' }).click()
+  await repo.getByLabel('Project name').fill('Skip Site')
+  await expect(repo.getByLabel('Project key')).toHaveValue('skip-site')
+  await repo.getByRole('button', { name: 'Create project' }).click()
+  await expect(repo.getByLabel('Project for this repository')).toHaveValue('skip-site')
+  const block = (await repo.getByTestId('repo-instructions').textContent())!
+  expect(block).toContain('## Velvet work log')
+  expect(block).toContain(`Velvet project \`skip-site\` (Skip Site) in the Skip ${suffix[0]!.toUpperCase()}${suffix.slice(1)} organisation (\`${slug}\`)`)
+  expect(block).toContain('`velvet_log_work` with `project: "skip-site"`')
+  expect(block).not.toContain(token)
+
+  // An agent following the block logs to the project, and a new connection
+  // is now told about the project too.
+  const logged = await call(3, 'tools/call', { name: 'velvet_log_work', arguments: { project: 'skip-site', body: 'Set up Velvet for this repository.' } })
+  expect(logged.result.isError ?? false).toBe(false)
+  expect(logged.result.content[0].text).toContain('Logged work to project skip-site')
+  const again = await call(4, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'e2e-agent', version: '1' } })
+  expect(again.result.instructions).toContain('skip-site (Skip Site)')
+  expect(sql(`SELECT c.source FROM comment c JOIN project p ON p.id = c.target_id WHERE p.key = 'skip-site' AND c.body = 'Set up Velvet for this repository.'`)).toBe('agent')
 
   // With an agent connected, the dashboard prompt is gone.
   await page.goto(`/w/${slug}`)
@@ -177,6 +205,15 @@ test('onboarding and the hosted MCP stay usable on a phone', async ({ page }) =>
   await expect(page.getByTestId('agent-token')).toBeVisible()
   for (const tab of ['Claude Code', 'Codex', 'Cursor', 'VS Code', 'Other']) {
     await page.getByRole('tab', { name: tab }).click()
+    expect(await overflow(), `${tab} widened the profile page`).toBeLessThanOrEqual(0)
+  }
+  const repo = page.getByTestId('repo-instructions-section')
+  await repo.getByRole('button', { name: 'Create a project' }).click()
+  await repo.getByLabel('Project name').fill('A phone project with a rather long descriptive name')
+  await repo.getByRole('button', { name: 'Create project' }).click()
+  await expect(repo.getByTestId('repo-instructions')).toBeVisible()
+  for (const tab of ['AGENTS.md', 'CLAUDE.md', 'Cursor rule']) {
+    await repo.getByRole('tab', { name: tab }).click()
     expect(await overflow(), `${tab} widened the profile page`).toBeLessThanOrEqual(0)
   }
   await page.screenshot({ path: 'test-results/profile-agent-config-390.png', fullPage: true })

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Button } from '../../ui/Button'
 import { apiTokensQuery, type ApiToken } from '../profile/apiTokens'
-import { agentSnippets, type AgentId } from './agentSnippets'
+import { agentSnippets } from './agentSnippets'
 import { onboardingQuery } from './onboardingQuery'
 
 /**
@@ -12,50 +12,85 @@ import { onboardingQuery } from './onboardingQuery'
  * status that confirms when that key first reaches Velvet.
  */
 
-export function AgentTabs({ baseUrl, slug, token }: { baseUrl: string; slug: string; token: string }) {
+interface CopyTab {
+  id: string
+  label: string
+  where: string
+  code: string
+  after?: string
+}
+
+/** A tab list of copyable snippets, with arrow-key movement between tabs. */
+function CopyTabs({ tabs, label, copyLabel, testId }: {
+  tabs: CopyTab[]
+  label: string
+  copyLabel: (tab: CopyTab) => string
+  testId: string
+}) {
   const tabsId = useId()
-  const snippets = agentSnippets(baseUrl, slug, token)
-  const [agent, setAgent] = useState<AgentId>('claude')
-  const current = snippets.find((snippet) => snippet.id === agent) ?? snippets[0]!
+  const [selected, setSelected] = useState(tabs[0]!.id)
+  const current = tabs.find((tab) => tab.id === selected) ?? tabs[0]!
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
 
   const moveTab = (offset: number) => {
-    const index = snippets.findIndex((snippet) => snippet.id === agent)
-    const next = snippets[(index + offset + snippets.length) % snippets.length]!
-    setAgent(next.id)
+    const index = tabs.findIndex((tab) => tab.id === current.id)
+    const next = tabs[(index + offset + tabs.length) % tabs.length]!
+    setSelected(next.id)
     tabRefs.current[next.id]?.focus()
   }
 
   return (
     <div>
-      <div role="tablist" aria-label="Choose your agent" className="flex flex-wrap gap-1 border-b border-grey-200">
-        {snippets.map((snippet) => (
+      <div role="tablist" aria-label={label} className="flex flex-wrap gap-1 border-b border-grey-200">
+        {tabs.map((tab) => (
           <button
-            key={snippet.id}
-            ref={(element) => { tabRefs.current[snippet.id] = element }}
+            key={tab.id}
+            ref={(element) => { tabRefs.current[tab.id] = element }}
             type="button"
             role="tab"
-            id={`${tabsId}-${snippet.id}`}
-            aria-selected={snippet.id === agent}
+            id={`${tabsId}-${tab.id}`}
+            aria-selected={tab.id === current.id}
             aria-controls={`${tabsId}-panel`}
-            tabIndex={snippet.id === agent ? 0 : -1}
-            onClick={() => setAgent(snippet.id)}
+            tabIndex={tab.id === current.id ? 0 : -1}
+            onClick={() => setSelected(tab.id)}
             onKeyDown={(event) => {
               if (event.key === 'ArrowRight') { event.preventDefault(); moveTab(1) }
               if (event.key === 'ArrowLeft') { event.preventDefault(); moveTab(-1) }
             }}
-            className={`-mb-px min-h-11 border-b-2 px-3 text-sm ${snippet.id === agent ? 'border-ink font-medium text-ink' : 'border-transparent text-grey-700 hover:text-ink'}`}
+            className={`-mb-px min-h-11 border-b-2 px-3 text-sm ${tab.id === current.id ? 'border-ink font-medium text-ink' : 'border-transparent text-grey-700 hover:text-ink'}`}
           >
-            {snippet.label}
+            {tab.label}
           </button>
         ))}
       </div>
       <div id={`${tabsId}-panel`} role="tabpanel" aria-labelledby={`${tabsId}-${current.id}`} className="space-y-3 pt-4">
-        <p className="text-sm text-grey-700">{current.where}</p>
-        <CopyField label={`${current.label} setup`} value={current.code} multiline testId="agent-snippet" />
+        <p className="text-sm text-grey-700 [overflow-wrap:anywhere]">{current.where}</p>
+        <CopyField label={copyLabel(current)} value={current.code} multiline testId={testId} />
         {current.after ? <p className="text-xs text-grey-500 [overflow-wrap:anywhere]">{current.after}</p> : null}
       </div>
     </div>
+  )
+}
+
+export function AgentTabs({ baseUrl, slug, token }: { baseUrl: string; slug: string; token: string }) {
+  return (
+    <CopyTabs
+      tabs={agentSnippets(baseUrl, slug, token)}
+      label="Choose your agent"
+      copyLabel={(tab) => `${tab.label} setup`}
+      testId="agent-snippet"
+    />
+  )
+}
+
+export function RepoFileTabs({ files }: { files: { id: string; label: string; where: string; content: string }[] }) {
+  return (
+    <CopyTabs
+      tabs={files.map((file) => ({ id: file.id, label: file.label, where: file.where, code: file.content }))}
+      label="Choose the instructions file"
+      copyLabel={(tab) => `${tab.label} instructions`}
+      testId="repo-instructions"
+    />
   )
 }
 

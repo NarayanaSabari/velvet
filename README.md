@@ -70,6 +70,10 @@ A new account is walked through this after sign-in at `/onboarding`: an organisa
 The screen confirms the connection when the agent first calls Velvet.
 Anyone who skips that step, or wants to connect another agent, finds the same setup in Profile under Agent config, which creates a fresh key per agent.
 
+When an agent connects, the server's instructions, which agents add to their system prompt, name the organisation, list its active projects, and say how to choose where each entry goes: the ticket in the branch first, then the repository's project, then asking rather than guessing.
+A hosted server cannot see the agent's checkout, so a repository names its own project in a "Velvet work log" section of `AGENTS.md`, `CLAUDE.md`, or a Cursor rule.
+Agent config generates that section for any project, and it contains no key, so it is committed and shared with the team.
+
 The hosted server is stateless and dispatches every tool through the same REST handlers a direct request reaches, so membership, role, validation, and `source=agent` attribution are unchanged.
 It accepts API tokens only; a browser session cookie is refused.
 Because the server cannot see a local checkout, `velvet_current_ticket` takes the branch name as an argument.

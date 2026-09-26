@@ -16,6 +16,7 @@ import { apiTokensQuery, createAgentToken, type CreatedApiToken } from '../profi
 import { AgentConnection, AgentTabs, CopyField } from './AgentSetup'
 import { mcpUrl } from './agentSnippets'
 import { onboardingQuery, type OnboardingPayload } from './onboardingQuery'
+import { RepoInstructions } from './RepoInstructions'
 
 const STEPS = ['Organisation', 'API key', 'Connect agent'] as const
 const inputClass = 'mt-1 block min-h-12 w-full rounded-[var(--radius-control)] border border-grey-300 bg-paper px-3 py-2'
@@ -302,9 +303,16 @@ function ConnectStep({ baseUrl, workspace, token }: { baseUrl: string; workspace
         tokenId={token.id}
         workspaceName={workspace.workspace_name}
         connectedAction={
-          <NavLink to={`/w/${workspace.workspace_slug}`} className={buttonClassName('primary', 'inline-flex min-h-12 items-center px-4 no-underline')}>
-            Go to your dashboard
-          </NavLink>
+          <>
+            {/* Once connected, the last piece is telling the agent which
+                project a repository is, so its work lands in the right place. */}
+            <div className="border-t border-grey-200 pt-5">
+              <RepoInstructions workspace={workspace} />
+            </div>
+            <NavLink to={`/w/${workspace.workspace_slug}`} className={buttonClassName('primary', 'inline-flex min-h-12 items-center px-4 no-underline')}>
+              Go to your dashboard
+            </NavLink>
+          </>
         }
       />
     </section>
