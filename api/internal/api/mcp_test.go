@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -231,4 +232,61 @@ func TestHostedMCPMarksTheAgentConnected(t *testing.T) {
 	state, err = f.Store.Onboarding(t.Context(), f.User.ID)
 	require.NoError(t, err)
 	require.True(t, state.AgentConnected)
+}
+
+// What an agent is told on connect becomes part of its system prompt, so it
+// names this organisation and its projects, and how to choose between them.
+func TestHostedMCPInstructionsNameTheOrganisationAndProjects(t *testing.T) {
+	f := testutil.NewFixture(t)
+	for _, project := range []map[string]any{
+		{"key": "velvet", "name": "Velvet app"},
+		{"key": "billing", "name": "Billing"},
+		{"key": "old-site", "name": "Old site"},
+	} {
+		rec := f.Do(http.MethodPost, "/api/v1/w/lab/projects", project)
+		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	}
+	rec := f.Do(http.MethodPatch, "/api/v1/w/lab/projects/old-site", map[string]any{"status": "archived"})
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	session := connectMCP(t, f, f.Slug, f.AgentToken("instructions agent"))
+	instructions := session.InitializeResult().Instructions
+
+	require.Contains(t, instructions, "("+f.Slug+")")
+	require.Contains(t, instructions, "velvet_log_work")
+	require.Contains(t, instructions, "velvet_current_ticket")
+	require.Contains(t, instructions, `"Velvet work log" section`)
+	require.Contains(t, instructions, "velvet (Velvet app)")
+	require.Contains(t, instructions, "billing (Billing)")
+	require.NotContains(t, instructions, "old-site", "archived projects are not offered")
+	require.Contains(t, instructions, "never invent time spent")
+}
+
+func TestHostedMCPInstructionsWithoutProjectsOrWriteAccess(t *testing.T) {
+	f := testutil.NewFixture(t)
+	session := connectMCP(t, f, f.Slug, f.AgentToken("empty agent"))
+	require.Contains(t, session.InitializeResult().Instructions, "has no projects yet")
+
+	_, err := f.Pool.Exec(t.Context(), `UPDATE membership SET role='viewer' WHERE user_id=$1`, f.User.ID)
+	require.NoError(t, err)
+	session = connectMCP(t, f, f.Slug, f.AgentToken("viewer instructions agent"))
+	instructions := session.InitializeResult().Instructions
+	require.Contains(t, instructions, "viewer")
+	require.Contains(t, instructions, "cannot write")
+	require.NotContains(t, instructions, "After each meaningful unit of work")
+}
+
+// A large organisation cannot flood an agent's context with its project list.
+func TestHostedMCPInstructionsCapTheProjectList(t *testing.T) {
+	f := testutil.NewFixture(t)
+	for i := range 30 {
+		rec := f.Do(http.MethodPost, "/api/v1/w/lab/projects",
+			map[string]any{"key": fmt.Sprintf("p%02d", i), "name": fmt.Sprintf("Project %02d", i)})
+		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	}
+	session := connectMCP(t, f, f.Slug, f.AgentToken("busy agent"))
+	instructions := session.InitializeResult().Instructions
+	require.Contains(t, instructions, "p00 (Project 00)")
+	require.NotContains(t, instructions, "p29 (Project 29)")
+	require.Contains(t, instructions, "and 5 more from velvet_list_projects")
 }

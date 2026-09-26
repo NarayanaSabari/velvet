@@ -52,6 +52,9 @@ function fakeServer() {
     if (url === '/api/v1/me/tokens') {
       return response({ tokens: tokens.map((token) => ({ ...token, last_used_at: connected ? '2026-09-25T07:01:00Z' : null })) })
     }
+    if (url === '/api/v1/w/priya-raman/projects') {
+      return response({ projects: [{ id: 'p1', key: 'priya-site', name: 'Priya site', status: 'active' }] })
+    }
     return response({ error: { code: 'not_found', message: `unexpected ${method} ${url}` } }, 404)
   })
   return { fetchMock, connect: () => { connected = true } }
@@ -115,6 +118,8 @@ describe('Onboarding', () => {
     expect(screen.getByRole('tab', { name: 'Claude Code' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('agent-snippet')).toHaveTextContent('claude mcp add --transport http')
     expect(screen.getByTestId('agent-connection')).toHaveAttribute('data-connected', 'false')
+    // The repository step waits until the agent works, to keep one thing at a time.
+    expect(screen.queryByTestId('repo-instructions-section')).not.toBeInTheDocument()
     expect(server.fetchMock).toHaveBeenCalledWith('/api/v1/me/tokens',
       expect.objectContaining({ method: 'POST', body: expect.stringMatching(/"name":"Coding agent \d{4}-\d{2}-\d{2} \d{2}:\d{2}"/) }))
 
@@ -127,6 +132,7 @@ describe('Onboarding', () => {
     server.connect()
     await waitFor(() => expect(screen.getByTestId('agent-connection')).toHaveAttribute('data-connected', 'true'), { timeout: 5000 })
     expect(screen.getByText('Your agent is connected.')).toBeInTheDocument()
+    expect(await screen.findByTestId('repo-instructions')).toHaveTextContent('project: "priya-site"')
     expect(screen.getAllByRole('link', { name: 'Go to your dashboard' })[0]).toHaveAttribute('href', '/w/priya-raman')
   }, 10000)
 

@@ -40,6 +40,14 @@ var mcpNoteKinds = []string{"progress", "decision", "blocker", "note"}
 
 type mcpRequestKey struct{}
 
+// mcpInstructionProjects caps how many projects the connect-time instructions
+// list, so a large organisation cannot flood the agent's context.
+const mcpInstructionProjects = 25
+
+const mcpGenericInstructions = "Velvet is the person's work log. After each meaningful unit of work, record a short " +
+	"factual entry with velvet_log_work. Never change a ticket status unless the person explicitly " +
+	"asks, and never invent time spent."
+
 // registerMCPRoutes mounts the endpoint. The api handler is the REST handler
 // behind the browser guard, so in-process calls get the same checks as an
 // external request, and it does not contain this route, so a tool cannot call
@@ -49,9 +57,26 @@ func (s *Server) registerMCPRoutes(mux *http.ServeMux, api http.Handler) {
 	// Stateless mode keeps no per-caller session in memory: each POST carries
 	// its own bearer token, and the organisation is in the URL.
 	server := mcp.NewServer(&mcp.Implementation{Name: "velvet", Title: "Velvet", Version: "1.0.0"}, &mcp.ServerOptions{
-		Instructions: "Velvet is the person's work log. After each meaningful unit of work, record a short " +
-			"factual entry with velvet_log_work. Never change a ticket status unless the person explicitly " +
-			"asks, and never invent time spent.",
+		Instructions: mcpGenericInstructions,
+	})
+	// The instructions an agent receives on connect become part of its system
+	// prompt, so they name the organisation and its projects rather than
+	// leaving the agent to discover them. They are built per request because
+	// one server instance serves every organisation.
+	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			result, err := next(ctx, method, req)
+			if err != nil {
+				return result, err
+			}
+			switch r := result.(type) {
+			case *mcp.InitializeResult:
+				r.Instructions = s.mcpInstructions(ctx)
+			case *mcp.DiscoverResult:
+				r.Instructions = s.mcpInstructions(ctx)
+			}
+			return result, nil
+		}
 	})
 	registerMCPTools(server, s.cfg.BaseURL, api)
 
@@ -75,6 +100,65 @@ func (s *Server) registerMCPRoutes(mux *http.ServeMux, api http.Handler) {
 	for _, method := range []string{http.MethodPost, http.MethodGet, http.MethodDelete} {
 		mux.Handle(method+" /api/v1/w/{slug}/mcp", guarded)
 	}
+}
+
+// mcpInstructions tells a connecting agent which organisation it writes to
+// and how to choose where each entry goes. A hosted server cannot see the
+// agent's checkout, so the repository itself names its project, in a
+// "Velvet work log" section of AGENTS.md or CLAUDE.md that Profile generates.
+// Any failure falls back to the generic text rather than failing the connect.
+func (s *Server) mcpInstructions(ctx context.Context) string {
+	ws, ok := CurrentWorkspace(ctx)
+	if !ok {
+		return mcpGenericInstructions
+	}
+	projects, err := s.store.ListProjects(ctx, ws.WorkspaceID, false)
+	if err != nil {
+		return mcpGenericInstructions
+	}
+	who := "the person"
+	if user, ok := CurrentUser(ctx); ok {
+		who = mcpLine(user.Name, mcpLine(user.Email, who))
+	}
+	return buildMCPInstructions(ws, who, projects)
+}
+
+func buildMCPInstructions(ws store.Membership, who string, projects []store.Project) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Velvet is %s's work log. This connection writes to the %s organisation (%s), whose ticket keys look like %s-42.\n\n",
+		who, mcpLine(ws.Name, ws.Slug), ws.Slug, ws.IssuePrefix)
+
+	if ws.Role == "viewer" {
+		b.WriteString("This person is a viewer here, so the tools can read tickets, projects, and the work log but cannot write. " +
+			"Do not attempt to log work or change tickets; tell the person if they ask for it.\n")
+		return b.String()
+	}
+
+	b.WriteString("After each meaningful unit of work, record a factual 1-3 sentence entry with velvet_log_work. " +
+		"Never skip logging because no ticket exists.\n\n")
+	b.WriteString("To choose where an entry goes:\n")
+	b.WriteString("1. If the current git branch names a ticket key, pass the branch to velvet_current_ticket and log against that ticket.\n")
+	b.WriteString("2. Otherwise log against the repository's project, which the repository's AGENTS.md or CLAUDE.md names in a \"Velvet work log\" section.\n")
+	if len(projects) == 0 {
+		b.WriteString("3. This organisation has no projects yet. Without a ticket, ask the person to create a project in Velvet rather than inventing a key.\n")
+	} else {
+		listed := projects
+		if len(listed) > mcpInstructionProjects {
+			listed = listed[:mcpInstructionProjects]
+		}
+		names := make([]string, 0, len(listed))
+		for _, project := range listed {
+			names = append(names, fmt.Sprintf("%s (%s)", project.Key, mcpLine(project.Name, project.Key)))
+		}
+		fmt.Fprintf(&b, "3. If the repository names none, choose the project that matches the work from: %s", strings.Join(names, ", "))
+		if extra := len(projects) - len(listed); extra > 0 {
+			fmt.Fprintf(&b, ", and %d more from velvet_list_projects", extra)
+		}
+		b.WriteString(". If none clearly matches, ask the person once rather than guessing.\n")
+	}
+	b.WriteString("\nIf a repository's Velvet section names a different organisation, tell the person instead of logging here. " +
+		"Never change a ticket status unless the person explicitly asks, and never invent time spent.")
+	return b.String()
 }
 
 // mcpCall is what one tool invocation needs: the caller's credential and

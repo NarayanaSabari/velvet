@@ -8,6 +8,7 @@ import { RelativeTime } from '../../ui/RelativeTime'
 import { AgentConnection, AgentTabs, CopyField } from '../onboarding/AgentSetup'
 import { mcpUrl } from '../onboarding/agentSnippets'
 import { onboardingQuery } from '../onboarding/onboardingQuery'
+import { RepoInstructions } from '../onboarding/RepoInstructions'
 import { apiTokensQuery, createAgentToken, type ApiToken, type CreatedApiToken } from './apiTokens'
 
 /** The anchor the dashboard prompt and command palette link to. */
@@ -118,6 +119,10 @@ export function AgentConfig({ workspace }: { workspace: Membership }) {
             <AgentConnection tokenId={token.id} workspaceName={workspace.workspace_name} />
           </div>
         )}
+
+        <div className="border-t border-grey-200 pt-4">
+          <RepoInstructions workspace={workspace} />
+        </div>
       </div>
     </section>
   )

@@ -34,8 +34,11 @@ type Token = {
   last_used_at: string | null
 }
 
-function tokenFetch(initialTokens: Token[], options: { role?: string; createFails?: boolean } = {}) {
+type FakeProject = { id: string; key: string; name: string; status: 'active' }
+
+function tokenFetch(initialTokens: Token[], options: { role?: string; createFails?: boolean; projects?: FakeProject[] } = {}) {
   let tokens = initialTokens.map((token) => ({ ...token }))
+  let projects = [...(options.projects ?? [])]
   const me = options.role
     ? { ...session, memberships: session.memberships.map((member) => ({ ...member, role: options.role })) }
     : session
@@ -43,6 +46,13 @@ function tokenFetch(initialTokens: Token[], options: { role?: string; createFail
     const url = String(input)
     if (url === '/api/v1/me') return response(me)
     if (url === '/api/v1/me/onboarding') return response(setupState)
+    if (url === '/api/v1/w/lab/projects' && (!init?.method || init.method === 'GET')) return response({ projects })
+    if (url === '/api/v1/w/lab/projects' && init?.method === 'POST') {
+      const body = JSON.parse(String(init.body)) as { key: string; name: string }
+      const project = { id: `p-${body.key}`, key: body.key, name: body.name, status: 'active' as const }
+      projects = [...projects, project]
+      return response(project, 201)
+    }
     if (url === '/api/v1/me/tokens' && (!init?.method || init.method === 'GET')) return response({ tokens })
     if (url === '/api/v1/me/tokens' && init?.method === 'POST') {
       if (options.createFails) return response({ error: { code: 'invalid', message: 'you have reached the 20-token limit' } }, 422)
@@ -260,8 +270,72 @@ describe('Profile agent config', () => {
     renderProfile()
     await user.click(await screen.findByRole('button', { name: 'Set up an agent' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('you have reached the 20-token limit')
+    expect(await screen.findByText('you have reached the 20-token limit')).toHaveAttribute('role', 'alert')
     expect(screen.getByRole('button', { name: 'Set up an agent' })).toBeEnabled()
     expect(screen.queryByTestId('agent-token')).not.toBeInTheDocument()
+  })
+})
+
+describe('Profile repository instructions', () => {
+  const projects: FakeProject[] = [
+    { id: 'p1', key: 'velvet', name: 'Velvet app', status: 'active' },
+    { id: 'p2', key: 'billing', name: 'Billing', status: 'active' },
+  ]
+
+  it('generates a committable block naming the chosen project, for each agent file', async () => {
+    vi.stubGlobal('fetch', tokenFetch([], { projects }))
+    const user = userEvent.setup()
+
+    renderProfile()
+
+    const section = await screen.findByTestId('repo-instructions-section')
+    const picker = await within(section).findByLabelText('Project for this repository')
+    expect(picker).toHaveValue('velvet')
+    const block = within(section).getByTestId('repo-instructions')
+    expect(block).toHaveTextContent('## Velvet work log')
+    expect(block).toHaveTextContent('Velvet project `velvet` (Velvet app) in the Lab organisation (`lab`)')
+    expect(block).toHaveTextContent('project: "velvet"')
+    expect(block).toHaveTextContent('LAB-42')
+    expect(block.textContent).not.toMatch(/velvet_[0-9a-f]{6,}|Bearer/)
+
+    await user.selectOptions(picker, 'billing')
+    expect(within(section).getByTestId('repo-instructions')).toHaveTextContent('project: "billing"')
+
+    await user.click(within(section).getByRole('tab', { name: 'Cursor rule' }))
+    expect(within(section).getByTestId('repo-instructions').textContent).toMatch(/^---\ndescription: Log work to Velvet\nalwaysApply: true\n---/)
+    expect(within(section).getByText(/\.cursor\/rules\/velvet\.mdc/)).toBeInTheDocument()
+    await user.click(within(section).getByRole('tab', { name: 'CLAUDE.md' }))
+    expect(within(section).getByText(/a CLAUDE.md containing @AGENTS.md is enough/)).toBeInTheDocument()
+  })
+
+  it('creates the first project in place and uses it straight away', async () => {
+    const fetch = tokenFetch([])
+    vi.stubGlobal('fetch', fetch)
+    const user = userEvent.setup()
+
+    renderProfile()
+
+    const section = await screen.findByTestId('repo-instructions-section')
+    expect(await within(section).findByText('No projects yet')).toBeInTheDocument()
+    await user.click(within(section).getByRole('button', { name: 'Create a project' }))
+    await user.type(within(section).getByLabelText('Project name'), 'Mobile App')
+    expect(within(section).getByLabelText('Project key')).toHaveValue('mobile-app')
+    await user.click(within(section).getByRole('button', { name: 'Create project' }))
+
+    expect(fetch).toHaveBeenCalledWith('/api/v1/w/lab/projects', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ name: 'Mobile App', key: 'mobile-app' }),
+    }))
+    expect(await within(section).findByTestId('repo-instructions')).toHaveTextContent('project: "mobile-app"')
+    expect(within(section).getByLabelText('Project for this repository')).toHaveValue('mobile-app')
+  })
+
+  it('does not offer a viewer a project they cannot create', async () => {
+    vi.stubGlobal('fetch', tokenFetch([], { role: 'viewer' }))
+
+    renderProfile()
+
+    const section = await screen.findByTestId('repo-instructions-section')
+    expect(await within(section).findByText(/Ask an admin or member of Lab to create one/)).toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: 'Create a project' })).not.toBeInTheDocument()
   })
 })
