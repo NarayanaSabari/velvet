@@ -10,19 +10,9 @@ import { EmptyState } from '../../ui/EmptyState'
 import { PageHeader, SectionHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
-
-interface ApiToken {
-  id: string
-  name: string
-  created_at: string
-  last_used_at: string | null
-}
-
-interface CreatedApiToken {
-  id: string
-  name: string
-  token: string
-}
+import { onboardingQuery } from '../onboarding/onboardingQuery'
+import { AgentConfig } from './AgentConfig'
+import { apiTokensQuery, type CreatedApiToken } from './apiTokens'
 
 export function ProfileRoute() {
   const { slug } = useParams({ from: '/w/$slug/settings/profile' })
@@ -77,6 +67,7 @@ export function Profile({ slug }: { slug: string }) {
     }}>Link GitHub profile</a>}
     {unlink.error ? <p role="alert" className="text-blocked">{unlink.error.message}</p> : null}
     </section>
+    {session.workspace ? <AgentConfig workspace={session.workspace} /> : null}
     <ApiTokens />
   </div>
 }
@@ -120,10 +111,7 @@ export function ApiTokens() {
   const [createdToken, setCreatedToken] = useState<CreatedApiToken | null>(null)
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
-  const tokens = useQuery({
-    queryKey: ['api-tokens'],
-    queryFn: () => api.get<{ tokens: ApiToken[] }>('/me/tokens'),
-  })
+  const tokens = useQuery(apiTokensQuery)
   const create = useMutation({
     mutationFn: () => api.post<CreatedApiToken>('/me/tokens', { name: name.trim() }),
     onSuccess: async (token) => {
@@ -131,14 +119,16 @@ export function ApiTokens() {
       setCreatedToken(token)
       setCopied(false)
       setCopyError(null)
-      await client.invalidateQueries({ queryKey: ['api-tokens'] })
+      await client.invalidateQueries({ queryKey: apiTokensQuery.queryKey })
     },
   })
   const revoke = useMutation({
     mutationFn: (id: string) => api.del(`/me/tokens/${id}`),
     onSuccess: async () => {
       setConfirmingId(null)
-      await client.invalidateQueries({ queryKey: ['api-tokens'] })
+      await client.invalidateQueries({ queryKey: apiTokensQuery.queryKey })
+      // Revoking the last used key means no agent is connected any more.
+      await client.invalidateQueries({ queryKey: onboardingQuery.queryKey })
     },
   })
 

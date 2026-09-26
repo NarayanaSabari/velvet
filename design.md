@@ -101,7 +101,8 @@ Readable-measure caps apply only to prose and single inputs inside a page, never
 
 The issue detail rail is `lg:grid-cols-[minmax(0,1fr)_17rem]`, which gives the metadata rail 272px and a 32px `gap-8` at 1024px and above.
 
-The profile page fills the workspace width like its siblings, and only its API-token name field keeps a `max-w-2xl` (672px) measure.
+The profile page fills the workspace width like its siblings.
+Inside it, the API-token name field keeps a `max-w-2xl` (672px) measure, and the Agent config copy fields and setup tabs keep a `max-w-3xl` (768px) measure.
 
 Markdown content uses `max-w-[46rem]`, which is 736px, so long descriptions keep a readable line length inside a full-width page.
 
@@ -179,7 +180,12 @@ The issue status is an explicit user action, and linked pull requests are eviden
 
 Settings should use clear sections, visible labels, and row-based records rather than dashboard-style cards.
 
-Profile uses the full workspace width for identity, GitHub linking, and API-token rows, with the token name field kept to a readable width.
+Profile uses the full workspace width for identity, GitHub linking, Agent config, and API-token rows, with the token name field and agent setup kept to a readable width.
+
+Agent config sits between GitHub profile and API tokens, at the `#agent-config` anchor.
+It shows whether any agent key has been used, the organisation's MCP URL, and one primary action that creates a fresh key and reveals the same setup tabs and live connection status as onboarding.
+A key is never shown twice, so setting up again always makes a new key, which is also listed under API tokens.
+Viewers see a note that their agent can read but not write.
 
 Administration uses the wider workspace content width for organisation settings, invitations, member rows, GitHub connections, and the separated danger section.
 
@@ -199,7 +205,12 @@ Pending invitations appear above the create form, because joining an existing or
 
 The connect step shows the key once, the MCP URL, and a tab list of per-agent setups with arrow-key navigation, followed by a live status region that announces when the agent first connects.
 
-Every step offers a way to skip to the dashboard, where a dismissible connect card remains until an agent connects.
+Every step offers a way to skip to the dashboard, and says that Profile > Agent config is where to connect an agent later.
+
+The dashboard shows a dismissible connect card until an agent connects, and it links to Profile > Agent config rather than back to onboarding.
+The command palette also offers an Agent config command, so the section stays reachable after the card is dismissed.
+
+The connection status watches the key created in that setup, so a second agent is not reported as connected because an earlier one was.
 
 ## Components and interaction rules
 

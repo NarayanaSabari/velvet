@@ -301,6 +301,7 @@ export function CommandPalette({
         ? [{ id: 'admin', label: 'Administration', keywords: ['settings'], run: () => navigate(`${base}/admin`) }]
         : []),
       { id: 'profile', label: 'Profile', keywords: ['account', 'settings'], run: () => navigate(`${base}/settings/profile`) },
+      { id: 'agent-config', label: 'Agent config', keywords: ['connect', 'coding agent', 'mcp', 'claude', 'codex', 'cursor', 'api key'], run: () => navigate(`${base}/settings/profile#agent-config`) },
       ...(canWrite
         ? [{
             id: 'new-issue',

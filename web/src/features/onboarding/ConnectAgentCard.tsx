@@ -10,9 +10,10 @@ const DISMISS_KEY = 'velvet:agent-card-dismissed'
 /**
  * A quiet prompt on the dashboard for people who have not connected a coding
  * agent yet. It disappears for good once any agent reaches Velvet, and can be
- * dismissed on this device.
+ * dismissed on this device. It leads to Profile > Agent config, which stays
+ * available after the prompt is gone.
  */
-export function ConnectAgentCard() {
+export function ConnectAgentCard({ slug }: { slug: string }) {
   const [dismissed, setDismissed] = useState(() => {
     try {
       return window.localStorage.getItem(DISMISS_KEY) === '1'
@@ -39,7 +40,7 @@ export function ConnectAgentCard() {
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <NavLink to="/onboarding" className={buttonClassName('primary', 'inline-flex min-h-11 items-center px-4 no-underline')}>
+        <NavLink to={`/w/${slug}/settings/profile#agent-config`} className={buttonClassName('primary', 'inline-flex min-h-11 items-center px-4 no-underline')}>
           Connect an agent
         </NavLink>
         <button
