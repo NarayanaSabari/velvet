@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -58,6 +58,7 @@ function adminFetch() {
   let members = workspaceMembers.memberships.map((member) => ({ ...member }))
   let invites = [{ id: 'i1', workspace_id: 'w1', workspace_name: 'Lab', workspace_slug: 'lab', email: 'pending@example.com', role: 'viewer', expires_at: '2026-09-15T00:00:00Z' }]
   let organisationName = 'Lab'
+  let repoProject: string | null = null
   return vi.fn().mockImplementation((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
     if (url === '/api/v1/me') return response({
@@ -78,6 +79,14 @@ function adminFetch() {
     if (url === '/api/v1/w/lab/invites/i1' && init?.method === 'DELETE') { invites = []; return response(null, 204) }
     if (url === '/api/v1/w/lab/memberships/m2' && init?.method === 'DELETE') { members = members.filter((member) => member.id !== 'm2'); return response(null, 204) }
     if (url === '/api/v1/w/lab/github') return response({ installation: { id: 99, account_login: 'acme' }, status: 'error', error: 'verification_required' })
+    if (url === '/api/v1/w/lab/projects') return response({ projects: [
+      { id: 'p1', key: 'velvet', name: 'Velvet app', status: 'active' },
+      { id: 'p2', key: 'billing', name: 'Billing', status: 'active' },
+    ] })
+    if (url === '/api/v1/w/lab/repos/r1/project' && init?.method === 'PUT') {
+      repoProject = (JSON.parse(String(init.body)) as { project_id: string | null }).project_id
+      return response(null, 204)
+    }
     if (url === '/api/v1/w/lab/memberships' && (!init?.method || init.method === 'GET')) {
       return response({ memberships: members })
     }
@@ -93,6 +102,7 @@ function adminFetch() {
             name: 'widgets',
             default_branch: 'main',
             synced_at: null,
+            project_id: repoProject,
           },
         ],
       })
@@ -405,6 +415,105 @@ describe('Admin', () => {
     }))
     renderAdmin()
     expect(await screen.findByRole('link', { name: 'acme/newly-synced' }, { timeout: 4000 })).toBeInTheDocument()
+  })
+
+  it('offers section links with live counts', async () => {
+    vi.stubGlobal('fetch', adminFetch())
+    renderAdmin()
+
+    const nav = await screen.findByRole('navigation', { name: 'Administration sections' })
+    await waitFor(() => expect(within(nav).getByRole('link', { name: /Members\s*2/ })).toHaveAttribute('href', '#members'))
+    expect(within(nav).getByRole('link', { name: /Invitations\s*1/ })).toHaveAttribute('href', '#invitations')
+    expect(within(nav).getByRole('link', { name: /Repositories\s*1/ })).toHaveAttribute('href', '#repositories')
+    expect(within(nav).getByRole('link', { name: 'Danger zone' })).toHaveAttribute('href', '#danger-zone')
+    for (const id of ['organisation', 'members', 'invitations', 'repositories', 'danger-zone']) {
+      expect(document.getElementById(id)).toBeInTheDocument()
+    }
+  })
+
+  it('shows who each member is, marks you, and explains the roles', async () => {
+    vi.stubGlobal('fetch', adminFetch())
+    const user = userEvent.setup()
+    renderAdmin()
+
+    const self = await screen.findByTestId('member-m1')
+    expect(within(self).getByText('You')).toBeInTheDocument()
+    expect(within(self).getByText('sabari@example.com · @sabari')).toBeInTheDocument()
+    expect(within(self).getByRole('button', { name: 'Leave organisation as Sabari' })).toHaveTextContent('Leave')
+    expect(screen.getByText('1 admin, 1 member')).toBeInTheDocument()
+
+    await user.click(screen.getByText('What each role can do'))
+    expect(screen.getByText(/Reads everything but cannot change it/)).toBeVisible()
+  })
+
+  it('stops the only admin from being removed before asking the server', async () => {
+    const fetch = adminFetch()
+    vi.stubGlobal('fetch', fetch)
+    renderAdmin()
+
+    const leave = await screen.findByRole('button', { name: 'Leave organisation as Sabari' })
+    expect(leave).toBeDisabled()
+    expect(screen.getByText(/The only admin\. Make someone else an admin/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove octocat@example.com' })).toBeEnabled()
+  })
+
+  it('confirms a sent invitation, shows expiry, and describes the chosen role', async () => {
+    vi.stubGlobal('fetch', adminFetch())
+    const user = userEvent.setup()
+    renderAdmin()
+
+    expect(await screen.findByText(/Member: Creates and updates tickets/)).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Invite role'), 'viewer')
+    expect(screen.getByText(/Viewer: Reads everything but cannot change it/)).toBeInTheDocument()
+    expect(screen.getByText(/^Expires/)).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Invite email'), 'new-user@example.com')
+    await user.click(screen.getByRole('button', { name: 'Send invite' }))
+    expect(await screen.findByText('Invitation sent to new-user@example.com.')).toHaveAttribute('role', 'status')
+  })
+
+  it('flags an invitation that expires within a day', async () => {
+    const fallback = adminFetch()
+    const soon = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString()
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((input: string, init?: RequestInit) => {
+      if (input === '/api/v1/w/lab/invites' && (!init?.method || init.method === 'GET')) {
+        return response({ invites: [{ id: 'i1', workspace_id: 'w1', workspace_name: 'Lab', workspace_slug: 'lab', email: 'pending@example.com', role: 'member', expires_at: soon }] })
+      }
+      return fallback(input, init)
+    }))
+    renderAdmin()
+    expect(await screen.findByText(/Expires soon/)).toHaveClass('text-stale')
+  })
+
+  it('maps a repository to a project so its untracked work has a home', async () => {
+    const fetch = adminFetch()
+    vi.stubGlobal('fetch', fetch)
+    const user = userEvent.setup()
+    renderAdmin()
+
+    const select = await screen.findByLabelText('Project for acme/widgets')
+    await waitFor(() => expect(select).toBeEnabled())
+    expect(select).toHaveValue('')
+    await user.selectOptions(select, 'p1')
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/v1/w/lab/repos/r1/project',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ project_id: 'p1' }) })))
+    await waitFor(() => expect(screen.getByLabelText('Project for acme/widgets')).toHaveValue('p1'))
+
+    await user.selectOptions(screen.getByLabelText('Project for acme/widgets'), '')
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/v1/w/lab/repos/r1/project',
+      expect.objectContaining({ method: 'PUT', body: JSON.stringify({ project_id: null }) })))
+  })
+
+  it('confirms a saved organisation name', async () => {
+    vi.stubGlobal('fetch', adminFetch())
+    const user = userEvent.setup()
+    renderAdmin()
+
+    const name = await screen.findByLabelText('Organisation name')
+    await user.clear(name)
+    await user.type(name, 'Velvet Otter')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('Name saved.')).toHaveAttribute('role', 'status')
   })
 
   it.each(['member', 'viewer'])('does not load admin resources for a %s', async (role) => {

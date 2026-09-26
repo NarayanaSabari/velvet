@@ -193,6 +193,22 @@ Onboarding shows the same repository instructions only after the agent connects,
 
 Administration uses the wider workspace content width for organisation settings, invitations, member rows, GitHub connections, and the separated danger section.
 
+At `lg` and above, a sticky section list in an `11rem` column links to Organisation, Members, Invitations, Repositories, and Danger zone, with live counts.
+Below `lg` the same links wrap above the sections.
+Each section uses `SectionHeader` with a count in its meta slot, a one-line explanation, and bordered row lists that match the member rows.
+
+Member rows show the avatar, name, email and GitHub login, and a "You" tag, sorted admins first.
+A "What each role can do" disclosure explains the roles, and the invite form describes the chosen role below the controls.
+The only admin cannot be removed or leave, and the row says why, so the server's last-admin refusal is never the first explanation.
+
+Invitations show when they expire, and one due within a day says "Expires soon" in the stale colour.
+Sending or resending an invitation, and saving the organisation name, confirm in a polite live region.
+
+Repositories start with a bordered status line that pairs a coloured dot with words and shows when repositories last synced.
+Each repository row has a project select, which is where untracked pull requests, commits, and agent entries from that repository are filed.
+
+The Danger zone is last, inside a `border-blocked` surface with its own label.
+
 Keep destructive settings visually and structurally separate from ordinary settings.
 
 Do not reveal a secret again after the one-time display that the existing API-token flow provides.
