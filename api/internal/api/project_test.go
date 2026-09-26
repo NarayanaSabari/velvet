@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -230,6 +231,17 @@ func TestMappingARepositoryToAProjectIsWorkspaceScopedAndLogged(t *testing.T) {
 	require.NoError(t, f.Pool.QueryRow(t.Context(),
 		`SELECT project_id::text FROM repo WHERE id = $1`, repo.ID).Scan(&mapped))
 	require.Equal(t, project.ID.String(), mapped)
+
+	// The repository list reports the mapping, so Administration can show it.
+	listed := f.Do(http.MethodGet, "/api/v1/w/lab/repos", nil)
+	require.Equal(t, http.StatusOK, listed.Code, listed.Body.String())
+	var repos struct {
+		Repos []store.Repo `json:"repos"`
+	}
+	require.NoError(t, json.Unmarshal(listed.Body.Bytes(), &repos))
+	require.Len(t, repos.Repos, 1)
+	require.NotNil(t, repos.Repos[0].ProjectID)
+	require.Equal(t, project.ID, *repos.Repos[0].ProjectID)
 
 	var verb string
 	require.NoError(t, f.Pool.QueryRow(t.Context(),

@@ -96,6 +96,9 @@ type Repo struct {
 	DefaultBranch  string     `json:"default_branch"`
 	SyncedAt       *time.Time `json:"synced_at"`
 	DisconnectedAt *time.Time `json:"disconnected_at"`
+	// ProjectID is the project this repository's work files under when a
+	// ticket names none, which is also how an agent there finds its project.
+	ProjectID      *uuid.UUID `json:"project_id"`
 	SyncGeneration int64      `json:"-"`
 }
 
@@ -382,12 +385,12 @@ func (s *Store) EvidenceForIssue(ctx context.Context, workspaceID, issueID uuid.
 }
 
 const repoCols = `id, workspace_id, installation_id, github_id, owner, name,
-	default_branch, synced_at, disconnected_at`
+	default_branch, synced_at, disconnected_at, project_id`
 
 func scanRepo(row pgx.Row) (Repo, error) {
 	var r Repo
 	err := row.Scan(&r.ID, &r.WorkspaceID, &r.InstallationID, &r.GitHubID,
-		&r.Owner, &r.Name, &r.DefaultBranch, &r.SyncedAt, &r.DisconnectedAt)
+		&r.Owner, &r.Name, &r.DefaultBranch, &r.SyncedAt, &r.DisconnectedAt, &r.ProjectID)
 	return r, mapErr(err)
 }
 

@@ -1,30 +1,61 @@
-import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 
 import { useSession } from '../auth/useSession'
-import { clearPrivateQueries, navigateTo, refreshPrivateQueries } from '../auth/sessionNavigation'
 import { api } from '../../lib/api'
-import type { Repo, Role, WorkspaceMembership } from '../../lib/types'
-import { userLabel } from '../../lib/userLabel'
-import { Button } from '../../ui/Button'
+import type { Invitation, Repo, WorkspaceMembership } from '../../lib/types'
 import { EmptyState } from '../../ui/EmptyState'
-import { PageHeader, SectionHeader } from '../../ui/PageHeader'
-import { ErrorState, LoadingState } from '../../ui/QueryState'
+import { PageHeader } from '../../ui/PageHeader'
+import { LoadingState } from '../../ui/QueryState'
 import { OrganisationPanel } from './OrganisationPanel'
 import { InvitePanel } from './InvitePanel'
+import { MembersPanel } from './MembersPanel'
 import { GitHubPanel } from './GitHubPanel'
 import { DangerPanel } from './DangerPanel'
 
-const ROLES: Role[] = ['admin', 'member', 'viewer']
+interface Section {
+  id: string
+  label: string
+  count?: number
+  danger?: boolean
+}
+
+/**
+ * Jump links with live counts, so an admin sees the shape of the organisation
+ * at a glance and reaches any section without scrolling past the others.
+ */
+function SectionNav({ sections }: { sections: Section[] }) {
+  return (
+    <nav aria-label="Administration sections" className="lg:sticky lg:top-4">
+      <ul className="flex flex-wrap gap-1 lg:flex-col lg:gap-0.5">
+        {sections.map((section) => (
+          <li key={section.id}>
+            <a
+              href={`#${section.id}`}
+              className={`flex min-h-10 items-center justify-between gap-3 rounded-[var(--radius-control)] px-2.5 text-sm no-underline hover:bg-grey-100 lg:min-h-8 ${section.danger ? 'text-blocked' : 'text-grey-700 hover:text-ink'}`}
+            >
+              <span>{section.label}</span>
+              {section.count !== undefined ? (
+                <span className="rounded-full bg-grey-100 px-1.5 text-xs tabular-nums text-grey-700">{section.count}</span>
+              ) : null}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}
 
 export function Admin({ slug }: { slug: string }) {
   const session = useSession(slug)
-  const client = useQueryClient()
-  const [removing, setRemoving] = useState<WorkspaceMembership | null>(null)
   const isAdmin = session.workspace?.role === 'admin'
   const members = useQuery({
     queryKey: ['memberships', slug],
     queryFn: () => api.get<{ memberships: WorkspaceMembership[] }>(`/w/${slug}/memberships`),
+    enabled: isAdmin,
+  })
+  const invites = useQuery({
+    queryKey: ['invites', slug],
+    queryFn: () => api.get<{ invites: Invitation[] }>(`/w/${slug}/invites`),
     enabled: isAdmin,
   })
   const repos = useQuery({
@@ -32,27 +63,17 @@ export function Admin({ slug }: { slug: string }) {
     queryFn: () => api.get<{ repos: Repo[] }>(`/w/${slug}/repos`),
     enabled: isAdmin,
   })
-  const updateRole = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: Role }) =>
-      api.patch<WorkspaceMembership>(`/w/${slug}/memberships/${id}`, { role }),
-    onSuccess: () => refreshPrivateQueries(client),
-    onError: () => client.invalidateQueries({ queryKey: ['memberships', slug] }),
-  })
-  const remove = useMutation({
-    mutationFn: (membership: WorkspaceMembership) => api.del(`/w/${slug}/memberships/${membership.id}`),
-    onSuccess: async (_, membership) => {
-      setRemoving(null)
-      if (membership.user.id === session.user?.id) {
-        await clearPrivateQueries(client)
-        navigateTo('/')
-      } else {
-        await refreshPrivateQueries(client)
-      }
-    },
-  })
 
   if (session.isLoading) return <LoadingState />
   if (!isAdmin) return <EmptyState title="Admin access required" message="Only organisation admins can manage members and repository connections." />
+
+  const sections: Section[] = [
+    { id: 'organisation', label: 'Organisation' },
+    { id: 'members', label: 'Members', count: members.data?.memberships.length },
+    { id: 'invitations', label: 'Invitations', count: invites.data?.invites.length },
+    { id: 'repositories', label: 'Repositories', count: repos.data?.repos.filter((repo) => !repo.disconnected_at).length },
+    { id: 'danger-zone', label: 'Danger zone', danger: true },
+  ]
 
   return (
     <div className="w-full min-w-0">
@@ -60,59 +81,18 @@ export function Admin({ slug }: { slug: string }) {
         title="Administration"
         description="Manage who can enter this organisation and which GitHub repositories supply work evidence."
       />
-      <OrganisationPanel slug={slug} workspace={session.workspace!} />
-      <InvitePanel slug={slug} />
-      <section className="mb-8" aria-labelledby="members-heading">
-        <SectionHeader id="members-heading" title="Members" />
-        {members.isPending ? <LoadingState label="Loading members…" /> : null}
-        {members.error ? (
-          <ErrorState
-            message="Could not load members."
-            onRetry={() => void members.refetch()}
-            retrying={members.isRefetching}
-          />
-        ) : null}
-        {updateRole.error ? <p role="alert" className="text-blocked">{updateRole.error.message}</p> : null}
-        {remove.error ? <p role="alert" className="text-blocked">{remove.error.message}</p> : null}
-        <ul className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
-          {members.data?.memberships.map((membership) => (
-            <li key={membership.id} className="border-t border-grey-200 px-3 py-3 first:border-t-0">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="break-words [overflow-wrap:anywhere]">
-                    {userLabel(membership.user)}
-                  </div>
-                  {membership.user.github_login && userLabel(membership.user) !== `@${membership.user.github_login}` ? (
-                    <div className="text-xs text-grey-500">@{membership.user.github_login}</div>
-                  ) : null}
-                </div>
-                <label>
-                  <span className="sr-only">Role for {userLabel(membership.user)}</span>
-                  <select
-                    className="ui-control px-2 py-1 text-sm"
-                    value={membership.role}
-                    disabled={updateRole.isPending || remove.isPending}
-                    onChange={(event) => updateRole.mutate({ id: membership.id, role: event.target.value as Role })}
-                  >
-                    {ROLES.map((role) => <option key={role} value={role}>{role.charAt(0).toUpperCase() + role.slice(1)}</option>)}
-                  </select>
-                </label>
-                <Button variant="danger" aria-label={`Remove ${userLabel(membership.user)}`} disabled={remove.isPending || updateRole.isPending} onClick={() => { remove.reset(); setRemoving(membership) }}>Remove</Button>
-              </div>
-              {removing?.id === membership.id ? <div className="mt-2 space-y-2 border-t border-grey-200 pt-2">
-                <p className="text-sm">Remove {userLabel(removing.user)} from this organisation?</p>
-                <p className="text-sm text-grey-500">They will lose access to this organisation. Their authored work remains.</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="danger" disabled={remove.isPending} onClick={() => remove.mutate(removing)}>{remove.isPending ? 'Removing…' : 'Confirm removal'}</Button>
-                  <Button disabled={remove.isPending} onClick={() => setRemoving(null)}>Cancel</Button>
-                </div>
-              </div> : null}
-            </li>
-          ))}
-        </ul>
-      </section>
-      <GitHubPanel slug={slug} repos={repos.data?.repos ?? []} isLoading={repos.isPending} hasError={Boolean(repos.error)} />
-      <DangerPanel slug={slug} />
+      <div className="grid gap-6 lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-8">
+        <div className="min-w-0">
+          <SectionNav sections={sections} />
+        </div>
+        <div className="min-w-0">
+          <OrganisationPanel slug={slug} workspace={session.workspace!} />
+          <MembersPanel slug={slug} selfId={session.user?.id} members={members} />
+          <InvitePanel slug={slug} invites={invites} />
+          <GitHubPanel slug={slug} repos={repos} />
+          <DangerPanel slug={slug} />
+        </div>
+      </div>
     </div>
   )
 }

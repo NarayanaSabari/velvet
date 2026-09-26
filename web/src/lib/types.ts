@@ -225,6 +225,8 @@ export interface Repo {
   default_branch: string
   synced_at: string | null
   disconnected_at: string | null
+  /** The project this repository's untracked work files under. */
+  project_id?: string | null
 }
 
 export interface Review {
