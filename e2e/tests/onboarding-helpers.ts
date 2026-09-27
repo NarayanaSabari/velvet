@@ -53,7 +53,7 @@ export async function createOrganisation(page: Page, slug: string, name: string)
 }
 
 export async function invite(page: Page, slug: string, email: string): Promise<string> {
-  await page.goto(`/w/${slug}/admin`)
+  await page.goto(`/w/${slug}/admin/invitations`)
   await page.getByLabel('Invite email', { exact: true }).fill(email)
   const since = new Date()
   await page.getByRole('button', { name: 'Send invite', exact: true }).click()

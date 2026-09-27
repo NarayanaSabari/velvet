@@ -18,13 +18,11 @@ export function DangerPanel({ slug, navigate = navigateTo }: { slug: string; nav
   })
   return (
     <section
-      id="danger-zone"
-      className="scroll-mt-4 space-y-3 rounded-[var(--radius-surface)] border border-blocked p-4"
+      className="space-y-3 rounded-[var(--radius-surface)] border border-blocked p-4"
       aria-labelledby="delete-heading"
     >
       <div>
-        <p className="text-xs font-medium text-blocked">Danger zone</p>
-        <h2 id="delete-heading" className="mt-1 text-sm font-medium text-ink">Delete organisation</h2>
+        <h2 id="delete-heading" className="text-sm font-medium text-ink">Delete organisation</h2>
         <p className="mt-1 max-w-[46rem] text-sm text-grey-700">
           Permanently delete this organisation, its issues, sprints, invitations and repository connections. This cannot be undone.
         </p>

@@ -111,6 +111,62 @@ it('marks only the current page in the workspace navigation on a nested route', 
   expect(within(navigation).getAllByRole('link').filter((link) => link.hasAttribute('aria-current'))).toHaveLength(1)
 })
 
+describe('Administration pages', () => {
+  const admin = { ...first, role: 'admin' }
+  function adminApi() {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => Promise.resolve({
+      ok: true,
+      status: 200,
+      json: async () => {
+        if (url === '/api/v1/me') return { user: { id: 'u1', email: 'person@example.com', github_login: null, name: 'Ada', avatar_url: '' }, memberships: [admin], last_workspace: admin }
+        if (url.endsWith('/memberships')) return { memberships: [{ id: 'm1', workspace_id: 'w1', role: 'admin', user: { id: 'u1', email: 'person@example.com', name: 'Ada', github_login: null, avatar_url: '' } }] }
+        if (url.endsWith('/invites')) return { invites: [] }
+        if (url.endsWith('/repos')) return { repos: [] }
+        if (url.endsWith('/projects')) return { projects: [] }
+        if (url.endsWith('/github')) return { installation: null, status: 'disconnected', error: null }
+        return {}
+      },
+    } as Response)))
+  }
+
+  it('opens the first page from the old /admin address', async () => {
+    adminApi()
+    const router = show('/w/first/admin')
+    expect(await screen.findByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument()
+    await waitFor(() => expect(router.state.location.pathname).toBe('/w/first/admin/general'))
+  })
+
+  it('gives each page its own address, heading, and title, and marks the current section', async () => {
+    adminApi()
+    const user = userEvent.setup()
+    const router = show('/w/first/admin/general')
+    const sections = await screen.findByRole('navigation', { name: 'Administration sections' })
+
+    await user.click(within(sections).getByRole('link', { name: /Members/ }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Members' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/w/first/admin/members')
+    expect(screen.queryByLabelText('Organisation name')).not.toBeInTheDocument()
+    await waitFor(() => expect(document.title).toBe('Members · Administration · Velvet'))
+    expect(within(sections).getByRole('link', { name: /Members/ })).toHaveAttribute('aria-current', 'page')
+    expect(within(sections).getByRole('link', { name: 'General' })).not.toHaveAttribute('aria-current')
+  })
+
+  it('opens the Danger zone on its own, without the other pages', async () => {
+    adminApi()
+    show('/w/first/admin/danger')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Danger zone' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Type first to confirm deletion')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Role for Ada')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Organisation name')).not.toBeInTheDocument()
+  })
+
+  it('shows not found for an Administration page that does not exist', async () => {
+    adminApi()
+    show('/w/first/admin/billing')
+    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+  })
+})
+
 it('refreshes a stale session and clears old identity projections before rendering the current account', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(['session'], { user: { id: 'old', email: 'old@example.com', name: '', github_login: null, avatar_url: '' }, memberships: [first], last_workspace: first })

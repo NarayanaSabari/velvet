@@ -6,7 +6,6 @@ import type { Role, WorkspaceMembership } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Avatar } from '../../ui/Avatar'
 import { Button } from '../../ui/Button'
-import { SectionHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { clearPrivateQueries, navigateTo, refreshPrivateQueries } from '../auth/sessionNavigation'
 import { ROLE_DESCRIPTIONS, ROLE_LABELS, ROLES } from './roles'
@@ -55,13 +54,11 @@ export function MembersPanel({ slug, selfId, members }: {
     .join(', ')
 
   return (
-    <section id="members" className="mb-10 scroll-mt-4" aria-labelledby="members-heading">
-      <SectionHeader id="members-heading" title="Members" meta={members.data ? counts : undefined} />
-      <p className="mb-3 max-w-[46rem] text-sm text-grey-500">People who can open this organisation, and what they can change.</p>
-
+    <section aria-label="Members">
+      {members.data ? <p className="mb-1 text-sm text-grey-700" data-testid="member-counts">{counts}</p> : null}
       <details className="mb-3 text-sm">
         <summary className="inline-flex min-h-8 cursor-pointer items-center text-grey-700 underline underline-offset-4">What each role can do</summary>
-        <dl className="mt-2 grid max-w-[46rem] gap-x-4 gap-y-1 sm:grid-cols-[6rem_minmax(0,1fr)]">
+        <dl className="mt-2 grid max-w-[46rem] gap-x-4 gap-y-1 rounded-[var(--radius-surface)] border border-grey-200 p-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
           {ROLES.map((role) => (
             <div key={role} className="contents">
               <dt className="font-medium">{ROLE_LABELS[role]}</dt>

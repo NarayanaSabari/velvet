@@ -256,7 +256,7 @@ func (s *Server) handleGitHubAuthorizationCallback(w http.ResponseWriter, r *htt
 func githubCompletionRedirect(w http.ResponseWriter, r *http.Request, a store.GitHubAuthorization) {
 	next := "/"
 	if a.Purpose == "installation" {
-		next = "/w/" + a.WorkspaceSlug + "/admin"
+		next = "/w/" + a.WorkspaceSlug + "/admin/repositories"
 	}
 	http.Redirect(w, r, next, http.StatusFound)
 }

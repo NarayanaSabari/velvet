@@ -70,7 +70,9 @@ test('a signed-in member lands on their dashboard', async ({ signedIn: page }) =
 })
 
 test('an admin can rename the organisation and the sidebar persists it after reload', async ({ signedIn: page }) => {
+  // The bare address still works and opens the General page.
   await page.goto('/w/lab/admin')
+  await expect(page).toHaveURL(/\/w\/lab\/admin\/general$/)
 
   const name = page.getByLabel('Organisation name')
   await expect(name).toHaveValue('Lab')

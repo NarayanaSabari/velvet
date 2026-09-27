@@ -9,9 +9,10 @@ import { NotFoundState } from '../ui/QueryState'
 import { productPageTitle } from './productTitle'
 
 function RouterNavLink({ to, children, className, activeClassName: _activeClassName, ...linkProps }: NavLinkProps) {
-  // NavLink owns the active state. Exact matching stops the router from also
-  // marking a parent such as the dashboard as the current page on every
-  // nested route, which left two links announcing aria-current at once.
+  // NavLink owns the active state, including a section staying current on its
+  // nested pages. The router spreads its own aria-current last, so it is only
+  // allowed to match exactly: a prefix match marked the dashboard current on
+  // every nested route, and NavLink's aria-current is then applied on top.
   return (
     <Link to={to} className={className} activeOptions={{ exact: true }} {...linkProps}>
       {children}

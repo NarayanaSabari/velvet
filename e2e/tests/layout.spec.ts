@@ -67,7 +67,11 @@ const pages = () => [
   { name: 'mentions', path: '/w/lab/mentions', ready: 'Mentions' },
   { name: 'unlinked pull requests', path: '/w/lab/unlinked', ready: 'Unlinked PRs' },
   { name: 'reports', path: '/w/lab/reports', ready: 'Reports' },
-  { name: 'administration', path: '/w/lab/admin', ready: 'Administration' },
+  { name: 'administration general', path: '/w/lab/admin/general', ready: 'General' },
+  { name: 'administration members', path: '/w/lab/admin/members', ready: 'Members' },
+  { name: 'administration invitations', path: '/w/lab/admin/invitations', ready: 'Invitations' },
+  { name: 'administration repositories', path: '/w/lab/admin/repositories', ready: 'Repositories' },
+  { name: 'administration danger zone', path: '/w/lab/admin/danger', ready: 'Danger zone' },
   { name: 'profile', path: '/w/lab/settings/profile', ready: 'Profile' },
   { name: 'work log', path: '/me/worklog', ready: 'Work log' },
 ]

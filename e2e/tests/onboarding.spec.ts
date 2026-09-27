@@ -57,7 +57,7 @@ test('signup, fresh invite acceptance, listed invite, switching and member remov
       await expect(listedPage).toHaveURL(new RegExp(`/w/${second}$`))
     } finally { await listedContext.close() }
 
-    await page.goto(`/w/${first}/admin`)
+    await page.goto(`/w/${first}/admin/members`)
     await page.getByRole('button', { name: `Remove ${member}`, exact: true }).click()
     await page.getByRole('button', { name: 'Confirm removal' }).click()
     await expect(page.getByRole('button', { name: `Remove ${member}`, exact: true })).toHaveCount(0)
@@ -128,7 +128,7 @@ test('owner-verified GitHub setup discovers evidence, retries sync, removes and 
   await control(page.request, { installationID: 99, repositoryPresent: true, failListing: false, suspended: false, deleted: false, readOnly: false })
   await signup(page, `github-${suffix}@example.test`)
   await createOrganisation(page, slug, 'GitHub organisation')
-  await page.goto(`/w/${slug}/admin`)
+  await page.goto(`/w/${slug}/admin/repositories`)
   const authorizations: URL[] = []
   page.on('request', (request) => {
     const url = new URL(request.url())
@@ -150,16 +150,16 @@ test('owner-verified GitHub setup discovers evidence, retries sync, removes and 
   expect((await page.request.get(`/api/v1/w/${slug}/github`).then((r) => r.json())).status).toBe('disconnected')
 
   await control(page.request, { readOnly: true })
-  await page.goto(`/w/${slug}/admin`)
+  await page.goto(`/w/${slug}/admin/repositories`)
   await page.getByRole('link', { name: 'Connect GitHub', exact: true }).click()
   await expect(page).toHaveURL(/\/auth\/recovery$/)
   await expect(page.getByRole('heading', { name: 'Could not connect GitHub' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Return to Velvet' })).toBeVisible()
   expect((await page.request.get(`/api/v1/w/${slug}/github`).then((r) => r.json())).status).toBe('disconnected')
   await control(page.request, { readOnly: false })
-  await page.goto(`/w/${slug}/admin`)
+  await page.goto(`/w/${slug}/admin/repositories`)
   await page.getByRole('link', { name: 'Connect GitHub', exact: true }).click()
-  await expect(page).toHaveURL(new RegExp(`/w/${slug}/admin$`))
+  await expect(page).toHaveURL(new RegExp(`/w/${slug}/admin/repositories$`))
   await expect(page.getByText('Connected to runtime-github-user.')).toBeVisible({ timeout: 30000 })
   await expect(page.getByRole('link', { name: 'runtime-github-user/runtime-repo' })).toBeVisible()
   expect(authorizations).toHaveLength(3)
@@ -197,7 +197,7 @@ test('owner-verified GitHub setup discovers evidence, retries sync, removes and 
   )
 
   await control(page.request, { failListing: true })
-  await page.goto(`/w/${slug}/admin`)
+  await page.goto(`/w/${slug}/admin/repositories`)
   await page.getByRole('button', { name: 'Retry sync', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: 'Repository synchronization failed' })).toBeVisible({ timeout: 60000 })
   await control(page.request, { failListing: false })
@@ -218,7 +218,7 @@ test('owner-verified GitHub setup discovers evidence, retries sync, removes and 
 
   await control(page.request, { deleted: true })
   await deliver(page.request, 'installation', { action: 'deleted', installation: { id: 99, account: { login: repo.owner } } })
-  await page.goto(`/w/${slug}/admin`)
+  await page.goto(`/w/${slug}/admin/repositories`)
   await expect(page.getByRole('link', { name: 'Connect GitHub', exact: true })).toBeVisible()
   await control(page.request, { installationID: 100, deleted: false, repositoryPresent: true })
   await page.getByRole('link', { name: 'Connect GitHub', exact: true }).click()

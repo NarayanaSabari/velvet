@@ -193,9 +193,15 @@ Onboarding shows the same repository instructions only after the agent connects,
 
 Administration uses the wider workspace content width for organisation settings, invitations, member rows, GitHub connections, and the separated danger section.
 
-At `lg` and above, a sticky section list in an `11rem` column links to Organisation, Members, Invitations, Repositories, and Danger zone, with live counts.
-Below `lg` the same links wrap above the sections.
-Each section uses `SectionHeader` with a count in its meta slot, a one-line explanation, and bordered row lists that match the member rows.
+Administration is a small settings area with one page per concern, each at its own address: `/admin/general`, `/admin/members`, `/admin/invitations`, `/admin/repositories`, and `/admin/danger`.
+The bare `/admin` address, which older links and GitHub's return used, opens General, and GitHub's install return now lands on Repositories.
+An unknown page is not found rather than an empty Administration page.
+`AdminLayout` owns the shared header, with "Administration" as the eyebrow and the page name as the one `h1`, the admin check, and the section list, so no page can render or fetch for a non-admin.
+Each page's browser title is "Page · Administration · Velvet".
+
+At `lg` and above, the section list sits in a sticky `11rem` column beside the page, and below `lg` it wraps into tabs above the page so every section stays visible without sideways scrolling.
+Its links are real routes with `aria-current="page"` on the current one and live counts for members, pending invitations, and connected repositories, read from the same cache the pages use so moving between pages does not refetch.
+The sidebar's Administration link stays selected on every Administration page, and the command palette offers Members, Invitations, and Repositories directly.
 
 Member rows show the avatar, name, email and GitHub login, and a "You" tag, sorted admins first.
 A "What each role can do" disclosure explains the roles, and the invite form describes the chosen role below the controls.
@@ -207,7 +213,7 @@ Sending or resending an invitation, and saving the organisation name, confirm in
 Repositories start with a bordered status line that pairs a coloured dot with words and shows when repositories last synced.
 Each repository row has a project select, which is where untracked pull requests, commits, and agent entries from that repository are filed.
 
-The Danger zone is last, inside a `border-blocked` surface with its own label.
+The Danger zone is its own page, last in the section list and named in the destructive colour, with the delete form inside a `border-blocked` surface.
 
 Keep destructive settings visually and structurally separate from ordinary settings.
 
