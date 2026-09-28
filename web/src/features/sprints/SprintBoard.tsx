@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 
 import { NavLink } from '../../app/nav'
 import { api, isNotFound, listAllWorkspaceIssues } from '../../lib/api'
-import type { Issue, IssueStatus, Milestone, Sprint, User } from '../../lib/types'
+import type { Issue, IssueStatus, Milestone, Project, Sprint, User } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Avatar } from '../../ui/Avatar'
 import { Button } from '../../ui/Button'
@@ -15,6 +15,7 @@ import { RelativeTime } from '../../ui/RelativeTime'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
 import { useSession } from '../auth/useSession'
 import { MilestoneForm, type MilestoneInput } from '../work/CoreForms'
+import { projectsQuery } from '../work/workLinks'
 import { issuesForSprint } from './sprintIssues'
 
 /** Two weeks of silence on a milestone is the signal this product exists to
@@ -358,12 +359,16 @@ export function MilestoneEmptyState({
 
 function SprintHeader({
   sprint,
+  project,
+  slug,
   isAdmin,
   onActivate,
   onClose,
   stateBusy,
 }: {
   sprint: Sprint
+  project?: Project
+  slug: string
   isAdmin: boolean
   onActivate: () => void
   onClose: () => Promise<unknown>
@@ -373,7 +378,17 @@ function SprintHeader({
     <header className="border-b border-grey-200 pb-4">
       <div className="flex flex-wrap items-start gap-4">
         <div className="min-w-0 flex-1">
-          <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase">Sprint</p>
+          <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase" data-testid="sprint-project">
+            {project ? (
+              <>
+                <NavLink to={`/w/${slug}/issues?project=${encodeURIComponent(project.key)}`} className="underline">
+                  {project.name}
+                </NavLink>
+                <span aria-hidden="true"> · </span>
+              </>
+            ) : null}
+            <span>Sprint</span>
+          </p>
           <h1 className="text-lg font-medium [overflow-wrap:anywhere]">{sprint.name}</h1>
           <p className="mt-1 text-sm text-grey-500">
             {sprint.starts_on} to {sprint.ends_on} · {sprint.state}
@@ -429,6 +444,7 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
     queryKey: ['members', slug],
     queryFn: () => api.get<{ members: User[] }>(`/w/${slug}/members`),
   })
+  const projects = useQuery(projectsQuery(slug))
 
   useEffect(() => {
     if (sprint.data) document.title = `${sprint.data.name} · Velvet`
@@ -476,11 +492,13 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
   }
 
   const sprintData = sprint.data
+  const project = projects.data?.projects.find((item) => item.id === sprintData.project_id)
   const milestoneRows = milestones.data.milestones
   const issueRows = issuesForSprint(
     sprintData.state,
     sprintIssues.data?.issues ?? [],
     unfiledIssues.data?.issues ?? [],
+    sprintData.project_id,
   )
   const canCreateMilestone = canWrite && sprintData.state !== 'completed'
   const milestoneAction = () => setMilestoneFormOpen(true)
@@ -498,6 +516,8 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
     <div className="w-full min-w-0 space-y-8">
       <SprintHeader
         sprint={sprintData}
+        project={project}
+        slug={slug}
         isAdmin={isAdmin}
         onActivate={() => changeState.mutate('activate')}
         onClose={() => changeState.mutateAsync('close')}

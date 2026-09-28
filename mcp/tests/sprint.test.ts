@@ -35,7 +35,7 @@ const sprint = {
 }
 
 describe('sprint scheduling', () => {
-  it('creates a sprint at the workspace-scoped path', async () => {
+  it('creates a sprint for a project at the workspace-scoped path', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(jsonResponse(sprint)) as unknown as ReturnType<typeof vi.fn> & FetchLike
@@ -44,6 +44,7 @@ describe('sprint scheduling', () => {
       name: 'September 2026',
       starts_on: '2026-09-01',
       ends_on: '2026-09-30',
+      project: 'web',
     })
     expect(created.id).toBe('s-1')
 
@@ -54,7 +55,20 @@ describe('sprint scheduling', () => {
       name: 'September 2026',
       starts_on: '2026-09-01',
       ends_on: '2026-09-30',
+      project: 'web',
     })
+    expect(formatCreatedSprint(created, 'web')).toContain('Created sprint September 2026 for project web')
+  })
+
+  it('lists one project\'s sprints by key', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ sprints: [sprint] })) as unknown as ReturnType<typeof vi.fn> & FetchLike
+
+    await new VelvetApi(config, fetchMock).listSprints('web')
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://worklog.example.com/api/v1/w/lab/sprints?project=web')
   })
 
   it('creates a milestone under the sprint that owns it', async () => {
@@ -108,6 +122,9 @@ describe('sprint scheduling', () => {
     const rendered = formatSprints([sprint], 'lab')
     expect(rendered).toContain('September 2026')
     expect(rendered).toContain('upcoming')
+
+    const named = formatSprints([{ ...sprint, project_id: 'p-1' }], 'lab', new Map([['p-1', 'web']]))
+    expect(named).toContain('project web')
     expect(rendered).toContain('2026-09-01 to 2026-09-30')
     // The id is what velvet_create_milestone needs next, so it must be shown.
     expect(rendered).toContain('s-1')

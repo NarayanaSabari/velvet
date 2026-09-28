@@ -1,4 +1,4 @@
-import { test, expect, seededSessionToken, sql } from './fixtures'
+import { test, expect, seededSessionToken, sprintProject, sql } from './fixtures'
 
 const inviteEmail = 'ui-safety-invite@example.test'
 const memberEmail = 'ui-safety-member@example.test'
@@ -260,7 +260,7 @@ test('the product shell supports keyboard menus, skip navigation, titles, and on
   await expect(moreTrigger).toHaveAttribute('aria-expanded', 'false')
 
   const sprint = await request.post('/api/v1/w/lab/sprints', {
-    data: { name: accessibilitySprintName, starts_on: '2026-11-01', ends_on: '2026-11-30' },
+    data: { project_id: sprintProject(), name: accessibilitySprintName, starts_on: '2026-11-01', ends_on: '2026-11-30' },
   }).then((response) => response.json())
   const milestone = await request.post(`/api/v1/w/lab/sprints/${sprint.id}/milestones`, {
     data: { name: 'Keyboard shell review' },

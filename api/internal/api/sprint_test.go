@@ -14,7 +14,7 @@ func TestCreateAndListSprints(t *testing.T) {
 	f := testutil.NewFixture(t)
 
 	rec := f.Do(http.MethodPost, "/api/v1/w/lab/sprints", map[string]any{
-		"name": "September 2026", "starts_on": "2026-09-01", "ends_on": "2026-09-30"})
+		"name": "September 2026", "starts_on": "2026-09-01", "ends_on": "2026-09-30", "project_id": f.SprintProject().String()})
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 
 	var created store.Sprint
@@ -35,7 +35,7 @@ func TestCreateAndListSprints(t *testing.T) {
 func TestSprintRejectsReversedDates(t *testing.T) {
 	f := testutil.NewFixture(t)
 	rec := f.Do(http.MethodPost, "/api/v1/w/lab/sprints", map[string]any{
-		"name": "Bad", "starts_on": "2026-09-30", "ends_on": "2026-09-01"})
+		"name": "Bad", "starts_on": "2026-09-30", "ends_on": "2026-09-01", "project_id": f.SprintProject().String()})
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Contains(t, rec.Body.String(), "invalid_request")
 }
@@ -45,7 +45,7 @@ func TestOnlyOneSprintCanBeActive(t *testing.T) {
 
 	mk := func(name, from, to string) store.Sprint {
 		rec := f.Do(http.MethodPost, "/api/v1/w/lab/sprints", map[string]any{
-			"name": name, "starts_on": from, "ends_on": to})
+			"name": name, "starts_on": from, "ends_on": to, "project_id": f.SprintProject().String()})
 		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 		var s store.Sprint
 		f.DecodeInto(rec, &s)
@@ -81,7 +81,7 @@ func TestClosingASprintRecordsActivity(t *testing.T) {
 	f := testutil.NewFixture(t)
 
 	rec := f.Do(http.MethodPost, "/api/v1/w/lab/sprints", map[string]any{
-		"name": "September", "starts_on": "2026-09-01", "ends_on": "2026-09-30"})
+		"name": "September", "starts_on": "2026-09-01", "ends_on": "2026-09-30", "project_id": f.SprintProject().String()})
 	var s store.Sprint
 	f.DecodeInto(rec, &s)
 
@@ -106,8 +106,9 @@ func TestSprintsOfAnotherWorkspaceAreInvisible(t *testing.T) {
 	require.NoError(t, f.Pool.QueryRow(t.Context(),
 		`INSERT INTO workspace (name, slug) VALUES ('Other', 'other') RETURNING id`).Scan(&otherWS))
 	_, err := f.Pool.Exec(t.Context(),
-		`INSERT INTO sprint (workspace_id, name, starts_on, ends_on)
-		 VALUES ($1, 'Secret', '2026-09-01', '2026-09-30')`, otherWS)
+		`WITH p AS (INSERT INTO project (workspace_id, key, name) VALUES ($1, 'secret', 'Secret') RETURNING id)
+		 INSERT INTO sprint (workspace_id, project_id, name, starts_on, ends_on)
+		 SELECT $1, p.id, 'Secret', '2026-09-01', '2026-09-30' FROM p`, otherWS)
 	require.NoError(t, err)
 
 	rec := f.Do(http.MethodGet, "/api/v1/w/lab/sprints", nil)

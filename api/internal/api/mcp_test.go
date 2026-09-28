@@ -290,3 +290,37 @@ func TestHostedMCPInstructionsCapTheProjectList(t *testing.T) {
 	require.NotContains(t, instructions, "p29 (Project 29)")
 	require.Contains(t, instructions, "and 5 more from velvet_list_projects")
 }
+
+// An agent creates a sprint for a named project and sees which project each
+// sprint belongs to, because each project runs its own sprints.
+func TestHostedMCPCreatesASprintForAProject(t *testing.T) {
+	f := testutil.NewFixture(t)
+	for _, project := range []map[string]any{{"key": "web", "name": "Web"}, {"key": "api", "name": "API"}} {
+		rec := f.Do(http.MethodPost, "/api/v1/w/lab/projects", project)
+		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	}
+	session := connectMCP(t, f, f.Slug, f.AgentToken("sprint agent"))
+
+	text, isErr := callTool(t, session, "velvet_create_sprint",
+		map[string]any{"name": "Web September", "starts_on": "2026-09-01", "ends_on": "2026-09-30"})
+	require.True(t, isErr, "a sprint without a project is refused")
+	require.Contains(t, text, "project")
+
+	text, isErr = callTool(t, session, "velvet_create_sprint",
+		map[string]any{"project": "web", "name": "Web September", "starts_on": "2026-09-01", "ends_on": "2026-09-30"})
+	require.False(t, isErr, text)
+	require.Contains(t, text, "for project web")
+	_, isErr = callTool(t, session, "velvet_create_sprint",
+		map[string]any{"project": "api", "name": "API September", "starts_on": "2026-09-01", "ends_on": "2026-09-30"})
+	require.False(t, isErr)
+
+	text, isErr = callTool(t, session, "velvet_list_sprints", nil)
+	require.False(t, isErr, text)
+	require.Contains(t, text, "Web September | project web")
+	require.Contains(t, text, "API September | project api")
+
+	text, isErr = callTool(t, session, "velvet_list_sprints", map[string]any{"project": "api"})
+	require.False(t, isErr, text)
+	require.Contains(t, text, "API September")
+	require.NotContains(t, text, "Web September")
+}

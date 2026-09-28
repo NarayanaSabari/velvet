@@ -20,20 +20,22 @@ type PersonActivityRow struct {
 
 // MilestoneCompletionRow is one sprint's milestone completion rate.
 type MilestoneCompletionRow struct {
-	SprintID   uuid.UUID `json:"sprint_id"`
-	SprintName string    `json:"sprint_name"`
-	StartsOn   string    `json:"starts_on"`
-	Planned    int       `json:"planned"`
-	Completed  int       `json:"completed"`
+	SprintID    uuid.UUID `json:"sprint_id"`
+	SprintName  string    `json:"sprint_name"`
+	ProjectName string    `json:"project_name"`
+	StartsOn    string    `json:"starts_on"`
+	Planned     int       `json:"planned"`
+	Completed   int       `json:"completed"`
 }
 
 // SprintClosedRow is issues closed against issues touched, per sprint.
 type SprintClosedRow struct {
-	SprintID   uuid.UUID `json:"sprint_id"`
-	SprintName string    `json:"sprint_name"`
-	StartsOn   string    `json:"starts_on"`
-	Closed     int       `json:"closed"`
-	Total      int       `json:"total"`
+	SprintID    uuid.UUID `json:"sprint_id"`
+	SprintName  string    `json:"sprint_name"`
+	ProjectName string    `json:"project_name"`
+	StartsOn    string    `json:"starts_on"`
+	Closed      int       `json:"closed"`
+	Total       int       `json:"total"`
 }
 
 // StaleIssueRow is work that quietly stopped: open, assigned or not, and
@@ -122,14 +124,15 @@ func (s *Store) PersonActivity(ctx context.Context, workspaceID uuid.UUID, from,
 // belonged in the denominator.
 func (s *Store) MilestoneCompletion(ctx context.Context, workspaceID uuid.UUID) ([]MilestoneCompletionRow, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT s.id, s.name, to_char(s.starts_on, 'YYYY-MM-DD'),
+		SELECT s.id, s.name, p.name, to_char(s.starts_on, 'YYYY-MM-DD'),
 		       count(m.id) FILTER (WHERE m.status <> 'cancelled'),
 		       count(m.id) FILTER (WHERE m.status = 'completed')
 		FROM sprint s
+		JOIN project p ON p.id = s.project_id
 		LEFT JOIN milestone m ON m.sprint_id = s.id AND m.workspace_id = s.workspace_id
 		WHERE s.workspace_id = $1
-		GROUP BY s.id, s.name, s.starts_on
-		ORDER BY s.starts_on DESC`, workspaceID)
+		GROUP BY s.id, s.name, p.name, s.starts_on
+		ORDER BY s.starts_on DESC, lower(p.name)`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +141,7 @@ func (s *Store) MilestoneCompletion(ctx context.Context, workspaceID uuid.UUID) 
 	out := []MilestoneCompletionRow{}
 	for rows.Next() {
 		var r MilestoneCompletionRow
-		if err := rows.Scan(&r.SprintID, &r.SprintName, &r.StartsOn,
+		if err := rows.Scan(&r.SprintID, &r.SprintName, &r.ProjectName, &r.StartsOn,
 			&r.Planned, &r.Completed); err != nil {
 			return nil, err
 		}
@@ -151,15 +154,16 @@ func (s *Store) MilestoneCompletion(ctx context.Context, workspaceID uuid.UUID) 
 // sprint's milestones.
 func (s *Store) IssuesClosedPerSprint(ctx context.Context, workspaceID uuid.UUID) ([]SprintClosedRow, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT s.id, s.name, to_char(s.starts_on, 'YYYY-MM-DD'),
+		SELECT s.id, s.name, p.name, to_char(s.starts_on, 'YYYY-MM-DD'),
 		       count(i.id) FILTER (WHERE i.status = 'done'),
 		       count(i.id)
 		FROM sprint s
+		JOIN project p ON p.id = s.project_id
 		LEFT JOIN milestone m ON m.sprint_id = s.id AND m.workspace_id = s.workspace_id
 		LEFT JOIN issue i ON i.milestone_id = m.id AND i.workspace_id = s.workspace_id
 		WHERE s.workspace_id = $1
-		GROUP BY s.id, s.name, s.starts_on
-		ORDER BY s.starts_on DESC`, workspaceID)
+		GROUP BY s.id, s.name, p.name, s.starts_on
+		ORDER BY s.starts_on DESC, lower(p.name)`, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +172,7 @@ func (s *Store) IssuesClosedPerSprint(ctx context.Context, workspaceID uuid.UUID
 	out := []SprintClosedRow{}
 	for rows.Next() {
 		var r SprintClosedRow
-		if err := rows.Scan(&r.SprintID, &r.SprintName, &r.StartsOn,
+		if err := rows.Scan(&r.SprintID, &r.SprintName, &r.ProjectName, &r.StartsOn,
 			&r.Closed, &r.Total); err != nil {
 			return nil, err
 		}

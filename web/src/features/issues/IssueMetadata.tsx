@@ -2,6 +2,8 @@ import { useState } from 'react'
 
 import type { User } from '../../lib/types'
 import { Avatar } from '../../ui/Avatar'
+import { MilestoneOptions } from '../work/CoreForms'
+import type { MilestoneChoice, ProjectChoice } from '../work/workLinks'
 
 export interface Choice {
   id: string
@@ -12,6 +14,7 @@ export interface Choice {
 export interface IssueMetadataPatch {
   assignee_id?: string
   milestone_id?: string
+  project_id?: string
   priority?: number
 }
 
@@ -36,17 +39,22 @@ function metadataLabel(label: string) {
 export function ReadOnlyIssueMetadata({
   priority,
   assigneeId,
+  projectId = null,
   milestoneId,
   members,
+  projects = [],
   milestones,
 }: {
   priority: number
   assigneeId: string | null
+  projectId?: string | null
   milestoneId: string | null
   members: Choice[]
-  milestones: Choice[]
+  projects?: ProjectChoice[]
+  milestones: MilestoneChoice[]
 }) {
   const assignee = members.find((member) => member.id === assigneeId)
+  const project = projects.find((item) => item.id === projectId)
   const milestone = milestones.find((item) => item.id === milestoneId)
 
   return (
@@ -65,9 +73,20 @@ export function ReadOnlyIssueMetadata({
           <span className="text-grey-500">{priority}</span>
         </dd>
       </div>
+      <div data-testid="issue-project-field">
+        <dt>{metadataLabel('Project')}</dt>
+        <dd className="mt-1 text-ink">{project?.label ?? 'No project'}</dd>
+      </div>
       <div data-testid="issue-milestone-field">
         <dt>{metadataLabel('Milestone')}</dt>
-        <dd className="mt-1 text-ink">{milestone?.label ?? 'Unfiled'}</dd>
+        <dd className="mt-1 text-ink">
+          {milestone ? (
+            <>
+              {milestone.label}
+              <span className="block text-xs text-grey-500">{milestone.group}</span>
+            </>
+          ) : 'Unfiled'}
+        </dd>
       </div>
     </dl>
   )
@@ -76,16 +95,20 @@ export function ReadOnlyIssueMetadata({
 export function IssueMetadata({
   priority = 0,
   assigneeId,
+  projectId = null,
   milestoneId,
   members,
+  projects = [],
   milestones,
   onPatch,
 }: {
   priority?: number
   assigneeId: string | null
+  projectId?: string | null
   milestoneId: string | null
   members: Choice[]
-  milestones: Choice[]
+  projects?: ProjectChoice[]
+  milestones: MilestoneChoice[]
   onPatch: (patch: IssueMetadataPatch) => Promise<unknown>
 }) {
   const [busy, setBusy] = useState(false)
@@ -149,6 +172,32 @@ export function IssueMetadata({
         </select>
       </label>
 
+      <div className="text-sm">
+        <label className="block" data-testid="issue-project-field" htmlFor="issue-project">
+          {metadataLabel('Project')}
+          <select
+            id="issue-project"
+            data-testid="issue-project-picker"
+            className={`${selectClass} mt-1 block w-full`}
+            aria-label="Project"
+            aria-describedby="issue-project-help"
+            value={projectId ?? ''}
+            disabled={busy}
+            onChange={(event) => void update({ project_id: event.target.value })}
+          >
+            <option value="">No project</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p id="issue-project-help" className="mt-1 text-xs text-grey-500">
+          A milestone belongs to one project, so choosing one sets this too.
+        </p>
+      </div>
+
       <label className="block text-sm" data-testid="issue-milestone-field" htmlFor="issue-milestone">
         {metadataLabel('Milestone')}
         <select
@@ -160,12 +209,7 @@ export function IssueMetadata({
           disabled={busy}
           onChange={(event) => void update({ milestone_id: event.target.value })}
         >
-          <option value="">Unfiled</option>
-          {milestones.map((milestone) => (
-            <option key={milestone.id} value={milestone.id}>
-              {milestone.label}
-            </option>
-          ))}
+          <MilestoneOptions milestones={milestones} emptyLabel="Unfiled" />
         </select>
       </label>
 

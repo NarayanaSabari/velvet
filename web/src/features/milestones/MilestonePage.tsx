@@ -20,6 +20,7 @@ import {
   type IssueInput,
   type MilestoneInput,
 } from '../work/CoreForms'
+import { projectsQuery } from '../work/workLinks'
 
 const MILESTONE_STATUS_DOTS: Record<MilestoneStatus, string> = {
   planned: 'bg-grey-300',
@@ -90,6 +91,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
     queryKey: ['sprints', slug],
     queryFn: () => api.get<{ sprints: Sprint[] }>(`/w/${slug}/sprints`),
   })
+  const projects = useQuery(projectsQuery(slug))
 
   useEffect(() => {
     if (milestone.data) document.title = `${milestone.data.name} · Velvet`
@@ -155,6 +157,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
   const milestoneIssues = issues.data?.issues ?? []
   const milestoneComments = comments.data?.comments ?? []
   const sprint = (sprints.data?.sprints ?? []).find((item) => item.id === data.sprint_id)
+  const project = sprint ? projects.data?.projects.find((item) => item.id === sprint.project_id) : undefined
   const memberChoices = (members.data?.members ?? []).map((member) => ({
     id: member.id,
     label: userLabel(member),
@@ -276,6 +279,16 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
               </span>
             </dd>
           </div>
+          {project ? (
+            <div>
+              <dt className="text-xs tracking-wide text-grey-500 uppercase">Project</dt>
+              <dd className="mt-1" data-testid="milestone-project-link">
+                <NavLink className="underline" to={`/w/${slug}/issues?project=${encodeURIComponent(project.key)}`}>
+                  {project.name}
+                </NavLink>
+              </dd>
+            </div>
+          ) : null}
         </dl>
       </section>
 

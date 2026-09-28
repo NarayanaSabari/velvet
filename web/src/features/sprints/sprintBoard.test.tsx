@@ -145,6 +145,14 @@ describe('issuesForSprint', () => {
     expect(issuesForSprint('upcoming', [filed], [unfiled])).toEqual([filed])
     expect(issuesForSprint('completed', [filed], [unfiled])).toEqual([filed])
   })
+
+  it("leaves another project's unfiled work on that project's board", () => {
+    const ours: SprintIssue = { ...issue('i3', 'todo'), project_id: 'p-web' }
+    const theirs: SprintIssue = { ...issue('i4', 'todo'), project_id: 'p-api' }
+    const loose: SprintIssue = { ...issue('i5', 'todo'), project_id: null }
+
+    expect(issuesForSprint('active', [], [ours, theirs, loose], 'p-web')).toEqual([ours])
+  })
 })
 
 describe('CloseSprintAction', () => {

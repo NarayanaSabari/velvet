@@ -135,6 +135,12 @@ func (s *Store) CreateIssue(ctx context.Context, in CreateIssueInput) (Issue, er
 		if err := checkIssueReferences(ctx, tx, in.WorkspaceID, in.AssigneeID, in.MilestoneID, in.ProjectID, in.ParentID); err != nil {
 			return err
 		}
+		// A new ticket filed under a milestone is work on that milestone's project.
+		milestoneID, projectID, err := reconcileMilestoneProject(ctx, tx, in.WorkspaceID, in.MilestoneID, in.ProjectID, true)
+		if err != nil {
+			return err
+		}
+		in.MilestoneID, in.ProjectID = milestoneID, projectID
 
 		key, number, err := s.NextIssueKey(ctx, tx, in.WorkspaceID)
 		if err != nil {
@@ -210,6 +216,39 @@ func checkIssueReferences(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID,
 		}
 	}
 	return nil
+}
+
+// milestoneProject is the project a milestone's sprint belongs to. A ticket
+// in a milestone is work on that project, so this is what its project must be.
+func milestoneProject(ctx context.Context, tx pgx.Tx, workspaceID, milestoneID uuid.UUID) (uuid.UUID, error) {
+	var project uuid.UUID
+	err := tx.QueryRow(ctx, `
+		SELECT s.project_id FROM milestone m JOIN sprint s ON s.id = m.sprint_id
+		WHERE m.workspace_id = $1 AND m.id = $2`, workspaceID, milestoneID).Scan(&project)
+	return project, mapErr(err)
+}
+
+// reconcileMilestoneProject keeps a ticket's milestone and project in step.
+// Choosing a milestone files the ticket under that milestone's project.
+// Choosing a different project without also choosing a milestone takes the
+// ticket out of a milestone that belongs to another project, rather than
+// leaving it scheduled in a sprint it is no longer part of.
+func reconcileMilestoneProject(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID,
+	milestoneID, projectID *uuid.UUID, milestoneChosen bool) (*uuid.UUID, *uuid.UUID, error) {
+	if milestoneID == nil {
+		return milestoneID, projectID, nil
+	}
+	owner, err := milestoneProject(ctx, tx, workspaceID, *milestoneID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if projectID != nil && *projectID == owner {
+		return milestoneID, projectID, nil
+	}
+	if milestoneChosen {
+		return milestoneID, &owner, nil
+	}
+	return nil, projectID, nil
 }
 
 // ListIssues pages on (position, id), which is stable because position is
@@ -378,12 +417,26 @@ func (s *Store) UpdateIssue(ctx context.Context, workspaceID, id, actorID uuid.U
 		if err := checkIssueReferences(ctx, tx, workspaceID, assigneeID, milestoneID, projectID, parentID); err != nil {
 			return err
 		}
+		// Keep the milestone and project in step. Only a milestone chosen in
+		// this change can move the project; a project chosen on its own
+		// takes the ticket out of another project's milestone.
+		milestoneChosen := patch.MilestoneID != nil && !sameUUIDPtr(before.MilestoneID, *patch.MilestoneID)
+		milestoneID, projectID, err = reconcileMilestoneProject(ctx, tx, workspaceID, milestoneID, projectID, milestoneChosen)
+		if err != nil {
+			return err
+		}
 
 		position := before.Position
-		if patch.AfterID != nil || patch.BeforeID != nil {
+		switch {
+		case patch.AfterID != nil || patch.BeforeID != nil:
 			position, err = repositionIssue(ctx, tx, workspaceID, milestoneID,
 				patch.AfterID, patch.BeforeID)
 			if err != nil {
+				return err
+			}
+		case !sameUUIDPtr(before.MilestoneID, milestoneID):
+			// Moving to another milestone appends to the end of that list.
+			if position, err = nextIssuePosition(ctx, tx, workspaceID, milestoneID); err != nil {
 				return err
 			}
 		}
@@ -426,7 +479,7 @@ func (s *Store) UpdateIssue(ctx context.Context, workspaceID, id, actorID uuid.U
 				return err
 			}
 		}
-		if patch.ProjectID != nil && !sameUUIDPtr(before.ProjectID, *patch.ProjectID) {
+		if !sameUUIDPtr(before.ProjectID, projectID) {
 			metadata := map[string]any{"key": before.Key, "project_id": nil}
 			if projectID != nil {
 				metadata["project_id"] = projectID.String()

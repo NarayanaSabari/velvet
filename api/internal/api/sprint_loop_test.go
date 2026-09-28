@@ -20,7 +20,7 @@ func TestAnAgentCanBuildOutASprintItWasToldToWorkIn(t *testing.T) {
 
 	// An agent, not a browser session, drives all of this.
 	rec := f.DoAsAgent(http.MethodPost, "/api/v1/w/lab/sprints", token,
-		map[string]any{"name": "September 2026", "starts_on": "2026-09-01", "ends_on": "2026-09-30"})
+		map[string]any{"name": "September 2026", "starts_on": "2026-09-01", "ends_on": "2026-09-30", "project_id": f.SprintProject().String()})
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	var sprint store.Sprint
 	f.DecodeInto(rec, &sprint)
@@ -76,7 +76,7 @@ func TestATicketCanBeScheduledIntoASprintAfterTheFact(t *testing.T) {
 	require.Nil(t, issue.MilestoneID)
 
 	rec := f.Do(http.MethodPost, "/api/v1/w/lab/sprints",
-		map[string]any{"name": "October 2026", "starts_on": "2026-10-01", "ends_on": "2026-10-31"})
+		map[string]any{"name": "October 2026", "starts_on": "2026-10-01", "ends_on": "2026-10-31", "project_id": f.SprintProject().String()})
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	var sprint store.Sprint
 	f.DecodeInto(rec, &sprint)
@@ -113,7 +113,7 @@ func TestAnExplicitNullClearsAReference(t *testing.T) {
 
 	createProject(t, f, map[string]any{"key": "velvet", "name": "Velvet"})
 	sprint, err := f.Store.CreateSprint(ctx, store.CreateSprintInput{
-		WorkspaceID: f.WorkspaceID, ActorID: f.User.ID,
+		WorkspaceID: f.WorkspaceID, ProjectID: f.SprintProject(), ActorID: f.User.ID,
 		Name: "September 2026", StartsOn: "2026-09-01", EndsOn: "2026-09-30"})
 	require.NoError(t, err)
 	milestone, err := f.Store.CreateMilestone(ctx, store.CreateMilestoneInput{
@@ -170,8 +170,11 @@ func TestAMilestoneCannotBeCreatedUnderAnotherOrganisationsSprint(t *testing.T) 
 	ctx := t.Context()
 
 	clientWS := secondOrg(t, f, "client")
+	clientProject, err := f.Store.CreateProject(ctx, store.CreateProjectInput{
+		WorkspaceID: clientWS, ActorID: f.User.ID, Key: "client-work", Name: "Client work"})
+	require.NoError(t, err)
 	sprint, err := f.Store.CreateSprint(ctx, store.CreateSprintInput{
-		WorkspaceID: clientWS, ActorID: f.User.ID,
+		WorkspaceID: clientWS, ProjectID: clientProject.ID, ActorID: f.User.ID,
 		Name: "Theirs", StartsOn: "2026-09-01", EndsOn: "2026-09-30"})
 	require.NoError(t, err)
 

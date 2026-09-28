@@ -94,9 +94,10 @@ func captureSnapshot(ctx context.Context, tx pgx.Tx, workspaceID, sprintID uuid.
 	return err
 }
 
-// rollIncompleteIssuesForward moves unfinished work into the next upcoming
-// sprint, matching milestones by name where one already exists there and
-// creating it otherwise.
+// rollIncompleteIssuesForward moves unfinished work into the same project's
+// next upcoming sprint, matching milestones by name where one already exists
+// there and creating it otherwise. Another project's sprint is never the
+// destination, because each project runs its own sprints.
 //
 // It only ever changes milestone_id. Status is left exactly as it was: rolling
 // work forward is an act of bookkeeping, and silently completing or cancelling
@@ -107,9 +108,11 @@ func captureSnapshot(ctx context.Context, tx pgx.Tx, workspaceID, sprintID uuid.
 func rollIncompleteIssuesForward(ctx context.Context, tx pgx.Tx, workspaceID, sprintID uuid.UUID) error {
 	var nextSprint uuid.UUID
 	err := tx.QueryRow(ctx, `
-		SELECT id FROM sprint
-		WHERE workspace_id = $1 AND state = 'upcoming' AND id <> $2
-		ORDER BY starts_on ASC LIMIT 1`, workspaceID, sprintID).Scan(&nextSprint)
+		SELECT next.id FROM sprint next
+		JOIN sprint closing ON closing.id = $2
+		WHERE next.workspace_id = $1 AND next.state = 'upcoming' AND next.id <> $2
+		  AND next.project_id = closing.project_id
+		ORDER BY next.starts_on ASC LIMIT 1`, workspaceID, sprintID).Scan(&nextSprint)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil

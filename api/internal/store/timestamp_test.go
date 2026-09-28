@@ -22,12 +22,15 @@ func TestEmittedTimestampsAreParseableAsISO8601(t *testing.T) {
 	st := store.New(pool)
 	ctx := context.Background()
 
-	var wsID string
+	var wsID, projectID string
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO workspace (name, slug) VALUES ('Lab', 'lab') RETURNING id`).Scan(&wsID))
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO project (workspace_id, key, name) VALUES ($1, 'lab', 'Lab') RETURNING id`, wsID).Scan(&projectID))
 
 	sprint, err := st.CreateSprint(ctx, store.CreateSprintInput{
 		WorkspaceID: uuidMust(t, wsID),
+		ProjectID:   uuidMust(t, projectID),
 		Name:        "September",
 		StartsOn:    "2026-09-01",
 		EndsOn:      "2026-09-30",

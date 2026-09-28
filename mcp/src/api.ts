@@ -258,10 +258,11 @@ export class VelvetApi {
     return Array.isArray(milestones) ? milestones : []
   }
 
-  async listSprints(): Promise<Sprint[]> {
+  async listSprints(project?: string): Promise<Sprint[]> {
+    const query = project ? `?project=${encodeURIComponent(project)}` : ''
     const response = await this.request<SprintsResponse | Sprint[]>(
       'GET',
-      `/w/${encodePath(this.workspace)}/sprints`,
+      `/w/${encodePath(this.workspace)}/sprints${query}`,
       undefined,
       `no such workspace ${this.workspace}`,
     )
@@ -269,12 +270,12 @@ export class VelvetApi {
     return Array.isArray(sprints) ? sprints : []
   }
 
-  async createSprint(input: { name: string; starts_on: string; ends_on: string }): Promise<Sprint> {
+  async createSprint(input: { name: string; starts_on: string; ends_on: string; project: string }): Promise<Sprint> {
     return this.request<Sprint>(
       'POST',
       `/w/${encodePath(this.workspace)}/sprints`,
       input,
-      `no such workspace ${this.workspace}`,
+      `no such project ${input.project} in workspace ${this.workspace}`,
     )
   }
 

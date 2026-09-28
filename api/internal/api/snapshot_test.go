@@ -52,7 +52,7 @@ func TestIncompleteIssuesRollForward(t *testing.T) {
 
 	sept := newSprint(t, f)
 	rec := f.Do(http.MethodPost, "/api/v1/w/lab/sprints", map[string]any{
-		"name": "October", "starts_on": "2026-10-01", "ends_on": "2026-10-31"})
+		"name": "October", "starts_on": "2026-10-01", "ends_on": "2026-10-31", "project_id": f.SprintProject().String()})
 	var oct store.Sprint
 	f.DecodeInto(rec, &oct)
 
@@ -126,8 +126,9 @@ func TestSnapshotIsWorkspaceScoped(t *testing.T) {
 		`INSERT INTO workspace (name, slug) VALUES ('Other', 'other') RETURNING id`).Scan(&otherWS))
 	var otherSprint string
 	require.NoError(t, f.Pool.QueryRow(t.Context(), `
-		INSERT INTO sprint (workspace_id, name, starts_on, ends_on)
-		VALUES ($1, 'Foreign', '2026-09-01', '2026-09-30') RETURNING id`, otherWS).Scan(&otherSprint))
+		WITH p AS (INSERT INTO project (workspace_id, key, name) VALUES ($1, 'foreign', 'Foreign') RETURNING id)
+		INSERT INTO sprint (workspace_id, project_id, name, starts_on, ends_on)
+		SELECT $1, p.id, 'Foreign', '2026-09-01', '2026-09-30' FROM p RETURNING id`, otherWS).Scan(&otherSprint))
 	_, err := f.Pool.Exec(t.Context(), `
 		INSERT INTO sprint_snapshot (sprint_id, workspace_id, milestones_planned,
 			milestones_completed, issue_counts, person_totals)

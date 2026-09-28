@@ -45,7 +45,7 @@ Commands:
   issues [--status STATUS] [--mine]       List issue keys and titles
   issue KEY                               Show an issue and recent comments
   projects                                List projects in the workspace
-  sprints [new NAME FROM TO]              List or create sprints
+  sprints [new NAME FROM TO] [--project P] List or create a project's sprints
   milestones [SPRINT_ID | new ...]        List or create milestones
   new TITLE [options]                     Create an issue and print its key
   log [KEY] [--project P] [--kind K] ...  Append a work-log entry
@@ -91,14 +91,18 @@ EOF
 
 usage_sprints() {
   cat <<'EOF'
-Usage: velvet sprints
-       velvet sprints new NAME STARTS_ON ENDS_ON
+Usage: velvet sprints [--project KEY]
+       velvet sprints new [--project KEY] NAME STARTS_ON ENDS_ON
 
-List the sprints in the current workspace, or create one.
+List sprints, or create one.
 
-A sprint is the calendar window work is scheduled into. Create one when told
-to work in a sprint that does not exist yet. A new sprint starts upcoming and
-is not activated automatically.
+Each project runs its own sprints: a sprint is the time window one project's
+work is scheduled into. Create one when told to work in a sprint that does not
+exist yet. A new sprint starts upcoming and is not activated automatically.
+
+  --project KEY   The sprint's project. Defaults to the project this
+                  repository is mapped to. When listing, show only that
+                  project's sprints.
 
 Dates are YYYY-MM-DD.
 EOF
@@ -362,7 +366,7 @@ api_error() {
       die "permission denied (403): $message" "$EX_AUTH"
       ;;
     404)
-      die "not found (404): $message. Check VELVET_WORKSPACE and the issue key" "$EX_NOT_FOUND"
+      die "not found (404): $message. Check VELVET_WORKSPACE and the key you passed" "$EX_NOT_FOUND"
       ;;
     000)
       die "request failed: $message" "$EX_NETWORK"
@@ -941,7 +945,7 @@ command_recap() {
 # command_sprints lists sprints, or creates one with `sprints new`. A manager
 # naming a sprint that does not exist yet must not be a dead end.
 command_sprints() {
-  local workspace_path
+  local workspace_path project query
 
   if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     usage_sprints
@@ -953,11 +957,19 @@ command_sprints() {
     command_sprint_new "$@"
     return 0
   fi
-  [ "$#" -eq 0 ] || die "sprints takes no arguments, or 'new'; run 'velvet sprints --help'" "$EX_USAGE"
+  project=""
+  if [ "${1:-}" = "--project" ]; then
+    [ "$#" -ge 2 ] || die "--project requires a value" "$EX_USAGE"
+    project=$2
+    shift 2
+  fi
+  [ "$#" -eq 0 ] || die "sprints takes --project KEY, or 'new'; run 'velvet sprints --help'" "$EX_USAGE"
 
   require_workspace
   workspace_path=$(urlencode "$VELVET_WORKSPACE")
-  request GET "$API_ROOT/w/$workspace_path/sprints" "$TMP_DIR/sprints.json"
+  query=""
+  [ -z "$project" ] || query="?project=$(urlencode "$project")"
+  request GET "$API_ROOT/w/$workspace_path/sprints$query" "$TMP_DIR/sprints.json"
   python3 - "$TMP_DIR/sprints.json" <<'PY'
 import json
 import sys
@@ -975,8 +987,14 @@ PY
 }
 
 command_sprint_new() {
-  local name starts ends workspace_path payload
+  local name starts ends workspace_path payload project
 
+  project=""
+  if [ "${1:-}" = "--project" ]; then
+    [ "$#" -ge 2 ] || die "--project requires a value" "$EX_USAGE"
+    project=$2
+    shift 2
+  fi
   [ "$#" -eq 3 ] || die "sprints new requires NAME STARTS_ON ENDS_ON" "$EX_USAGE"
   name=$1
   starts=$2
@@ -989,11 +1007,13 @@ command_sprint_new() {
   done
 
   require_workspace
+  project=${project:-${VELVET_PROJECT:-}}
+  [ -n "$project" ] || die "a sprint belongs to a project, and this repository is not mapped to one; pass --project KEY" "$EX_USAGE"
   workspace_path=$(urlencode "$VELVET_WORKSPACE")
-  payload=$(json_object name "$name" starts_on "$starts" ends_on "$ends")
+  payload=$(json_object name "$name" starts_on "$starts" ends_on "$ends" project "$project")
   request POST "$API_ROOT/w/$workspace_path/sprints" "$TMP_DIR/sprint.json" "$payload"
-  printf 'Created sprint %s (%s to %s).\nID: %s\n' \
-    "$name" "$starts" "$ends" "$(json_field "$TMP_DIR/sprint.json" id)"
+  printf 'Created sprint %s for project %s (%s to %s).\nID: %s\n' \
+    "$name" "$project" "$starts" "$ends" "$(json_field "$TMP_DIR/sprint.json" id)"
 }
 
 command_milestones() {

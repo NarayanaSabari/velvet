@@ -118,7 +118,12 @@ export function formatProjects(projects: Project[], workspace: string): string {
   ].join('\n')
 }
 
-export function formatSprints(sprints: Sprint[], workspace: string): string {
+/** projectKeys maps project id to key, so each sprint names its project. */
+export function formatSprints(
+  sprints: Sprint[],
+  workspace: string,
+  projectKeys: Map<string, string> = new Map(),
+): string {
   if (sprints.length === 0) {
     return `No sprints found in workspace ${workspace}.`
   }
@@ -126,14 +131,14 @@ export function formatSprints(sprints: Sprint[], workspace: string): string {
     `Sprints in ${workspace}:`,
     ...sprints.map(
       (sprint) =>
-        `${text(sprint.id)} | ${text(sprint.name, '(unnamed)')} | ${text(sprint.state)} | ${text(sprint.starts_on)} to ${text(sprint.ends_on)}`,
+        `${text(sprint.id)} | ${text(sprint.name, '(unnamed)')} | project ${text(projectKeys.get(sprint.project_id ?? ''), '?')} | ${text(sprint.state)} | ${text(sprint.starts_on)} to ${text(sprint.ends_on)}`,
     ),
   ].join('\n')
 }
 
-export function formatCreatedSprint(sprint: Sprint): string {
+export function formatCreatedSprint(sprint: Sprint, project?: string): string {
   return [
-    `Created sprint ${text(sprint.name, '(unnamed)')} (${text(sprint.starts_on)} to ${text(sprint.ends_on)}).`,
+    `Created sprint ${text(sprint.name, '(unnamed)')}${project ? ` for project ${project}` : ''} (${text(sprint.starts_on)} to ${text(sprint.ends_on)}).`,
     `ID: ${text(sprint.id)}`,
     `State: ${text(sprint.state)}. Activate it when work starts.`,
   ].join('\n')

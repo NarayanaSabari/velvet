@@ -3,6 +3,7 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import type { Issue, IssueStatus, Milestone, MilestoneStatus } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
+import { groupChoices, reconcileLinks, type MilestoneChoice, type ProjectChoice } from './workLinks'
 
 const inputClass = 'w-full border border-grey-300 bg-paper px-2 py-1 text-sm'
 
@@ -27,23 +28,34 @@ function Actions({ busy, label, error }: { busy: boolean; label: string; error: 
 }
 
 export interface SprintInput {
+  project_id: string
   name: string
   starts_on: string
   ends_on: string
 }
 
-export function SprintForm({ onSubmit }: { onSubmit: (input: SprintInput) => Promise<unknown> }) {
-  const [input, setInput] = useState<SprintInput>({ name: '', starts_on: '', ends_on: '' })
+/** A sprint belongs to one project, so the form asks which one first. */
+export function SprintForm({ projects, defaultProjectId = '', onSubmit }: {
+  projects: ProjectChoice[]
+  defaultProjectId?: string
+  onSubmit: (input: SprintInput) => Promise<unknown>
+}) {
+  const [input, setInput] = useState<SprintInput>({
+    project_id: defaultProjectId, name: '', starts_on: '', ends_on: '',
+  })
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
+  // With one project there is nothing to choose, and the list may arrive
+  // after the form opens, so the default is worked out on every render.
+  const projectId = input.project_id || (projects.length === 1 ? projects[0]?.id ?? '' : '')
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     setBusy(true)
     setFailed(false)
     try {
-      await onSubmit(input)
-      setInput({ name: '', starts_on: '', ends_on: '' })
+      await onSubmit({ ...input, project_id: projectId })
+      setInput({ project_id: projectId, name: '', starts_on: '', ends_on: '' })
     } catch {
       setFailed(true)
     } finally {
@@ -53,6 +65,15 @@ export function SprintForm({ onSubmit }: { onSubmit: (input: SprintInput) => Pro
 
   return (
     <form className="space-y-3 border border-grey-200 p-3" onSubmit={(event) => void submit(event)}>
+      <Field label="Project">
+        <select className={inputClass} required value={projectId}
+          onChange={(event) => setInput({ ...input, project_id: event.target.value })}>
+          <option value="" disabled>Choose a project</option>
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>{project.label}</option>
+          ))}
+        </select>
+      </Field>
       <Field label="Sprint name">
         <input className={inputClass} required value={input.name}
           onChange={(event) => setInput({ ...input, name: event.target.value })} />
@@ -212,24 +233,59 @@ export interface IssueInput {
   status: IssueStatus
   priority: number
   milestone_id?: string
+  project_id?: string
   parent_id?: string
+}
+
+/** The choices behind the Project and Milestone pickers on a new issue. */
+export interface IssueLinkChoices {
+  projects: ProjectChoice[]
+  milestones: MilestoneChoice[]
+  defaultProjectId?: string
+}
+
+/** A milestone select whose options are grouped by project and sprint. */
+export function MilestoneOptions({ milestones, emptyLabel }: { milestones: MilestoneChoice[]; emptyLabel: string }) {
+  return (
+    <>
+      <option value="">{emptyLabel}</option>
+      {groupChoices(milestones).map(({ group, items }) => (
+        <optgroup key={group} label={group}>
+          {items.map((milestone) => (
+            <option key={milestone.id} value={milestone.id}>{milestone.label}</option>
+          ))}
+        </optgroup>
+      ))}
+    </>
+  )
 }
 
 export function IssueForm({
   milestoneId,
+  projectId,
   parentId,
+  links,
   onSubmit,
 }: {
+  /** A fixed milestone, for forms opened from a milestone or parent issue. */
   milestoneId?: string
+  /** A fixed project, for sub-issues that inherit their parent's. */
+  projectId?: string
   parentId?: string
+  /** When given, the form offers Project and Milestone pickers instead. */
+  links?: IssueLinkChoices
   onSubmit: (input: IssueInput) => Promise<unknown>
 }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [status, setStatus] = useState<IssueStatus>('backlog')
   const [priority, setPriority] = useState(0)
+  const [link, setLink] = useState({ projectId: links?.defaultProjectId ?? '', milestoneId: '' })
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
+
+  const chosenMilestone = links ? link.milestoneId : milestoneId
+  const chosenProject = links ? link.projectId : projectId
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -238,13 +294,15 @@ export function IssueForm({
     try {
       await onSubmit({
         title, description, status, priority,
-        ...(milestoneId ? { milestone_id: milestoneId } : {}),
+        ...(chosenMilestone ? { milestone_id: chosenMilestone } : {}),
+        ...(chosenProject ? { project_id: chosenProject } : {}),
         ...(parentId ? { parent_id: parentId } : {}),
       })
       setTitle('')
       setDescription('')
       setStatus('backlog')
       setPriority(0)
+      setLink({ projectId: links?.defaultProjectId ?? '', milestoneId: '' })
     } catch {
       setFailed(true)
     } finally {
@@ -277,6 +335,25 @@ export function IssueForm({
           </select>
         </Field>
       </div>
+      {links ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Project">
+            <select className={inputClass} value={link.projectId}
+              onChange={(event) => setLink(reconcileLinks(links.milestones, link, { projectId: event.target.value }))}>
+              <option value="">No project</option>
+              {links.projects.map((project) => (
+                <option key={project.id} value={project.id}>{project.label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Milestone">
+            <select className={inputClass} value={link.milestoneId}
+              onChange={(event) => setLink(reconcileLinks(links.milestones, link, { milestoneId: event.target.value }))}>
+              <MilestoneOptions milestones={links.milestones} emptyLabel="No milestone" />
+            </select>
+          </Field>
+        </div>
+      ) : null}
       <Actions busy={busy} label="Create issue" error={failed} />
     </form>
   )
