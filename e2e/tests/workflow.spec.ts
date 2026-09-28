@@ -1,4 +1,4 @@
-import { test, expect, resetWorkspaceData, seededSessionToken } from './fixtures'
+import { test, expect, resetWorkspaceData, seededSessionToken, sprintProject } from './fixtures'
 
 /**
  * Sprint closing, reports, keyboard navigation, and the monochrome
@@ -19,7 +19,7 @@ test.beforeAll(async ({ playwright, baseURL }) => {
   const sprint = await api
     .post('/api/v1/w/lab/sprints', {
       headers,
-      data: { name: 'September 2026', starts_on: '2026-09-01', ends_on: '2026-09-30' },
+      data: { project_id: sprintProject(), name: 'September 2026', starts_on: '2026-09-01', ends_on: '2026-09-30' },
     })
     .then((r) => r.json())
   await api.post(`/api/v1/w/lab/sprints/${sprint.id}/activate`, { headers })
@@ -267,7 +267,7 @@ test('uses readable type at 100% zoom without disturbing responsive layout', asy
     await page.goto('/w/lab')
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
     await page.getByRole('button', { name: 'New issue' }).click()
-    await expect(page.getByRole('heading', { level: 2, name: 'New unfiled issue' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 2, name: 'New issue' })).toBeVisible()
 
     const metrics = await page.evaluate(() => {
       const sidebar = document.querySelector<HTMLElement>('[data-testid="desktop-sidebar"]')

@@ -96,10 +96,11 @@ export function PersonActivityTable({ rows }: { rows: PersonActivityRow[] }) {
 export function MilestoneCompletionTable({ rows }: { rows: MilestoneCompletionRow[] }) {
   if (rows.length === 0) return <Nothing message="No sprints yet." />
   return (
-    <Table head={['Sprint', 'Completed', 'Planned', 'Rate']}>
+    <Table head={['Sprint', 'Project', 'Completed', 'Planned', 'Rate']}>
       {rows.map((row) => (
         <tr key={row.sprint_id}>
           <td className="py-1 pr-4">{row.sprint_name}</td>
+          <td className="py-1 pr-4">{row.project_name ?? ''}</td>
           <td className="py-1 pr-4 tabular-nums">{row.completed}</td>
           <td className="py-1 pr-4 tabular-nums">{row.planned}</td>
           <td className="py-1 pr-4 tabular-nums">
@@ -114,10 +115,11 @@ export function MilestoneCompletionTable({ rows }: { rows: MilestoneCompletionRo
 export function ClosedPerSprintTable({ rows }: { rows: SprintClosedRow[] }) {
   if (rows.length === 0) return <Nothing message="No sprints yet." />
   return (
-    <Table head={['Sprint', 'Closed', 'Total issues']}>
+    <Table head={['Sprint', 'Project', 'Closed', 'Total issues']}>
       {rows.map((row) => (
         <tr key={row.sprint_id}>
           <td className="py-1 pr-4">{row.sprint_name}</td>
+          <td className="py-1 pr-4">{row.project_name ?? ''}</td>
           <td className="py-1 pr-4 tabular-nums">{row.closed}</td>
           <td className="py-1 pr-4 tabular-nums">{row.total}</td>
         </tr>

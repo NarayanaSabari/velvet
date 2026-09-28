@@ -131,9 +131,9 @@ export function formatSprints(sprints: Sprint[], workspace: string): string {
   ].join('\n')
 }
 
-export function formatCreatedSprint(sprint: Sprint): string {
+export function formatCreatedSprint(sprint: Sprint, project?: string): string {
   return [
-    `Created sprint ${text(sprint.name, '(unnamed)')} (${text(sprint.starts_on)} to ${text(sprint.ends_on)}).`,
+    `Created sprint ${text(sprint.name, '(unnamed)')}${project ? ` for project ${project}` : ''} (${text(sprint.starts_on)} to ${text(sprint.ends_on)}).`,
     `ID: ${text(sprint.id)}`,
     `State: ${text(sprint.state)}. Activate it when work starts.`,
   ].join('\n')

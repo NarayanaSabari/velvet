@@ -23,7 +23,7 @@ func TestAMemberCanRunSprintsAndEveryChangeIsRecorded(t *testing.T) {
 	require.NoError(t, err)
 
 	rec := f.Do(http.MethodPost, "/api/v1/w/lab/sprints",
-		map[string]any{"name": "September 2026", "starts_on": "2026-09-01", "ends_on": "2026-09-30"})
+		map[string]any{"name": "September 2026", "starts_on": "2026-09-01", "ends_on": "2026-09-30", "project_id": f.SprintProject().String()})
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	var sprint store.Sprint
 	f.DecodeInto(rec, &sprint)
@@ -57,7 +57,7 @@ func TestAViewerStillCannotRunSprints(t *testing.T) {
 	require.NoError(t, err)
 
 	rec := f.Do(http.MethodPost, "/api/v1/w/lab/sprints",
-		map[string]any{"name": "September 2026", "starts_on": "2026-09-01", "ends_on": "2026-09-30"})
+		map[string]any{"name": "September 2026", "starts_on": "2026-09-01", "ends_on": "2026-09-30", "project_id": f.SprintProject().String()})
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 }
 
@@ -69,7 +69,7 @@ func TestActivatingASprintRecordsTheSwitch(t *testing.T) {
 
 	create := func(name, from, to string) store.Sprint {
 		rec := f.Do(http.MethodPost, "/api/v1/w/lab/sprints",
-			map[string]any{"name": name, "starts_on": from, "ends_on": to})
+			map[string]any{"name": name, "starts_on": from, "ends_on": to, "project_id": f.SprintProject().String()})
 		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 		var s store.Sprint
 		f.DecodeInto(rec, &s)

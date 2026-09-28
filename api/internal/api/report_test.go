@@ -127,6 +127,8 @@ func TestMilestoneCompletionAndClosedPerSprint(t *testing.T) {
 	f.DecodeInto(rec, &milestones)
 	require.Len(t, milestones.Sprints, 1)
 	require.Equal(t, sprint.Name, milestones.Sprints[0].SprintName)
+	// Two projects can both run a "September", so the report names the project.
+	require.Equal(t, "Sprints", milestones.Sprints[0].ProjectName)
 	require.Equal(t, 1, milestones.Sprints[0].Planned)
 	require.Equal(t, 0, milestones.Sprints[0].Completed)
 
@@ -137,6 +139,7 @@ func TestMilestoneCompletionAndClosedPerSprint(t *testing.T) {
 	}
 	f.DecodeInto(rec, &closed)
 	require.Len(t, closed.Sprints, 1)
+	require.Equal(t, "Sprints", closed.Sprints[0].ProjectName)
 	require.Equal(t, 1, closed.Sprints[0].Closed)
 	require.Equal(t, 2, closed.Sprints[0].Total)
 }

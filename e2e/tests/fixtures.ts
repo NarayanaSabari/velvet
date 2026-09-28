@@ -57,6 +57,26 @@ export function seedWorkspace(token: string, slug = 'lab'): void {
   `)
 }
 
+/**
+ * Returns the id of a project in the workspace, creating it if needed. Every
+ * sprint belongs to one project, so fixtures that create sprints use this.
+ */
+export function sprintProject(key = 'web', name = 'Web', slug = 'lab'): string {
+  return sql(`
+    WITH ws AS (SELECT id FROM workspace WHERE slug = '${slug}'),
+    made AS (
+      INSERT INTO project (workspace_id, key, name)
+      SELECT id, '${key}', '${name}' FROM ws
+      ON CONFLICT DO NOTHING
+      RETURNING id
+    )
+    SELECT id FROM made
+    UNION ALL
+    SELECT p.id FROM project p, ws WHERE p.workspace_id = ws.id AND p.key = '${key}'
+    LIMIT 1
+  `).trim()
+}
+
 /** Links a repository so webhook deliveries can be attributed to a workspace. */
 export function seedRepo(githubId = 555, slug = 'lab'): void {
   // The repo row selects from workspace, so the workspace has to exist first.

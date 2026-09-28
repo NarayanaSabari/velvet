@@ -52,7 +52,25 @@ func (s *Server) handleSprintSnapshot(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListSprints(w http.ResponseWriter, r *http.Request) {
 	ws, _ := CurrentWorkspace(r.Context())
-	sprints, err := s.store.ListSprints(r.Context(), ws.WorkspaceID)
+	var filter store.SprintFilter
+	query := r.URL.Query()
+	if raw := query.Get("project_id"); raw != "" {
+		id, ok := queryUUID(w, raw, "project_id")
+		if !ok {
+			return
+		}
+		filter.ProjectID = *id
+	}
+	// A project may also be named by its key, which is what an agent knows.
+	if raw := query.Get("project"); raw != "" {
+		id, err := s.store.ProjectIDByKey(r.Context(), ws.WorkspaceID, store.NormalizeProjectKey(raw))
+		if err != nil {
+			writeProjectError(w, err, "could not resolve the project")
+			return
+		}
+		filter.ProjectID = id
+	}
+	sprints, err := s.store.ListSprints(r.Context(), ws.WorkspaceID, filter)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not list sprints")
 		return
@@ -60,11 +78,15 @@ func (s *Server) handleListSprints(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]any{"sprints": sprints})
 }
 
+// handleCreateSprint starts a sprint for one project. Each project runs its
+// own sprints, so the project is required, named by id or by key.
 func (s *Server) handleCreateSprint(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name     string `json:"name"`
-		StartsOn string `json:"starts_on"`
-		EndsOn   string `json:"ends_on"`
+		Name      string  `json:"name"`
+		StartsOn  string  `json:"starts_on"`
+		EndsOn    string  `json:"ends_on"`
+		ProjectID *string `json:"project_id"`
+		Project   *string `json:"project"`
 	}
 	if !DecodeJSON(w, r, &body) {
 		return
@@ -84,11 +106,29 @@ func (s *Server) handleCreateSprint(w http.ResponseWriter, r *http.Request) {
 
 	ws, _ := CurrentWorkspace(r.Context())
 	user, _ := CurrentUser(r.Context())
+	projectID, ok := parseOptionalUUID(w, body.ProjectID, "project_id")
+	if !ok {
+		return
+	}
+	if projectID == nil && body.Project != nil {
+		if projectID, ok = s.resolveProjectKey(w, r, ws.WorkspaceID, *body.Project); !ok {
+			return
+		}
+	}
+	if projectID == nil {
+		WriteError(w, http.StatusBadRequest, "invalid_request",
+			"a sprint belongs to a project: pass project_id or a project key")
+		return
+	}
 	sprint, err := s.store.CreateSprint(r.Context(), store.CreateSprintInput{
-		WorkspaceID: ws.WorkspaceID, ActorID: user.ID,
+		WorkspaceID: ws.WorkspaceID, ProjectID: *projectID, ActorID: user.ID,
 		Name: body.Name, StartsOn: body.StartsOn, EndsOn: body.EndsOn,
 	})
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			WriteError(w, http.StatusNotFound, "not_found", "no such project")
+			return
+		}
 		WriteError(w, http.StatusInternalServerError, "internal", "could not create the sprint")
 		return
 	}

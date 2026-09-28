@@ -14,6 +14,7 @@ import { ActivityRow } from '../activity/ActivityRow'
 import { useSession } from '../auth/useSession'
 import { ConnectAgentCard } from '../onboarding/ConnectAgentCard'
 import { IssueForm, type IssueInput } from '../work/CoreForms'
+import { useWorkLinks } from '../work/workLinks'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -82,6 +83,7 @@ export function Dashboard({ slug }: { slug: string }) {
     mutationFn: (input: IssueInput) => api.post<Issue>(`/w/${slug}/issues`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['dashboard', slug] }),
   })
+  const links = useWorkLinks(slug)
 
   if (query.isPending) return <LoadingState />
   if (query.error) {
@@ -95,7 +97,10 @@ export function Dashboard({ slug }: { slug: string }) {
   }
 
   const data = query.data
-  const groups = groupByMilestone(data.my_issues, data.milestones)
+  // Older servers send only the first active sprint, so fall back to it.
+  const activeSprints = data.active_sprints
+    ?? (data.active_sprint ? [{ sprint: data.active_sprint, project_key: '', project_name: '', milestones: data.milestones }] : [])
+  const groups = groupByMilestone(data.my_issues, activeSprints.flatMap((active) => active.milestones))
 
   return (
     <div className="w-full min-w-0">
@@ -113,15 +118,18 @@ export function Dashboard({ slug }: { slug: string }) {
         <section className="ui-surface mb-6 p-4" aria-labelledby="dashboard-new-issue-heading">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 id="dashboard-new-issue-heading" className="font-medium">New unfiled issue</h2>
-              <p className="mt-1 text-sm text-grey-500">Capture work now and organise it later.</p>
+              <h2 id="dashboard-new-issue-heading" className="font-medium">New issue</h2>
+              <p className="mt-1 text-sm text-grey-500">Capture work now. Project and milestone are optional.</p>
             </div>
             <Button onClick={() => setCreatingIssue(false)}>Cancel</Button>
           </div>
-          <IssueForm onSubmit={async (input) => {
-            await createIssue.mutateAsync(input)
-            setCreatingIssue(false)
-          }} />
+          <IssueForm
+            links={{ projects: links.projects, milestones: links.milestones }}
+            onSubmit={async (input) => {
+              await createIssue.mutateAsync(input)
+              setCreatingIssue(false)
+            }}
+          />
         </section>
       ) : null}
 
@@ -136,19 +144,37 @@ export function Dashboard({ slug }: { slug: string }) {
 
       <div className="grid gap-x-8 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,30rem)]">
         <div className="min-w-0">
-          <Section title={data.active_sprint ? `Sprint ${data.active_sprint.name}` : 'Sprint'}>
-            {data.milestones.length === 0 ? (
+          {activeSprints.length === 0 ? (
+            <Section title="Sprint">
               <EmptyState
-                title={data.active_sprint ? 'No milestones in the current sprint' : 'No active sprint'}
+                title="No active sprint"
+                message="Each project runs its own sprint. Activate one from Sprints."
               />
-            ) : (
-              <div className="divide-y divide-grey-200 border-y border-grey-200">
-                {data.milestones.map((m) => (
-                  <MilestoneSummary key={m.id} slug={slug} milestone={m} />
-                ))}
-              </div>
-            )}
-          </Section>
+            </Section>
+          ) : (
+            activeSprints.map((active) => (
+              <section key={active.sprint.id} className="mb-6" data-testid="dashboard-active-sprint">
+                <SectionHeader
+                  title={(
+                    <NavLink to={`/w/${slug}/sprints/${active.sprint.id}`}>
+                      {active.project_name ? `${active.project_name} · ` : 'Sprint '}
+                      {active.sprint.name}
+                    </NavLink>
+                  )}
+                  meta={`ends ${active.sprint.ends_on}`}
+                />
+                {active.milestones.length === 0 ? (
+                  <EmptyState title="No milestones in this sprint" />
+                ) : (
+                  <div className="divide-y divide-grey-200 border-y border-grey-200">
+                    {active.milestones.map((m) => (
+                      <MilestoneSummary key={m.id} slug={slug} milestone={m} />
+                    ))}
+                  </div>
+                )}
+              </section>
+            ))
+          )}
 
           <Section title="My open issues">
             {groups.length === 0 ? (

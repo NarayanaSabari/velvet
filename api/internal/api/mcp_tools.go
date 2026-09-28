@@ -47,11 +47,12 @@ type mcpProject struct {
 }
 
 type mcpSprint struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	StartsOn string `json:"starts_on"`
-	EndsOn   string `json:"ends_on"`
-	State    string `json:"state"`
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Name      string `json:"name"`
+	StartsOn  string `json:"starts_on"`
+	EndsOn    string `json:"ends_on"`
+	State     string `json:"state"`
 }
 
 type mcpMilestone struct {
@@ -132,9 +133,14 @@ type setStatusInput struct {
 }
 
 type createSprintInput struct {
+	Project  string `json:"project" jsonschema:"Key of the project this sprint belongs to (see velvet_list_projects). Each project runs its own sprints."`
 	Name     string `json:"name" jsonschema:"Sprint name, such as September 2026"`
 	StartsOn string `json:"starts_on" jsonschema:"First day, YYYY-MM-DD"`
 	EndsOn   string `json:"ends_on" jsonschema:"Last day, YYYY-MM-DD"`
+}
+
+type listSprintsInput struct {
+	Project string `json:"project,omitempty" jsonschema:"Only this project's sprints, by key"`
 }
 
 type createMilestoneInput struct {
@@ -436,13 +442,30 @@ func registerMCPTools(server *mcp.Server, baseURL string, api http.Handler) {
 		})
 
 	tool(server, baseURL, api, "velvet_list_sprints",
-		"List the sprints in the organisation with their state and dates, so work can be scheduled into the month it belongs to.",
-		func(ctx context.Context, c *mcpCall, _ noInput) (string, error) {
+		"List sprints with their project, state, and dates. Each project runs its own sprints, so pass a project key to see only that project's.",
+		func(ctx context.Context, c *mcpCall, in listSprintsInput) (string, error) {
 			base := c.scoped()
+			var projects struct {
+				Projects []struct {
+					ID  string `json:"id"`
+					Key string `json:"key"`
+				} `json:"projects"`
+			}
+			if err := c.do(ctx, http.MethodGet, base+"/projects?include_archived=true", nil, &projects); err != nil {
+				return "", err
+			}
+			keys := map[string]string{}
+			for _, p := range projects.Projects {
+				keys[p.ID] = p.Key
+			}
+			path := base + "/sprints"
+			if project := strings.TrimSpace(in.Project); project != "" {
+				path += "?project=" + url.QueryEscape(project)
+			}
 			var list struct {
 				Sprints []mcpSprint `json:"sprints"`
 			}
-			if err := c.do(ctx, http.MethodGet, base+"/sprints", nil, &list); err != nil {
+			if err := c.do(ctx, http.MethodGet, path, nil, &list); err != nil {
 				return "", err
 			}
 			if len(list.Sprints) == 0 {
@@ -450,25 +473,31 @@ func registerMCPTools(server *mcp.Server, baseURL string, api http.Handler) {
 			}
 			lines := []string{"Sprints in " + c.slug() + ":"}
 			for _, s := range list.Sprints {
-				lines = append(lines, fmt.Sprintf("%s | %s | %s | %s to %s", s.ID, mcpLine(s.Name, "(unnamed)"), s.State, s.StartsOn, s.EndsOn))
+				lines = append(lines, fmt.Sprintf("%s | %s | project %s | %s | %s to %s", s.ID, mcpLine(s.Name, "(unnamed)"),
+					mcpLine(keys[s.ProjectID], "?"), s.State, s.StartsOn, s.EndsOn))
 			}
 			return strings.Join(lines, "\n"), nil
 		})
 
 	tool(server, baseURL, api, "velvet_create_sprint",
-		"Create a sprint, the calendar window work is scheduled into. A new sprint starts upcoming and is not activated automatically.",
+		"Create a sprint for one project, the time window that project's work is scheduled into. Each project runs its "+
+			"own sprints. A new sprint starts upcoming and is not activated automatically.",
 		func(ctx context.Context, c *mcpCall, in createSprintInput) (string, error) {
 			if !mcpDate.MatchString(in.StartsOn) || !mcpDate.MatchString(in.EndsOn) {
 				return "", errors.New("starts_on and ends_on must be YYYY-MM-DD")
 			}
+			project := strings.TrimSpace(in.Project)
+			if project == "" {
+				return "", errors.New("a sprint belongs to a project: pass its key (see velvet_list_projects)")
+			}
 			base := c.scoped()
 			var sprint mcpSprint
 			if err := c.do(ctx, http.MethodPost, base+"/sprints",
-				map[string]any{"name": in.Name, "starts_on": in.StartsOn, "ends_on": in.EndsOn}, &sprint); err != nil {
+				map[string]any{"name": in.Name, "starts_on": in.StartsOn, "ends_on": in.EndsOn, "project": project}, &sprint); err != nil {
 				return "", err
 			}
-			return fmt.Sprintf("Created sprint %s (%s to %s).\nID: %s\nState: %s. Activate it when work starts.",
-				mcpLine(sprint.Name, "(unnamed)"), sprint.StartsOn, sprint.EndsOn, sprint.ID, sprint.State), nil
+			return fmt.Sprintf("Created sprint %s for project %s (%s to %s).\nID: %s\nState: %s. Activate it when work starts.",
+				mcpLine(sprint.Name, "(unnamed)"), project, sprint.StartsOn, sprint.EndsOn, sprint.ID, sprint.State), nil
 		})
 
 	tool(server, baseURL, api, "velvet_create_milestone",

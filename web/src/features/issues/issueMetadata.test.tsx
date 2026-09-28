@@ -4,6 +4,8 @@ import { expect, it, vi } from 'vitest'
 
 import { IssueMetadata, ReadOnlyIssueMetadata } from './IssueMetadata'
 
+const shipAuth = { id: 'm1', label: 'Ship auth', group: 'Web · September 2026', projectId: 'p1' }
+
 it('updates assignee and milestone through named selectors', async () => {
   const onPatch = vi.fn().mockResolvedValue(undefined)
   const user = userEvent.setup()
@@ -11,7 +13,7 @@ it('updates assignee and milestone through named selectors', async () => {
     assigneeId={null}
     milestoneId={null}
     members={[{ id: 'u1', label: 'sabari' }]}
-    milestones={[{ id: 'm1', label: 'Ship auth' }]}
+    milestones={[shipAuth]}
     onPatch={onPatch}
   />)
 
@@ -19,6 +21,29 @@ it('updates assignee and milestone through named selectors', async () => {
   await user.selectOptions(screen.getByLabelText('Milestone'), 'm1')
   expect(onPatch).toHaveBeenNthCalledWith(1, { assignee_id: 'u1' })
   expect(onPatch).toHaveBeenNthCalledWith(2, { milestone_id: 'm1' })
+})
+
+it('links the ticket to a project and groups milestones by project and sprint', async () => {
+  const onPatch = vi.fn().mockResolvedValue(undefined)
+  const user = userEvent.setup()
+  render(<IssueMetadata
+    assigneeId={null}
+    projectId={null}
+    milestoneId={null}
+    members={[]}
+    projects={[{ id: 'p1', key: 'web', label: 'Web' }]}
+    milestones={[shipAuth]}
+    onPatch={onPatch}
+  />)
+
+  expect(screen.getByLabelText('Project')).toHaveValue('')
+  expect(screen.getByRole('group', { name: 'Web · September 2026' })).toBeInTheDocument()
+
+  await user.selectOptions(screen.getByLabelText('Project'), 'p1')
+  expect(onPatch).toHaveBeenCalledWith({ project_id: 'p1' })
+
+  await user.selectOptions(screen.getByLabelText('Project'), '')
+  expect(onPatch).toHaveBeenLastCalledWith({ project_id: '' })
 })
 
 it('reports a failed metadata update', async () => {
@@ -65,13 +90,17 @@ it('renders issue metadata without controls for a viewer', () => {
   render(<ReadOnlyIssueMetadata
     priority={3}
     assigneeId="u1"
+    projectId="p1"
     milestoneId="m1"
     members={[{ id: 'u1', label: 'sabari' }]}
-    milestones={[{ id: 'm1', label: 'Ship auth' }]}
+    projects={[{ id: 'p1', key: 'web', label: 'Web' }]}
+    milestones={[shipAuth]}
   />)
 
   expect(screen.getByText('3')).toBeInTheDocument()
   expect(screen.getByText('sabari')).toBeInTheDocument()
+  expect(screen.getByText('Web')).toBeInTheDocument()
   expect(screen.getByText('Ship auth')).toBeInTheDocument()
+  expect(screen.getByText('Web · September 2026')).toBeInTheDocument()
   expect(screen.queryByRole('combobox')).toBeNull()
 })

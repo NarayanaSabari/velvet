@@ -1,7 +1,7 @@
 # Work-Log Ticketing
 
 A self-hosted ticketing and work-log system for a small team.
-Work is organised as monthly sprints containing milestones containing issues, and the issues a person worked on, together with the comments they wrote, are the record of work done.
+Each project runs its own sprints, sprints contain milestones, and milestones contain issues. The issues a person worked on, together with the comments they wrote, are the record of work done.
 GitHub pull requests attach to issues as proof of that work, not as a controller of it.
 
 Linear is the reference for feel and speed, not for feature scope.
@@ -13,14 +13,18 @@ Self-hosting is the point: the team owns the data and the deployment.
 A milestone dies with its sprint, so it cannot name that; a project outlives the sprints its issues are scheduled into.
 A repository can be mapped to a project, which is what lets a commit on a branch that names no issue still be attributed to the work it belongs to.
 
-**Sprint** is a calendar month, in state `upcoming`, `active`, or `completed`.
+**Sprint** belongs to exactly one project and is a time window, usually a calendar month, in state `upcoming`, `active`, or `completed`.
+Each project runs its own sprints, so two projects can each have a September sprint, and each project has at most one active sprint at a time.
+Activating a project's next sprint completes that project's current one and leaves every other project alone.
 Closing a sprint freezes a snapshot - milestones completed against planned, issue counts per status, per-person activity totals - so later edits cannot silently rewrite last month's report.
-Incomplete issues move to the next sprint.
+Incomplete issues move to the same project's next sprint.
 
 **Milestone** belongs to a sprint and carries a name, description, owner, target date, and status.
 Its comment thread is the periodic narrative: where this stands, and why.
 
 **Issue** belongs to a milestone, a project, or to nothing at all.
+A milestone belongs to one project through its sprint, so an issue's project and milestone always agree.
+Choosing a milestone moves the issue to that milestone's project, and choosing a different project clears a milestone from another one.
 The unfiled backlog is deliberate, because work arrives before anyone has filed it under a goal, and requiring a milestone at creation makes people skip logging entirely.
 An issue has a human-readable key (`ENG-142`), a title, a Markdown description, a status, a priority from 0 to 4, an assignee, and labels.
 Sub-issues nest exactly one level.
@@ -84,12 +88,13 @@ The local stdio server in [`mcp/`](mcp/) remains for resolving the organisation 
 A manager names a sprint and a goal. Neither has to exist yet, and none of it requires administration: running a sprint is the work, not administration of it, so a member can do it and every change names who made it.
 
 ```bash
-velvet sprints new "September 2026" 2026-09-01 2026-09-30
+velvet sprints new --project web "September 2026" 2026-09-01 2026-09-30
 velvet milestones new "$SPRINT_ID" "Ship the billing rewrite"
 velvet new "Migrate the invoice schema" --milestone "$MILESTONE_ID"
 ```
 
-A new sprint starts `upcoming` rather than activating itself, because activating one completes whichever sprint was active and that is a decision, not a side effect.
+Inside a repository mapped to a project, `--project` can be left out and the repository's project is used.
+A new sprint starts `upcoming` rather than activating itself, because activating one completes the project's current sprint and that is a decision, not a side effect.
 
 ## What did I work on last week
 

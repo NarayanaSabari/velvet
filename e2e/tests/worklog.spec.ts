@@ -1,4 +1,4 @@
-import { test, expect, resetWorkspaceData, seedWorkspace } from './fixtures'
+import { test, expect, resetWorkspaceData, seedWorkspace, sprintProject } from './fixtures'
 
 /**
  * The core work-log loop, driven the way a person drives it.
@@ -93,14 +93,26 @@ test('an admin can rename the organisation and the sidebar persists it after rel
 })
 
 test('sprint, milestone, and issue can be created through the UI', async ({ signedIn: page }) => {
+  // A sprint belongs to a project, so an organisation with none is sent to
+  // create one first rather than shown a form that cannot succeed.
+  await page.goto('/w/lab/sprints')
+  await expect(page.getByText('No projects yet')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'New sprint' })).toHaveCount(0)
+
+  sprintProject('web', 'Web')
+  sprintProject('api', 'API')
   await page.goto('/w/lab/sprints')
   await page.getByText('New sprint').click()
+  await page.getByLabel('Project').selectOption({ label: 'Web' })
   await page.getByLabel('Sprint name').fill('September 2026')
   await page.getByLabel('Starts on').fill('2026-09-01')
   await page.getByLabel('Ends on').fill('2026-09-30')
   await page.getByRole('button', { name: 'Create sprint' }).click()
 
+  // Sprints are listed under the project they belong to.
+  await expect(page.getByTestId('sprint-project-web').getByRole('heading', { name: 'Web' })).toBeVisible()
   await page.getByRole('option', { name: /September 2026/ }).click()
+  await expect(page.getByTestId('sprint-project')).toContainText('Web')
   await page.getByRole('button', { name: 'Activate sprint' }).click()
   await page.getByText('New milestone').click()
   await page.getByLabel('Milestone name').fill('Ship auth')

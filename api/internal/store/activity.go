@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 
@@ -114,11 +113,23 @@ const (
 // DashboardPayload is everything the personal dashboard needs in one request,
 // so the first paint is a single round trip.
 type DashboardPayload struct {
-	Activity       []Activity  `json:"activity"`
-	MyIssues       []Issue     `json:"my_issues"`
-	UnreadMentions int         `json:"unread_mentions"`
-	ActiveSprint   *Sprint     `json:"active_sprint"`
-	Milestones     []Milestone `json:"milestones"`
+	Activity       []Activity `json:"activity"`
+	MyIssues       []Issue    `json:"my_issues"`
+	UnreadMentions int        `json:"unread_mentions"`
+	// ActiveSprints holds every project's active sprint, since each project
+	// runs its own. ActiveSprint and Milestones remain for older clients and
+	// describe the first of them.
+	ActiveSprints []ActiveSprint `json:"active_sprints"`
+	ActiveSprint  *Sprint        `json:"active_sprint"`
+	Milestones    []Milestone    `json:"milestones"`
+}
+
+// ActiveSprint is one project's running sprint and the milestones in it.
+type ActiveSprint struct {
+	Sprint      Sprint      `json:"sprint"`
+	ProjectKey  string      `json:"project_key"`
+	ProjectName string      `json:"project_name"`
+	Milestones  []Milestone `json:"milestones"`
 }
 
 // ListActivity pages descending on the primary key, which is monotonic and
@@ -245,21 +256,48 @@ func (s *Store) Dashboard(ctx context.Context, workspaceID, userID uuid.UUID) (D
 		return out, err
 	}
 
-	sprint, err := scanSprint(s.pool.QueryRow(ctx,
-		`SELECT `+sprintCols+` FROM sprint WHERE workspace_id = $1 AND state = 'active'`,
-		workspaceID))
-	switch {
-	case errors.Is(err, ErrNotFound):
-		// No active sprint is a normal state between sprints, not a failure.
-		out.Milestones = []Milestone{}
-		return out, nil
-	case err != nil:
+	// Each project runs its own sprint, so every running one is listed,
+	// ordered by project name for a stable dashboard.
+	rows, err := s.pool.Query(ctx, `
+		SELECT s.id, s.workspace_id, s.project_id, s.name,
+		       to_char(s.starts_on, 'YYYY-MM-DD'), to_char(s.ends_on, 'YYYY-MM-DD'),
+		       s.state::text, to_char(s.created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
+		       to_char(s.completed_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
+		       p.key, p.name
+		FROM sprint s JOIN project p ON p.id = s.project_id
+		WHERE s.workspace_id = $1 AND s.state = 'active'
+		ORDER BY lower(p.name), p.id`, workspaceID)
+	if err != nil {
 		return out, err
 	}
-	out.ActiveSprint = &sprint
-
-	if out.Milestones, err = s.ListMilestonesForSprint(ctx, workspaceID, sprint.ID); err != nil {
+	var active []ActiveSprint
+	for rows.Next() {
+		var a ActiveSprint
+		if err := rows.Scan(&a.Sprint.ID, &a.Sprint.WorkspaceID, &a.Sprint.ProjectID, &a.Sprint.Name,
+			&a.Sprint.StartsOn, &a.Sprint.EndsOn, &a.Sprint.State, &a.Sprint.CreatedAt, &a.Sprint.CompletedAt,
+			&a.ProjectKey, &a.ProjectName); err != nil {
+			rows.Close()
+			return out, err
+		}
+		active = append(active, a)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		return out, err
+	}
+
+	out.ActiveSprints = []ActiveSprint{}
+	out.Milestones = []Milestone{}
+	for i := range active {
+		if active[i].Milestones, err = s.ListMilestonesForSprint(ctx, workspaceID, active[i].Sprint.ID); err != nil {
+			return out, err
+		}
+	}
+	// No active sprint is a normal state between sprints, not a failure.
+	if len(active) > 0 {
+		out.ActiveSprints = active
+		out.ActiveSprint = &active[0].Sprint
+		out.Milestones = active[0].Milestones
 	}
 	return out, nil
 }

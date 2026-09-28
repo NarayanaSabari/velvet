@@ -26,6 +26,10 @@ The current SPA route tree is workspace-oriented under `/w/$slug` and exposes da
 
 `web/src/features/projects/ProjectsPage.tsx` is the projects index: a project is the durable thing work belongs to, and its open count links into the Issues page filtered to exactly those issues.
 
+`web/src/features/sprints/SprintList.tsx` lists sprints under one section per project, because each project runs its own sprints and two projects may use the same sprint name.
+The New sprint form asks for the project first, and an organisation with no projects sees an empty state that sends it to Projects instead of a form that cannot succeed.
+The sprint board's eyebrow names and links the sprint's project, and the Dashboard shows one section per project with an active sprint.
+
 `/me/worklog` is the one route that deliberately sits outside `/w/$slug`, because it gathers work from every organisation the person belongs to and scoping it to one would answer a smaller question.
 `web/src/features/recap/Recap.tsx` groups by day and then by organisation, and links the Markdown form for pasting into a message.
 
@@ -173,6 +177,12 @@ Below 1024px, the columns collapse into one document order without hiding status
 The main column contains the issue header, description, edit form, unified timeline, and comment composer.
 
 The rail contains status, metadata, labels, linked evidence, and sub-issues.
+
+The metadata rail's Project and Milestone selects always agree, because a milestone belongs to one project through its sprint.
+Milestone options are grouped in `optgroup`s labelled "Project · Sprint", active sprints first, and milestones of closed sprints are hidden unless the issue is already on one.
+Choosing a milestone moves the issue to that milestone's project, and choosing a different project clears a milestone from another one, so the rail shows the saved result rather than a contradiction.
+The issue's eyebrow names and links its project next to the key.
+New-issue forms on the Issues page and the Dashboard offer the same two optional selects, and the Issues page defaults the project to the active project filter.
 
 The issue status is an explicit user action, and linked pull requests are evidence rather than a status controller.
 

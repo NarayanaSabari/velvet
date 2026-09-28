@@ -13,7 +13,7 @@ import (
 func newSprint(t *testing.T, f *testutil.Fixture) store.Sprint {
 	t.Helper()
 	rec := f.Do(http.MethodPost, "/api/v1/w/lab/sprints", map[string]any{
-		"name": "September", "starts_on": "2026-09-01", "ends_on": "2026-09-30"})
+		"name": "September", "starts_on": "2026-09-01", "ends_on": "2026-09-30", "project_id": f.SprintProject().String()})
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 	var s store.Sprint
 	f.DecodeInto(rec, &s)

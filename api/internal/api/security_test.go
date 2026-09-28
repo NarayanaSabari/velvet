@@ -22,8 +22,9 @@ func TestSecurityNonMemberCannotReachAnotherWorkspace(t *testing.T) {
 	require.NoError(t, f.Pool.QueryRow(ctx,
 		`INSERT INTO workspace (name, slug) VALUES ('Other', 'other') RETURNING id`).Scan(&otherWS))
 	_, err := f.Pool.Exec(ctx,
-		`INSERT INTO sprint (workspace_id, name, starts_on, ends_on)
-		 VALUES ($1, 'Secret sprint', '2026-09-01', '2026-09-30')`, otherWS)
+		`WITH p AS (INSERT INTO project (workspace_id, key, name) VALUES ($1, 'secret', 'Secret') RETURNING id)
+		 INSERT INTO sprint (workspace_id, project_id, name, starts_on, ends_on)
+		 SELECT $1, p.id, 'Secret sprint', '2026-09-01', '2026-09-30' FROM p`, otherWS)
 	require.NoError(t, err)
 
 	rec := f.Do(http.MethodGet, "/api/v1/w/other/sprints", nil)
@@ -51,7 +52,7 @@ func TestSecurityViewerCannotCreateSprint(t *testing.T) {
 	defer func() { f.Token = orig }()
 
 	rec := f.Do(http.MethodPost, "/api/v1/w/lab/sprints", map[string]any{
-		"name": "Nope", "starts_on": "2026-09-01", "ends_on": "2026-09-30"})
+		"name": "Nope", "starts_on": "2026-09-01", "ends_on": "2026-09-30", "project_id": f.SprintProject().String()})
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 }
 
@@ -72,7 +73,7 @@ func TestSecurityViewerCannotManageSprintLifecycle(t *testing.T) {
 	f.Token = tok
 
 	created := f.Do(http.MethodPost, "/api/v1/w/lab/sprints", map[string]any{
-		"name": "Nope", "starts_on": "2026-09-01", "ends_on": "2026-09-30"})
+		"name": "Nope", "starts_on": "2026-09-01", "ends_on": "2026-09-30", "project_id": f.SprintProject().String()})
 	require.Equal(t, http.StatusForbidden, created.Code, created.Body.String())
 }
 

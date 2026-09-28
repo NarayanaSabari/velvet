@@ -11,6 +11,7 @@ import { EmptyState } from '../../ui/EmptyState'
 import { PageHeader, SectionHeader } from '../../ui/PageHeader'
 import { StatusBadge, STATUS_LABELS } from '../../ui/StatusBadge'
 import { IssueForm, type IssueInput } from '../work/CoreForms'
+import { useWorkLinks } from '../work/workLinks'
 
 const ISSUE_STATUSES = Object.keys(STATUS_LABELS) as IssueStatus[]
 const ISSUE_PRIORITIES = [0, 1, 2, 3, 4] as const
@@ -33,17 +34,20 @@ function IssueRow({
   issue,
   members,
   milestones,
+  projects,
   slug,
 }: {
   issue: Issue
   members: Map<string, User>
   milestones: Map<string, string>
+  projects: Map<string, Project>
   slug: string
 }) {
   const assignee = assigneeName(issue, members)
   const milestone = issue.milestone_id
     ? milestones.get(issue.milestone_id) ?? 'Milestone'
     : 'Unfiled'
+  const project = issue.project_id ? projects.get(issue.project_id) : undefined
 
   return (
     <li data-testid={`issue-row-${issue.id}`}>
@@ -77,10 +81,11 @@ function IssueRow({
             </span>
             <span
               className="min-w-0 max-w-full truncate"
-              aria-label={`Milestone: ${milestone}`}
-              title={`Milestone: ${milestone}`}
+              aria-label={project ? `Project: ${project.name}, milestone: ${milestone}` : `Milestone: ${milestone}`}
+              title={project ? `${project.name} · ${milestone}` : `Milestone: ${milestone}`}
               data-testid={`issue-milestone-${issue.id}`}
             >
+              {project ? <span className="text-grey-700">{project.key} · </span> : null}
               {milestone}
             </span>
           </div>
@@ -125,6 +130,7 @@ export function IssuesPage({ slug }: { slug: string }) {
     mutationFn: (input: IssueInput) => api.post<Issue>(`/w/${slug}/issues`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['issues', slug] }),
   })
+  const links = useWorkLinks(slug)
 
   const allIssues = useMemo(() => issues.data ?? [], [issues.data])
   const membersById = useMemo(
@@ -200,7 +206,16 @@ export function IssuesPage({ slug }: { slug: string }) {
             </div>
             <Button onClick={() => setCreatingIssue(false)}>Cancel</Button>
           </div>
-          <IssueForm onSubmit={submitIssue} />
+          <IssueForm
+            links={{
+              projects: links.projects,
+              milestones: links.milestones,
+              // Filtering to a project and then pressing New issue means
+              // "a new issue here", so the filter becomes the default.
+              defaultProjectId: links.projects.find((item) => item.key === project)?.id,
+            }}
+            onSubmit={submitIssue}
+          />
         </section>
       ) : null}
 
@@ -333,6 +348,7 @@ export function IssuesPage({ slug }: { slug: string }) {
                 issue={issue}
                 members={membersById}
                 milestones={milestonesById}
+                projects={links.projectById}
                 slug={slug}
               />
             ))}

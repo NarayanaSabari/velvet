@@ -386,14 +386,16 @@ export function createMcpServer(config: VelvetConfig, options: ToolServerOptions
     'velvet_list_sprints',
     {
       description:
-        'List the sprints in the current workspace with their state and dates, so work can be scheduled ' +
-        'into the month it belongs to.',
-      inputSchema: {},
+        'List sprints with their state and dates. Each project runs its own sprints, so pass a project ' +
+        "key to see only that project's; the repository's project is used when one is mapped.",
+      inputSchema: {
+        project: z.string().min(1).optional().describe('Only this project\'s sprints, by key'),
+      },
     },
-    async () => {
+    async ({ project }) => {
       try {
         const resolved = await scoped()
-        const sprints = await api.listSprints()
+        const sprints = await api.listSprints(project ?? resolved.project)
         return toolResult(formatSprints(sprints, resolved.workspace))
       } catch (error) {
         return toolError(error)
@@ -405,19 +407,29 @@ export function createMcpServer(config: VelvetConfig, options: ToolServerOptions
     'velvet_create_sprint',
     {
       description:
-        'Create a sprint, the calendar window work is scheduled into. Use this when told to work in a ' +
-        'sprint that does not exist yet. A new sprint starts upcoming and is not activated automatically.',
+        'Create a sprint for one project, the time window that project\'s work is scheduled into. Each ' +
+        'project runs its own sprints. Use this when told to work in a sprint that does not exist yet. ' +
+        'Omit project to use the project this repository is mapped to. A new sprint starts upcoming and ' +
+        'is not activated automatically.',
       inputSchema: {
+        project: z.string().min(1).optional().describe('Key of the project this sprint belongs to'),
         name: z.string().min(1).describe('Sprint name, such as "September 2026"'),
         starts_on: z.string().regex(DATE_RE).describe('First day, YYYY-MM-DD'),
         ends_on: z.string().regex(DATE_RE).describe('Last day, YYYY-MM-DD'),
       },
     },
-    async ({ name, starts_on, ends_on }) => {
+    async ({ project, name, starts_on, ends_on }) => {
       try {
-        await scoped()
-        const sprint = await api.createSprint({ name, starts_on, ends_on })
-        return toolResult(formatCreatedSprint(sprint))
+        const resolved = await scoped()
+        const target = project ?? resolved.project
+        if (!target) {
+          throw new Error(
+            'a sprint belongs to a project, and this repository is not mapped to one. Pass project ' +
+              '(see velvet_list_projects).',
+          )
+        }
+        const sprint = await api.createSprint({ name, starts_on, ends_on, project: target })
+        return toolResult(formatCreatedSprint(sprint, target))
       } catch (error) {
         return toolError(error)
       }

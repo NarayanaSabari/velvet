@@ -161,6 +161,7 @@ export interface Milestone {
 export interface Sprint {
   id: string
   workspace_id: string
+  project_id: string
   name: string
   starts_on: string
   ends_on: string
@@ -190,7 +191,16 @@ export interface DashboardPayload {
   activity: Activity[]
   my_issues: Issue[]
   unread_mentions: number
+  /** Every project's running sprint, since each project runs its own. */
+  active_sprints: ActiveSprint[]
   active_sprint: Sprint | null
+  milestones: Milestone[]
+}
+
+export interface ActiveSprint {
+  sprint: Sprint
+  project_key: string
+  project_name: string
   milestones: Milestone[]
 }
 
@@ -266,6 +276,7 @@ export interface PersonActivityRow {
 export interface MilestoneCompletionRow {
   sprint_id: string
   sprint_name: string
+  project_name?: string
   starts_on: string
   planned: number
   completed: number
@@ -274,6 +285,7 @@ export interface MilestoneCompletionRow {
 export interface SprintClosedRow {
   sprint_id: string
   sprint_name: string
+  project_name?: string
   starts_on: string
   closed: number
   total: number

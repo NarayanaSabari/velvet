@@ -3,21 +3,78 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { IssueEditForm, IssueForm, MilestoneEditForm, MilestoneForm, SprintForm } from './CoreForms'
+import type { MilestoneChoice, ProjectChoice } from './workLinks'
+
+const projects: ProjectChoice[] = [
+  { id: 'p-web', key: 'web', label: 'Web' },
+  { id: 'p-api', key: 'api', label: 'API' },
+]
+const milestones: MilestoneChoice[] = [
+  { id: 'm-web', label: 'Ship onboarding', group: 'Web · September 2026', projectId: 'p-web' },
+  { id: 'm-api', label: 'Rate limits', group: 'API · September 2026', projectId: 'p-api' },
+]
 
 describe('core work forms', () => {
-  it('submits a sprint with its calendar boundary', async () => {
+  it('submits a sprint for the chosen project with its calendar boundary', async () => {
     const submit = vi.fn().mockResolvedValue(undefined)
     const user = userEvent.setup()
-    render(<SprintForm onSubmit={submit} />)
+    render(<SprintForm projects={projects} onSubmit={submit} />)
 
+    expect(screen.getByLabelText('Project')).toBeRequired()
+    await user.selectOptions(screen.getByLabelText('Project'), 'p-api')
     await user.type(screen.getByLabelText('Sprint name'), 'October 2026')
     await user.type(screen.getByLabelText('Starts on'), '2026-10-01')
     await user.type(screen.getByLabelText('Ends on'), '2026-10-31')
     await user.click(screen.getByRole('button', { name: 'Create sprint' }))
 
     expect(submit).toHaveBeenCalledWith({
-      name: 'October 2026', starts_on: '2026-10-01', ends_on: '2026-10-31',
+      project_id: 'p-api', name: 'October 2026', starts_on: '2026-10-01', ends_on: '2026-10-31',
     })
+  })
+
+  it('picks the only project for a sprint without asking', () => {
+    render(<SprintForm projects={[projects[0]!]} onSubmit={vi.fn()} />)
+    expect(screen.getByLabelText('Project')).toHaveValue('p-web')
+  })
+
+  it('links a new issue to a project and a milestone that agree', async () => {
+    const submit = vi.fn().mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    render(<IssueForm links={{ projects, milestones }} onSubmit={submit} />)
+
+    const project = screen.getByLabelText('Project')
+    const milestone = screen.getByLabelText('Milestone')
+    // Milestones are grouped under the project and sprint they belong to.
+    expect(screen.getByRole('group', { name: 'Web · September 2026' })).toBeInTheDocument()
+
+    // Choosing a milestone moves the issue to that milestone's project.
+    await user.selectOptions(milestone, 'm-api')
+    expect(project).toHaveValue('p-api')
+
+    // Choosing another project drops a milestone from a different project.
+    await user.selectOptions(project, 'p-web')
+    expect(milestone).toHaveValue('')
+
+    await user.selectOptions(milestone, 'm-web')
+    await user.type(screen.getByLabelText('Issue title'), 'Polish the empty state')
+    await user.click(screen.getByRole('button', { name: 'Create issue' }))
+
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Polish the empty state', project_id: 'p-web', milestone_id: 'm-web',
+    }))
+  })
+
+  it('leaves a new issue unfiled when no project or milestone is chosen', async () => {
+    const submit = vi.fn().mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    render(<IssueForm links={{ projects, milestones }} onSubmit={submit} />)
+
+    await user.type(screen.getByLabelText('Issue title'), 'Loose end')
+    await user.click(screen.getByRole('button', { name: 'Create issue' }))
+
+    const input = submit.mock.calls[0]![0] as Record<string, unknown>
+    expect(input).not.toHaveProperty('project_id')
+    expect(input).not.toHaveProperty('milestone_id')
   })
 
   it('submits a milestone with its narrative fields', async () => {

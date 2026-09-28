@@ -135,6 +135,7 @@ export type SprintState = 'upcoming' | 'active' | 'completed'
 /** A sprint is a calendar month: the window work is scheduled into. */
 export interface Sprint {
   id: string
+  project_id?: string
   name: string
   starts_on: string
   ends_on: string

@@ -1,4 +1,4 @@
-import { test, expect, resetWorkspaceData, seededSessionToken } from './fixtures'
+import { test, expect, resetWorkspaceData, seededSessionToken, sprintProject } from './fixtures'
 import type { Locator, Page } from '@playwright/test'
 
 /**
@@ -32,9 +32,10 @@ test.beforeAll(async ({ playwright, baseURL }) => {
     return res.json() as Promise<T>
   }
 
-  const sprint = await post<{ id: string }>('/sprints', { name: 'September 2026', starts_on: '2026-09-01', ends_on: '2026-09-30' })
+  const project = sprintProject()
+  const sprint = await post<{ id: string }>('/sprints', { project_id: project, name: 'September 2026', starts_on: '2026-09-01', ends_on: '2026-09-30' })
   await post(`/sprints/${sprint.id}/activate`)
-  await post('/sprints', { name: LONG_SPRINT, starts_on: '2026-10-01', ends_on: '2026-10-31' })
+  await post('/sprints', { project_id: project, name: LONG_SPRINT, starts_on: '2026-10-01', ends_on: '2026-10-31' })
   const milestone = await post<{ id: string }>(`/sprints/${sprint.id}/milestones`, { name: LONG_MILESTONE })
   const issue = await post<{ key: string }>('/issues', {
     title: UNBROKEN,

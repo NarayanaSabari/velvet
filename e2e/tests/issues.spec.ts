@@ -1,4 +1,4 @@
-import { test, expect, resetWorkspaceData, seededSessionToken, seedWorkspace, sql } from './fixtures'
+import { test, expect, resetWorkspaceData, seededSessionToken, seedWorkspace, sprintProject, sql } from './fixtures'
 import type { Page } from '@playwright/test'
 
 test.describe.configure({ mode: 'serial' })
@@ -102,7 +102,7 @@ test.beforeAll(async ({ playwright, baseURL }) => {
   })
   expect(done.status()).toBe(201)
   const sprint = await api.post('/api/v1/w/lab/sprints', {
-    data: { name: 'Issues layout sprint', starts_on: '2026-09-01', ends_on: '2026-09-30' },
+    data: { project_id: sprintProject(), name: 'Issues layout sprint', starts_on: '2026-09-01', ends_on: '2026-09-30' },
   })
   expect(sprint.status()).toBe(201)
   const sprintData = await sprint.json() as { id: string }

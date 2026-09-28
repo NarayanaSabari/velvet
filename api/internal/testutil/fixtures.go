@@ -158,6 +158,24 @@ func CreateIssue(t *testing.T, f *Fixture, title string) store.Issue {
 	return issue
 }
 
+// SprintProject returns the fixture workspace's project for sprints, creating
+// it on first use. Every sprint belongs to a project, and most tests are
+// about the sprint rather than which project it belongs to.
+func (f *Fixture) SprintProject() uuid.UUID {
+	f.T.Helper()
+	ctx := f.T.Context()
+	var id uuid.UUID
+	err := f.Pool.QueryRow(ctx,
+		`SELECT id FROM project WHERE workspace_id = $1 AND key = 'sprints'`, f.WorkspaceID).Scan(&id)
+	if err == nil {
+		return id
+	}
+	project, err := f.Store.CreateProject(ctx, store.CreateProjectInput{
+		WorkspaceID: f.WorkspaceID, ActorID: f.User.ID, Key: "sprints", Name: "Sprints"})
+	require.NoError(f.T, err)
+	return project.ID
+}
+
 // CreateForeignProject makes a project in a different workspace, so a test can
 // prove that a valid UUID from elsewhere cannot be referenced here.
 func CreateForeignProject(t *testing.T, f *Fixture, key string) uuid.UUID {

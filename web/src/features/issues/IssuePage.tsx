@@ -9,7 +9,6 @@ import type {
   Issue,
   IssueStatus,
   Label,
-  Milestone,
   User,
 } from '../../lib/types'
 import { Avatar } from '../../ui/Avatar'
@@ -26,6 +25,7 @@ import { IssueMetadata, ReadOnlyIssueMetadata, type IssueMetadataPatch } from '.
 import { useSession } from '../auth/useSession'
 import { userLabel } from '../../lib/userLabel'
 import { IssueEditForm, IssueForm, type IssueInput } from '../work/CoreForms'
+import { useWorkLinks } from '../work/workLinks'
 import { Button } from '../../ui/Button'
 import { ErrorState, LoadingState, NotFoundState } from '../../ui/QueryState'
 import { NavLink } from '../../app/nav'
@@ -258,9 +258,9 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
     queryKey: ['members', slug],
     queryFn: () => api.get<{ members: User[] }>(`/w/${slug}/members`),
   })
-  const milestones = useQuery({
-    queryKey: ['milestones', slug, 'all'],
-    queryFn: () => api.get<{ milestones: Milestone[] }>(`/w/${slug}/milestones`),
+  const links = useWorkLinks(slug, {
+    projectId: issue.data?.project_id,
+    milestoneId: issue.data?.milestone_id,
   })
 
   useEffect(() => {
@@ -271,6 +271,8 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
     void queryClient.invalidateQueries({ queryKey: ['issue', slug, issueKey] })
     void queryClient.invalidateQueries({ queryKey: ['comments', slug, 'issue', issueKey] })
     void queryClient.invalidateQueries({ queryKey: ['activity', slug] })
+    // The issue lists and the sprint board show the project and milestone too.
+    void queryClient.invalidateQueries({ queryKey: ['issues', slug] })
   }
 
   const setStatus = useMutation({
@@ -344,9 +346,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
   const memberChoices = (members.data?.members ?? []).map((member) => ({
     id: member.id, label: userLabel(member), user: member,
   }))
-  const milestoneChoices = (milestones.data?.milestones ?? []).map((milestone) => ({
-    id: milestone.id, label: milestone.name,
-  }))
+  const project = data.project_id ? links.projectById.get(data.project_id) : undefined
   const entries = buildTimeline(
     comments.data?.comments ?? [],
     activity.data?.activity ?? [],
@@ -357,7 +357,20 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-3 border-b border-grey-200 pb-4" data-testid="issue-header">
         <div className="min-w-0">
-          <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase">{data.key}</p>
+          <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase" data-testid="issue-eyebrow">
+            <span>{data.key}</span>
+            {project ? (
+              <>
+                <span aria-hidden="true"> · </span>
+                <NavLink
+                  to={`/w/${slug}/issues?project=${encodeURIComponent(project.key)}`}
+                  className="underline"
+                >
+                  {project.name}
+                </NavLink>
+              </>
+            ) : null}
+          </p>
           <h1 className="text-lg [overflow-wrap:anywhere]">{data.title}</h1>
         </div>
         {canWrite ? (
@@ -444,18 +457,22 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
           <IssueMetadata
             priority={data.priority}
             assigneeId={data.assignee_id}
+            projectId={data.project_id}
             milestoneId={data.milestone_id}
             members={memberChoices}
-            milestones={milestoneChoices}
+            projects={links.projects}
+            milestones={links.milestones}
             onPatch={(patch) => assignIssue.mutateAsync(patch)}
           />
         ) : (
           <ReadOnlyIssueMetadata
             priority={data.priority}
             assigneeId={data.assignee_id}
+            projectId={data.project_id}
             milestoneId={data.milestone_id}
             members={memberChoices}
-            milestones={milestoneChoices}
+            projects={links.projects}
+            milestones={links.milestones}
           />
         )}
       </section>
@@ -518,6 +535,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
           <div className="mt-3">
             <IssueForm
               milestoneId={data.milestone_id ?? undefined}
+              projectId={data.project_id ?? undefined}
               parentId={data.id}
               onSubmit={async (input) => {
                 await createSubIssue.mutateAsync(input)
