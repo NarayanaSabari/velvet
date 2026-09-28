@@ -73,7 +73,7 @@ const pages = () => [
   { name: 'administration invitations', path: '/w/lab/admin/invitations', ready: 'Invitations' },
   { name: 'administration repositories', path: '/w/lab/admin/repositories', ready: 'Repositories' },
   { name: 'administration danger zone', path: '/w/lab/admin/danger', ready: 'Danger zone' },
-  { name: 'profile', path: '/w/lab/settings/profile', ready: 'Profile' },
+  { name: 'profile', path: '/w/lab/settings/profile', ready: 'General' },
   { name: 'work log', path: '/me/worklog', ready: 'Work log' },
 ]
 

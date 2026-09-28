@@ -167,6 +167,105 @@ describe('Administration pages', () => {
   })
 })
 
+describe('Profile pages', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => Promise.resolve({
+      ok: true,
+      status: 200,
+      json: async () => {
+        if (url === '/api/v1/me') return { user: { id: 'u1', email: 'person@example.com', github_login: 'ada', name: 'Ada', avatar_url: '' }, memberships: [first], last_workspace: first }
+        if (url.endsWith('/tokens')) return init?.method === 'POST'
+          ? { id: 't1', name: 'Test key', token: 'velvet_shown_once', created_at: new Date().toISOString(), last_used_at: null }
+          : { tokens: [] }
+        if (url.endsWith('/projects')) return { projects: [] }
+        if (url.endsWith('/onboarding')) return { base_url: 'https://velvet.example.com', state: { agent_connected: false } }
+        return {}
+      },
+    } as Response)))
+  })
+
+  it.each([
+    ['', 'general', 'General'],
+    ['/', 'general', 'General'],
+    ['?linked=1', 'general', 'General'],
+    ['#agent-config', 'agent-config', 'Agent config'],
+    ['?linked=1#agent-config', 'agent-config', 'Agent config'],
+  ])('preserves the old profile URL %s', async (suffix, page, heading) => {
+    const router = show(`/w/first/settings/profile${suffix}`)
+    expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe(`/w/first/settings/profile/${page}`)
+    if (suffix.includes('linked=1')) expect(router.state.location.search).toEqual({ linked: 1 })
+  })
+
+  it.each([
+    ['general', 'General'], ['github', 'GitHub'], ['agent-config', 'Agent config'], ['tokens', 'API tokens'],
+  ])('opens %s directly with its own title and a single heading', async (page, heading) => {
+    show(`/w/first/settings/profile/${page}`)
+    expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    await waitFor(() => expect(document.title).toBe(`${heading} · Profile · Velvet`))
+  })
+
+  it('uses real links and browser back, discarding one-time keys and confirmations', async () => {
+    const router = show('/w/first/settings/profile/tokens')
+    const user = userEvent.setup()
+    await user.type(await screen.findByLabelText('Token name'), 'Test key')
+    await user.click(screen.getByRole('button', { name: 'Create token' }))
+    expect(await screen.findByText('velvet_shown_once')).toBeVisible()
+    const sections = screen.getByRole('navigation', { name: 'Profile sections' })
+    await user.click(within(sections).getByRole('link', { name: 'GitHub' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'GitHub' })).toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Profile sections' })).getByRole('link', { name: 'GitHub' })).toHaveAttribute('aria-current', 'page')
+    await user.click(screen.getByRole('button', { name: 'Unlink GitHub profile' }))
+    expect(screen.getByRole('button', { name: 'Confirm unlink GitHub profile' })).toBeInTheDocument()
+    act(() => router.history.back())
+    expect(await screen.findByRole('heading', { level: 1, name: 'API tokens' })).toBeInTheDocument()
+    expect(screen.queryByText('velvet_shown_once')).not.toBeInTheDocument()
+    act(() => router.history.forward())
+    expect(await screen.findByRole('button', { name: 'Unlink GitHub profile' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Confirm unlink GitHub profile' })).not.toBeInTheDocument()
+  })
+
+  it('rejects unknown sections', async () => {
+    show('/w/first/settings/profile/billing')
+    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+  })
+
+  it.each(['tokens', 'agent-config'])('does not restore a pending %s key after leaving', async (page) => {
+    const originalFetch = globalThis.fetch
+    let resolveCreation!: (value: Response) => void
+    let created = false
+    const token = { id: 'late', name: 'Late key', token: 'velvet_late_secret', created_at: new Date().toISOString(), last_used_at: null }
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith('/tokens') && init?.method === 'POST') return new Promise<Response>((resolve) => { resolveCreation = resolve })
+      if (url.endsWith('/tokens') && created) return Promise.resolve({ ok: true, status: 200, json: async () => ({ tokens: [{ ...token, token: undefined }] }) } as Response)
+      return originalFetch(url, init)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const router = show(`/w/first/settings/profile/${page}`)
+    const user = userEvent.setup()
+    if (page === 'tokens') {
+      await user.type(await screen.findByLabelText('Token name'), 'Late key')
+      await user.click(screen.getByRole('button', { name: 'Create token' }))
+    } else {
+      await user.click(await screen.findByRole('button', { name: 'Set up an agent' }))
+    }
+    await user.click(within(screen.getByRole('navigation', { name: 'Profile sections' })).getByRole('link', { name: 'General' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument()
+    await act(async () => {
+      created = true
+      resolveCreation({ ok: true, status: 201, json: async () => token } as Response)
+    })
+    act(() => router.history.back())
+    expect(await screen.findByRole('heading', { level: 1, name: page === 'tokens' ? 'API tokens' : 'Agent config' })).toBeInTheDocument()
+    expect(screen.queryByText('velvet_late_secret')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('agent-snippet')).not.toBeInTheDocument()
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
+    if (page === 'agent-config') await user.click(within(screen.getByRole('navigation', { name: 'Profile sections' })).getByRole('link', { name: 'API tokens' }))
+    expect(await screen.findByText('Late key')).toBeInTheDocument()
+  })
+})
+
 it('refreshes a stale session and clears old identity projections before rendering the current account', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(['session'], { user: { id: 'old', email: 'old@example.com', name: '', github_login: null, avatar_url: '' }, memberships: [first], last_workspace: first })

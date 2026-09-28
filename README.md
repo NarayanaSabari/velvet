@@ -72,7 +72,10 @@ claude mcp add --transport http --scope user velvet https://velvet.example.com/a
 
 A new account is walked through this after sign-in at `/onboarding`: an organisation named after the person, a key shown once, and a ready-to-paste setup for Claude Code, Codex, Cursor, VS Code, or any agent through `mcp-remote`.
 The screen confirms the connection when the agent first calls Velvet.
-Anyone who skips that step, or wants to connect another agent, finds the same setup in Profile under Agent config, which creates a fresh key per agent.
+Anyone who skips that step, or wants to connect another agent, finds the same setup in Profile under Agent config at `/w/{slug}/settings/profile/agent-config`, which creates a fresh key per agent.
+Profile has separate General, GitHub, Agent config, and API tokens pages, with the same section navigation as Administration.
+Old Profile links still open General, and `#agent-config` bookmarks open Agent config.
+One-time keys disappear when leaving setup, so copy a new key before navigating away.
 
 When an agent connects, the server's instructions, which agents add to their system prompt, name the organisation, list its active projects, and say how to choose where each entry goes: the ticket in the branch first, then the repository's project, then asking rather than guessing.
 A hosted server cannot see the agent's checkout, so a repository names its own project in a "Velvet work log" section of `AGENTS.md`, `CLAUDE.md`, or a Cursor rule.

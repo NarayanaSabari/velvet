@@ -185,8 +185,8 @@ test('destructive account and administration actions explain consequences inline
   await expect(page.getByLabel('Type lab to confirm deletion')).toHaveValue('lab')
   await page.unroute('**/api/v1/w/lab')
 
-  await page.goto('/w/lab/settings/profile')
-  await expect(page.getByRole('heading', { level: 1, name: 'Profile', exact: true })).toBeVisible()
+  await page.goto('/w/lab/settings/profile/github')
+  await expect(page.getByRole('heading', { level: 1, name: 'GitHub', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Unlink GitHub profile' }).click()
   await expect(page.getByText(/future GitHub activity will not be attributed/i)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Confirm unlink GitHub profile' })).toBeVisible()

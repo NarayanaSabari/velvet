@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Profile } from './Profile'
+import type { ProfilePageId } from './profilePages'
 
 function response(body: unknown, status = 200) {
   return Promise.resolve({
@@ -83,13 +84,13 @@ function tokenFetch(initialTokens: Token[], options: { role?: string; createFail
   return Object.assign(fetch, { useNewestToken })
 }
 
-function renderProfile() {
+function renderProfile(page: ProfilePageId = 'agent-config') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={client}>
-      <Profile slug="lab" />
-    </QueryClientProvider>,
-  )
+  const content = (current: ProfilePageId) => <QueryClientProvider client={client}>
+    <Profile slug="lab" page={current} />
+  </QueryClientProvider>
+  const view = render(content(page))
+  return { ...view, openPage: (current: ProfilePageId) => view.rerender(content(current)) }
 }
 
 beforeEach(() => vi.unstubAllGlobals())
@@ -104,9 +105,9 @@ describe('Profile API tokens', () => {
     ])
     vi.stubGlobal('fetch', fetch)
 
-    renderProfile()
+    renderProfile('tokens')
 
-    expect(await screen.findByRole('heading', { name: 'API tokens' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'API tokens', level: 1 })).toBeInTheDocument()
     expect(await screen.findByText('Build agent')).toBeInTheDocument()
     expect(await screen.findByText('Release agent')).toBeInTheDocument()
     expect(screen.getByText(/Never used/)).toBeInTheDocument()
@@ -119,7 +120,7 @@ describe('Profile API tokens', () => {
     vi.stubGlobal('fetch', fetch)
     const user = userEvent.setup()
 
-    renderProfile()
+    renderProfile('tokens')
     const input = await screen.findByLabelText('Token name')
     await user.type(input, 'CLI writer')
     await user.click(screen.getByRole('button', { name: 'Create token' }))
@@ -142,7 +143,7 @@ describe('Profile API tokens', () => {
     vi.stubGlobal('fetch', fetch)
     const user = userEvent.setup()
 
-    renderProfile()
+    const view = renderProfile('tokens')
     await screen.findByText('Old agent')
     await user.click(screen.getByRole('button', { name: 'Revoke Old agent' }))
 
@@ -156,14 +157,15 @@ describe('Profile API tokens', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm revoke' }))
     await waitFor(() => expect(screen.getByText('No API tokens yet')).toBeInTheDocument())
     expect(fetch).toHaveBeenCalledWith('/api/v1/me/tokens/token-1', expect.objectContaining({ method: 'DELETE' }))
-    // With its only key revoked, the agent is no longer reported as connected.
+    // With its only key revoked, the agent page uses the invalidated cache.
+    view.openPage('agent-config')
     expect(await screen.findByText('No agent connected yet.')).toBeInTheDocument()
   })
 
   it('explains the empty state and keeps creation as the action', async () => {
     vi.stubGlobal('fetch', tokenFetch([]))
 
-    renderProfile()
+    renderProfile('tokens')
 
     expect(await screen.findByText('No API tokens yet')).toBeInTheDocument()
     expect(screen.getByText('Let a CLI or coding agent write to your worklog.')).toBeInTheDocument()
@@ -179,9 +181,9 @@ describe('Profile agent config', () => {
     vi.stubGlobal('fetch', fetch)
     const user = userEvent.setup()
 
-    renderProfile()
+    const view = renderProfile()
 
-    const section = (await screen.findByRole('heading', { name: 'Agent config' })).closest('section')!
+    const section = (await screen.findByRole('heading', { name: 'Agent config', level: 2 })).closest('section')!
     expect(section).toHaveAttribute('id', 'agent-config')
     expect(await within(section).findByText('No agent connected yet.')).toBeInTheDocument()
     expect(await within(section).findByTestId('agent-mcp-url')).toHaveTextContent('https://velvet.example.com/api/v1/w/lab/mcp')
@@ -203,10 +205,6 @@ describe('Profile agent config', () => {
       method: 'POST',
       body: expect.stringMatching(/"name":"Coding agent \d{4}-\d{2}-\d{2} \d{2}:\d{2}"/),
     }))
-    // The new key is also listed with the person's other API tokens.
-    const tokenList = screen.getByRole('heading', { name: 'API tokens' }).closest('section')!
-    expect(await within(tokenList).findByText(/^Coding agent \d{4}/)).toBeInTheDocument()
-
     // The agent's first call with that key flips the status without a reload.
     const connection = within(section).getByTestId('agent-connection')
     expect(connection).toHaveAttribute('data-connected', 'false')
@@ -218,6 +216,9 @@ describe('Profile agent config', () => {
     await user.click(within(section).getByRole('button', { name: 'Done' }))
     expect(within(section).queryByTestId('agent-token')).not.toBeInTheDocument()
     expect(within(section).getByRole('button', { name: 'Set up another agent' })).toBeInTheDocument()
+    view.openPage('tokens')
+    expect(await screen.findByText(/^Coding agent \d{4}/)).toBeInTheDocument()
+    expect(screen.queryByText('velvet_secret_once')).not.toBeInTheDocument()
   }, 10000)
 
   it('shows an already connected agent and offers another', async () => {

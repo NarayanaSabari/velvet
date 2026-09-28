@@ -217,7 +217,7 @@ describe('ConnectAgentCard', () => {
     show(<ConnectAgentCard slug="priya-raman" />)
 
     const card = await screen.findByTestId('connect-agent-card')
-    expect(within(card).getByRole('link', { name: 'Connect an agent' })).toHaveAttribute('href', '/w/priya-raman/settings/profile#agent-config')
+    expect(within(card).getByRole('link', { name: 'Connect an agent' })).toHaveAttribute('href', '/w/priya-raman/settings/profile/agent-config')
     await user.click(within(card).getByRole('button', { name: 'Not now' }))
     expect(screen.queryByTestId('connect-agent-card')).not.toBeInTheDocument()
     expect(window.localStorage.getItem('velvet:agent-card-dismissed')).toBe('1')

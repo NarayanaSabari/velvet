@@ -105,7 +105,7 @@ describe('CommandPalette', () => {
     await user.type(screen.getByTestId(COMMAND_PALETTE_TEST_IDS.input), 'mcp')
     expect(screen.getByRole('option', { name: /Agent config/ })).toBeInTheDocument()
     await user.keyboard('{Enter}')
-    expect(navigate).toHaveBeenCalledWith('/w/lab/settings/profile#agent-config')
+    expect(navigate).toHaveBeenCalledWith('/w/lab/settings/profile/agent-config')
   })
 
   it('offers a direct command for an issue key', async () => {

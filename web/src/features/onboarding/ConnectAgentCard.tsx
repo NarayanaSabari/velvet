@@ -40,7 +40,7 @@ export function ConnectAgentCard({ slug }: { slug: string }) {
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <NavLink to={`/w/${slug}/settings/profile#agent-config`} className={buttonClassName('primary', 'inline-flex min-h-11 items-center px-4 no-underline')}>
+        <NavLink to={`/w/${slug}/settings/profile/agent-config`} className={buttonClassName('primary', 'inline-flex min-h-11 items-center px-4 no-underline')}>
           Connect an agent
         </NavLink>
         <button
