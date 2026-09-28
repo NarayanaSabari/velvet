@@ -4,7 +4,6 @@ import { useMutation, useQueryClient, type UseQueryResult } from '@tanstack/reac
 import { api } from '../../lib/api'
 import type { Invitation, Role } from '../../lib/types'
 import { Button } from '../../ui/Button'
-import { SectionHeader } from '../../ui/PageHeader'
 import { LoadingState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
 import { expiresSoon, ROLE_DESCRIPTIONS, ROLE_LABELS, ROLES } from './roles'
@@ -57,10 +56,7 @@ export function InvitePanel({ slug, invites }: {
   const startAction = () => { setNotice(null); create.reset(); resend.reset(); revoke.reset() }
 
   return (
-    <section id="invitations" className="mb-10 scroll-mt-4" aria-labelledby="invites-heading">
-      <SectionHeader id="invites-heading" title="Invitations" meta={invites.data ? `${pending.length} pending` : undefined} />
-      <p className="mb-3 max-w-[46rem] text-sm text-grey-500">Invite someone by email. They join with the chosen role after following the link, which lasts 7 days.</p>
-
+    <section aria-label="Invitations">
       <form
         className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-end"
         onSubmit={(event) => { event.preventDefault(); startAction(); create.mutate() }}
@@ -103,6 +99,8 @@ export function InvitePanel({ slug, invites }: {
       {invites.data && pending.length === 0 ? <p className="text-sm text-grey-500">No pending invitations.</p> : null}
 
       {pending.length > 0 ? (
+        <>
+        <h2 className="mb-2 text-sm font-medium">{pending.length} pending</h2>
         <ul className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
           {pending.map((invite) => {
             const soon = expiresSoon(invite.expires_at)
@@ -153,6 +151,7 @@ export function InvitePanel({ slug, invites }: {
             )
           })}
         </ul>
+        </>
       ) : null}
     </section>
   )

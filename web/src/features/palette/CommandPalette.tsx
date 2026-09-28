@@ -298,7 +298,12 @@ export function CommandPalette({
       { id: 'unlinked', label: 'Unlinked PRs', keywords: ['pull requests', 'evidence'], run: () => navigate(`${base}/unlinked`) },
       { id: 'reports', label: 'Reports', keywords: ['analytics'], run: () => navigate(`${base}/reports`) },
       ...(role === 'admin'
-        ? [{ id: 'admin', label: 'Administration', keywords: ['settings'], run: () => navigate(`${base}/admin`) }]
+        ? [
+            { id: 'admin', label: 'Administration', keywords: ['settings', 'organisation', 'rename'], run: () => navigate(`${base}/admin/general`) },
+            { id: 'admin-members', label: 'Members', keywords: ['administration', 'people', 'roles', 'team'], run: () => navigate(`${base}/admin/members`) },
+            { id: 'admin-invitations', label: 'Invitations', keywords: ['administration', 'invite', 'email'], run: () => navigate(`${base}/admin/invitations`) },
+            { id: 'admin-repositories', label: 'Repositories', keywords: ['administration', 'github', 'repos', 'sync'], run: () => navigate(`${base}/admin/repositories`) },
+          ]
         : []),
       { id: 'profile', label: 'Profile', keywords: ['account', 'settings'], run: () => navigate(`${base}/settings/profile`) },
       { id: 'agent-config', label: 'Agent config', keywords: ['connect', 'coding agent', 'mcp', 'claude', 'codex', 'cursor', 'api key'], run: () => navigate(`${base}/settings/profile#agent-config`) },

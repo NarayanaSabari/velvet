@@ -7,7 +7,6 @@ import type { Project, Repo } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { buttonClassName } from '../../ui/buttonStyles'
 import { EmptyState } from '../../ui/EmptyState'
-import { SectionHeader } from '../../ui/PageHeader'
 import { LoadingState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
 
@@ -80,12 +79,7 @@ export function GitHubPanel({ slug, repos }: {
   else if (status === 'error') tone = 'blocked'
 
   return (
-    <section id="repositories" className="mb-10 scroll-mt-4" aria-labelledby="repositories-heading">
-      <SectionHeader id="repositories-heading" title="Repositories" meta={repos.data && list.length > 0 ? `${live} connected` : undefined} />
-      <p className="mb-3 max-w-[46rem] text-sm text-grey-500">
-        GitHub supplies pull requests and commits as evidence of work. Velvet only reads from GitHub and never changes a ticket because of it.
-      </p>
-
+    <section aria-label="Repositories">
       {connection.isPending ? <LoadingState label="Loading GitHub connection…" /> : null}
       {connection.error ? <p role="alert" className="text-sm text-blocked">Could not load GitHub connection.</p> : null}
 
@@ -151,6 +145,7 @@ export function GitHubPanel({ slug, repos }: {
 
       {list.length > 0 ? (
         <>
+          <h2 className="mb-1 text-sm font-medium">{live} connected {live === 1 ? 'repository' : 'repositories'}</h2>
           <p className="mb-2 max-w-[46rem] text-xs text-grey-500">
             A repository’s project is where its pull requests and commits are filed when they mention no ticket, and
             where agents working in it log by default. Manage projects on the{' '}

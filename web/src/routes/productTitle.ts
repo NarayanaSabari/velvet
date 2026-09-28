@@ -1,3 +1,5 @@
+import { ADMIN_PAGES } from '../features/admin/adminPages'
+
 export function productPageTitle(pathname: string): string {
   if (pathname === '/me/worklog') return 'Work log'
   if (/^\/w\/[^/]+\/?$/.test(pathname)) return 'Dashboard'
@@ -12,6 +14,11 @@ export function productPageTitle(pathname: string): string {
   if (/\/mentions\/?$/.test(pathname)) return 'Mentions'
   if (/\/unlinked\/?$/.test(pathname)) return 'Unlinked PRs'
   if (/\/reports\/?$/.test(pathname)) return 'Reports'
-  if (/\/admin\/?$/.test(pathname)) return 'Administration'
+  const admin = /\/admin(?:\/([^/]+))?\/?$/.exec(pathname)
+  if (admin) return ADMIN_TITLES[admin[1] ?? 'general'] ?? 'Page not found'
   return 'Page not found'
 }
+
+const ADMIN_TITLES: Record<string, string> = Object.fromEntries(
+  ADMIN_PAGES.map((page) => [page.id, `${page.label} · Administration`]),
+)

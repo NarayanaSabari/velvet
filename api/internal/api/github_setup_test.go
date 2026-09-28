@@ -34,7 +34,7 @@ func TestGitHubSetupBoundInstallationRoundtrip(t *testing.T) {
 	callback := githubCallback(t, setup.Header().Get("Location"))
 	done := githubRequest(browser, "GET", callback, f.Token)
 	require.Equal(t, 302, done.Code, done.Body.String())
-	require.Equal(t, "/w/lab/admin", done.Header().Get("Location"))
+	require.Equal(t, "/w/lab/admin/repositories", done.Header().Get("Location"))
 	require.Equal(t, 302, githubRequest(browser, "GET", callback, f.Token).Code)
 	status := githubRequest(h, "GET", "/api/v1/w/lab/github", f.Token)
 	require.Equal(t, 200, status.Code)
@@ -129,11 +129,11 @@ func TestGitHubSetupCompletionBoundary(t *testing.T) {
 				result := githubRequest(h, "GET", callback, f.Token)
 				if mode == "complete" {
 					require.Equal(t, 302, result.Code, result.Body.String())
-					require.Equal(t, "/w/lab/admin", result.Header().Get("Location"))
+					require.Equal(t, "/w/lab/admin/repositories", result.Header().Get("Location"))
 					require.Equal(t, 302, githubRequest(h, "GET", callback, f.Token).Code)
 					replay := githubRequest(h, "GET", path, f.Token)
 					require.Equal(t, 302, replay.Code)
-					require.Equal(t, "/w/lab/admin", replay.Header().Get("Location"))
+					require.Equal(t, "/w/lab/admin/repositories", replay.Header().Get("Location"))
 				} else {
 					if document {
 						require.Equal(t, 302, result.Code)

@@ -4,7 +4,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import type { Membership, Workspace } from '../../lib/types'
 import { Button } from '../../ui/Button'
-import { SectionHeader } from '../../ui/PageHeader'
 import { refreshPrivateQueries } from '../auth/sessionNavigation'
 
 export function OrganisationPanel({ slug, workspace }: { slug: string; workspace: Membership }) {
@@ -32,8 +31,7 @@ export function OrganisationPanel({ slug, workspace }: { slug: string; workspace
 
   const changed = name.trim() !== workspace.workspace_name
   return (
-    <section id="organisation" className="mb-10 scroll-mt-4" aria-labelledby="organisation-heading">
-      <SectionHeader id="organisation-heading" title="Organisation" />
+    <section aria-label="Organisation">
       <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); if (changed) update.mutate() }}>
         <label className="block max-w-2xl">
           <span className="mb-0.5 block text-xs text-grey-500">Name</span>

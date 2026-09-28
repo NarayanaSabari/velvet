@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Admin } from './Admin'
+import type { AdminPageId } from './adminPages'
 
 function response(body: unknown, status = 200) {
   return Promise.resolve({
@@ -13,11 +14,11 @@ function response(body: unknown, status = 200) {
   } as Response)
 }
 
-function renderAdmin() {
+function renderAdmin(page: AdminPageId = 'general') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={client}>
-      <Admin slug="lab" />
+      <Admin slug="lab" page={page} />
     </QueryClientProvider>,
   )
 }
@@ -164,7 +165,7 @@ describe('Admin', () => {
   it('explains how to disconnect in GitHub without locally removing the installation', async () => {
     const fetch = adminFetch()
     vi.stubGlobal('fetch', fetch)
-    renderAdmin()
+    renderAdmin('repositories')
     await userEvent.click(await screen.findByText('Disconnect GitHub'))
     expect(screen.getByText(/To disconnect, uninstall the App in the GitHub account/)).toBeVisible()
     expect(screen.getByRole('link', { name: 'Open GitHub App settings' })).toHaveAttribute('href', 'https://github.com/settings/installations')
@@ -182,32 +183,38 @@ describe('Admin', () => {
       }] })
       return fallback(input, init)
     }))
-    renderAdmin()
+    renderAdmin('repositories')
     expect(await screen.findByText('Disconnected')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'acme/widgets' })).toBeInTheDocument()
     expect(screen.queryByText('Synced')).not.toBeInTheDocument()
   })
 
-  it('lists memberships and connected repositories', async () => {
+  it('lists memberships, invitations, and repositories on their own pages', async () => {
     vi.stubGlobal('fetch', adminFetch())
-    renderAdmin()
-
-    expect(await screen.findByRole('heading', { name: 'Administration' })).toBeInTheDocument()
+    const members = renderAdmin('members')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Members' })).toBeInTheDocument()
+    expect(screen.getByText('Administration')).toBeInTheDocument()
     expect(await screen.findByText('octocat@example.com')).toBeInTheDocument()
+    members.unmount()
+
+    const invitations = renderAdmin('invitations')
     expect(await screen.findByText('pending@example.com')).toBeInTheDocument()
     expect(screen.getByText('(Viewer)', { exact: true })).toBeInTheDocument()
     expect(screen.queryByText('(viewer)', { exact: true })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'acme/widgets' })).toHaveAttribute(
+    invitations.unmount()
+
+    renderAdmin('repositories')
+    expect(await screen.findByRole('link', { name: 'acme/widgets' })).toHaveAttribute(
       'href',
       'https://github.com/acme/widgets',
     )
   })
 
-  it('invites by email and changes a member role', async () => {
+  it('invites by email', async () => {
     const fetch = adminFetch()
     vi.stubGlobal('fetch', fetch)
     const user = userEvent.setup()
-    renderAdmin()
+    renderAdmin('invitations')
 
     await user.type(await screen.findByLabelText('Invite email'), 'new-user@example.com')
     await user.selectOptions(screen.getByLabelText('Invite role'), 'viewer')
@@ -222,8 +229,16 @@ describe('Admin', () => {
         }),
       ),
     )
+    expect(await screen.findByText('new-user@example.com')).toBeInTheDocument()
+  })
 
-    await user.selectOptions(screen.getByLabelText('Role for octocat@example.com'), 'viewer')
+  it('changes a member role', async () => {
+    const fetch = adminFetch()
+    vi.stubGlobal('fetch', fetch)
+    const user = userEvent.setup()
+    renderAdmin('members')
+
+    await user.selectOptions(await screen.findByLabelText('Role for octocat@example.com'), 'viewer')
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         '/api/v1/w/lab/memberships/m2',
@@ -231,13 +246,12 @@ describe('Admin', () => {
       ),
     )
     await waitFor(() => expect(screen.getByLabelText('Role for octocat@example.com')).toHaveValue('viewer'))
-    expect(await screen.findByText('new-user@example.com')).toBeInTheDocument()
   })
 
   it('resends and revokes pending invitations through their dedicated endpoints', async () => {
     const fetchMock = adminFetch()
     vi.stubGlobal('fetch', fetchMock)
-    renderAdmin()
+    renderAdmin('invitations')
     await userEvent.click(await screen.findByRole('button', { name: 'Resend invitation to pending@example.com' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/invites/i1/resend', expect.objectContaining({ method: 'POST' })))
     await userEvent.click(screen.getByRole('button', { name: 'Revoke invitation to pending@example.com' }))
@@ -262,7 +276,7 @@ describe('Admin', () => {
       }
       return fallback(input, init)
     }))
-    renderAdmin()
+    renderAdmin('invitations')
     expect(await screen.findByText('Loading invitations…')).toHaveAttribute('role', 'status')
 
     await act(async () => {
@@ -280,7 +294,7 @@ describe('Admin', () => {
       }
       return fallback(input, init)
     }))
-    renderAdmin()
+    renderAdmin('invitations')
     await userEvent.type(await screen.findByLabelText('Invite email'), 'new-user@example.com')
     await userEvent.click(screen.getByRole('button', { name: 'Send invite' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not send invitation')
@@ -303,7 +317,7 @@ describe('Admin', () => {
       }
       return fallback(input, init)
     }))
-    renderAdmin()
+    renderAdmin('invitations')
     await userEvent.click(await screen.findByRole('button', { name: `${action} invitation to pending@example.com` }))
     if (action === 'Revoke') {
       await userEvent.click(screen.getByRole('button', { name: 'Confirm revoke invitation' }))
@@ -319,7 +333,7 @@ describe('Admin', () => {
   it('removes a member after confirmation', async () => {
     const fetchMock = adminFetch()
     vi.stubGlobal('fetch', fetchMock)
-    renderAdmin()
+    renderAdmin('members')
     await userEvent.click(await screen.findByRole('button', { name: 'Remove octocat@example.com' }))
     expect(screen.getByText(/will lose access to this organisation/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Confirm removal' }))
@@ -333,7 +347,7 @@ describe('Admin', () => {
       if (input.endsWith('/memberships/m1') && init?.method === 'PATCH') return response({ error: { code: 'last_admin', message: 'the organisation must retain at least one admin' } }, 409)
       return fallback(input, init)
     }))
-    renderAdmin()
+    renderAdmin('members')
     await userEvent.selectOptions(await screen.findByLabelText('Role for Sabari'), 'viewer')
     expect(await screen.findByRole('alert')).toHaveTextContent('must retain at least one admin')
     expect(screen.getByLabelText('Role for Sabari')).toHaveValue('admin')
@@ -342,7 +356,7 @@ describe('Admin', () => {
   it('offers ownership verification without manual repository identifiers', async () => {
     const fetch = adminFetch()
     vi.stubGlobal('fetch', fetch)
-    renderAdmin()
+    renderAdmin('repositories')
     expect(await screen.findByRole('link', { name: 'Verify GitHub ownership' })).toHaveAttribute('href', '/api/v1/w/lab/github/connect')
     expect(screen.queryByLabelText('GitHub repository ID')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Retry sync' })).not.toBeInTheDocument()
@@ -359,7 +373,7 @@ describe('Admin', () => {
       if (input === '/api/v1/w/lab/github') return response({ installation: { id: 99, account_login: 'acme' }, status: requested ? 'syncing' : 'error', error: requested ? null : 'sync_failed' })
       return fallback(input, init)
     }))
-    renderAdmin()
+    renderAdmin('repositories')
     await userEvent.setup().click(await screen.findByRole('button', { name: 'Retry sync' }))
     expect(await screen.findByText('Syncing repositories…')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Verify GitHub ownership' })).not.toBeInTheDocument()
@@ -371,7 +385,7 @@ describe('Admin', () => {
       if (input === '/api/v1/w/lab/memberships') return response({ memberships: [{ id: 'm3', role: 'member', user: { email: 'email@example.com', name: '', github_login: null } }] })
       return fallback(input, init)
     }))
-    renderAdmin()
+    renderAdmin('members')
     expect(await screen.findByLabelText('Role for email@example.com')).toBeInTheDocument()
     expect(screen.getByText('email@example.com')).toBeInTheDocument()
     expect(screen.queryByText('@email@example.com')).not.toBeInTheDocument()
@@ -393,7 +407,7 @@ describe('Admin', () => {
       })
       return fallback(input, init)
     }))
-    renderAdmin()
+    renderAdmin('repositories')
     expect(await screen.findByText('GitHub access is paused until its installation state can be verified.')).toBeInTheDocument()
     expect(screen.queryByText('GitHub has suspended this installation. Restore it in GitHub to resume synchronization.')).not.toBeInTheDocument()
     await userEvent.setup().click(await screen.findByRole('button', { name: 'Retry sync' }))
@@ -413,28 +427,43 @@ describe('Admin', () => {
       if (input === '/api/v1/w/lab/repos') return response({ repos: ++repoReads > 1 ? [{ id: 'r2', owner: 'acme', name: 'newly-synced', default_branch: 'main' }] : [] })
       return fallback(input, init)
     }))
-    renderAdmin()
+    renderAdmin('repositories')
     expect(await screen.findByRole('link', { name: 'acme/newly-synced' }, { timeout: 4000 })).toBeInTheDocument()
   })
 
-  it('offers section links with live counts', async () => {
+  it('links each section to its own page with live counts, and marks the current one', async () => {
     vi.stubGlobal('fetch', adminFetch())
-    renderAdmin()
+    renderAdmin('members')
 
     const nav = await screen.findByRole('navigation', { name: 'Administration sections' })
-    await waitFor(() => expect(within(nav).getByRole('link', { name: /Members\s*2/ })).toHaveAttribute('href', '#members'))
-    expect(within(nav).getByRole('link', { name: /Invitations\s*1/ })).toHaveAttribute('href', '#invitations')
-    expect(within(nav).getByRole('link', { name: /Repositories\s*1/ })).toHaveAttribute('href', '#repositories')
-    expect(within(nav).getByRole('link', { name: 'Danger zone' })).toHaveAttribute('href', '#danger-zone')
-    for (const id of ['organisation', 'members', 'invitations', 'repositories', 'danger-zone']) {
-      expect(document.getElementById(id)).toBeInTheDocument()
-    }
+    await waitFor(() => expect(within(nav).getByRole('link', { name: /Members\s*2/ })).toHaveAttribute('href', '/w/lab/admin/members'))
+    expect(within(nav).getByRole('link', { name: 'General' })).toHaveAttribute('href', '/w/lab/admin/general')
+    expect(within(nav).getByRole('link', { name: /Invitations\s*1/ })).toHaveAttribute('href', '/w/lab/admin/invitations')
+    expect(within(nav).getByRole('link', { name: /Repositories\s*1/ })).toHaveAttribute('href', '/w/lab/admin/repositories')
+    expect(within(nav).getByRole('link', { name: 'Danger zone' })).toHaveAttribute('href', '/w/lab/admin/danger')
+  })
+
+  it.each([
+    ['general', 'General', 'Organisation name'],
+    ['members', 'Members', 'Role for octocat@example.com'],
+    ['invitations', 'Invitations', 'Invite email'],
+    ['repositories', 'Repositories', 'Project for acme/widgets'],
+    ['danger', 'Danger zone', 'Type lab to confirm deletion'],
+  ] as const)('the %s page shows only its own content', async (page, heading, control) => {
+    vi.stubGlobal('fetch', adminFetch())
+    renderAdmin(page)
+
+    expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
+    expect(await screen.findByLabelText(control)).toBeInTheDocument()
+    const others = ['Organisation name', 'Role for octocat@example.com', 'Invite email', 'Project for acme/widgets', 'Type lab to confirm deletion']
+      .filter((label) => label !== control)
+    for (const label of others) expect(screen.queryByLabelText(label)).not.toBeInTheDocument()
   })
 
   it('shows who each member is, marks you, and explains the roles', async () => {
     vi.stubGlobal('fetch', adminFetch())
     const user = userEvent.setup()
-    renderAdmin()
+    renderAdmin('members')
 
     const self = await screen.findByTestId('member-m1')
     expect(within(self).getByText('You')).toBeInTheDocument()
@@ -449,7 +478,7 @@ describe('Admin', () => {
   it('stops the only admin from being removed before asking the server', async () => {
     const fetch = adminFetch()
     vi.stubGlobal('fetch', fetch)
-    renderAdmin()
+    renderAdmin('members')
 
     const leave = await screen.findByRole('button', { name: 'Leave organisation as Sabari' })
     expect(leave).toBeDisabled()
@@ -460,7 +489,7 @@ describe('Admin', () => {
   it('confirms a sent invitation, shows expiry, and describes the chosen role', async () => {
     vi.stubGlobal('fetch', adminFetch())
     const user = userEvent.setup()
-    renderAdmin()
+    renderAdmin('invitations')
 
     expect(await screen.findByText(/Member: Creates and updates tickets/)).toBeInTheDocument()
     await user.selectOptions(screen.getByLabelText('Invite role'), 'viewer')
@@ -481,7 +510,7 @@ describe('Admin', () => {
       }
       return fallback(input, init)
     }))
-    renderAdmin()
+    renderAdmin('invitations')
     expect(await screen.findByText(/Expires soon/)).toHaveClass('text-stale')
   })
 
@@ -489,7 +518,7 @@ describe('Admin', () => {
     const fetch = adminFetch()
     vi.stubGlobal('fetch', fetch)
     const user = userEvent.setup()
-    renderAdmin()
+    renderAdmin('repositories')
 
     const select = await screen.findByLabelText('Project for acme/widgets')
     await waitFor(() => expect(select).toBeEnabled())

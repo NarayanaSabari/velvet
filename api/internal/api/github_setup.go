@@ -88,7 +88,7 @@ func (s *Server) handleGitHubSetup(w http.ResponseWriter, r *http.Request) {
 	setup := r.URL.Query().Get("state")
 	slug, err := s.store.CompletedGitHubSetup(r.Context(), setup, session, user.ID, candidate)
 	if err == nil {
-		http.Redirect(w, r, "/w/"+slug+"/admin", http.StatusFound)
+		http.Redirect(w, r, "/w/"+slug+"/admin/repositories", http.StatusFound)
 		return
 	}
 	if !errors.Is(err, store.ErrNotFound) {

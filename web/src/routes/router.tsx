@@ -2,6 +2,7 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
+  notFound,
   redirect,
   type RouterHistory,
 } from '@tanstack/react-router'
@@ -32,6 +33,7 @@ import { IssuePage } from '../features/issues/IssuePage'
 import { UnlinkedPRs } from '../features/evidence/UnlinkedPRs'
 import { Reports } from '../features/reports/Reports'
 import { Admin } from '../features/admin/Admin'
+import { ADMIN_PAGE_IDS, type AdminPageId } from '../features/admin/adminPages'
 import { Mentions } from '../features/mentions/Mentions'
 
 const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: RootLayout, notFoundComponent: RootNotFound })
@@ -154,12 +156,27 @@ const unlinkedRoute = createRoute({
   },
 })
 
+// Administration is a set of pages. The bare path opens the first one, so old
+// links, bookmarks, and GitHub's return URL keep working.
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/w/$slug/admin',
-  component: function AdminRoute() {
-    const { slug } = adminRoute.useParams()
-    return <Admin slug={slug} />
+  beforeLoad: ({ params }) => {
+    throw redirect({ href: `/w/${params.slug}/admin/general`, replace: true })
+  },
+})
+
+const adminPageRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug/admin/$page',
+  beforeLoad: ({ params }) => {
+    if (!ADMIN_PAGE_IDS.includes(params.page as AdminPageId)) throw notFound()
+  },
+  component: function AdminPageRoute() {
+    const { slug, page } = adminPageRoute.useParams()
+    // Keyed by page so a half-finished confirmation on one page never
+    // carries over to the next.
+    return <Admin key={page} slug={slug} page={page as AdminPageId} />
   },
 })
 
@@ -186,6 +203,7 @@ const routes = [
   unlinkedRoute,
   mentionsRoute,
   adminRoute,
+  adminPageRoute,
   reportsRoute,
   createRoute({
     getParentRoute: () => rootRoute,

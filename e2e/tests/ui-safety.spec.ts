@@ -110,8 +110,8 @@ test.afterAll(() => {
 
 test('destructive account and administration actions explain consequences inline', async ({ signedIn: page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
-  await page.goto('/w/lab/admin')
-  await expect(page.getByRole('heading', { name: 'Administration' })).toBeVisible()
+  await page.goto('/w/lab/admin/invitations')
+  await expect(page.getByRole('heading', { level: 1, name: 'Invitations' })).toBeVisible()
   await expect(page.getByText('(Viewer)', { exact: true })).toBeVisible()
   await expect(page.getByText('(viewer)', { exact: true })).toHaveCount(0)
 
@@ -132,6 +132,8 @@ test('destructive account and administration actions explain consequences inline
   await page.getByRole('button', { name: 'Cancel' }).click()
 
   await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('navigation', { name: 'Administration sections' }).getByRole('link', { name: /Members/ }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Members' })).toBeVisible()
   const longMember = page.getByText(longMemberEmail, { exact: true })
   await expect(longMember).toBeVisible()
   const longMemberMetrics = await longMember.evaluate((element) => ({
@@ -142,6 +144,8 @@ test('destructive account and administration actions explain consequences inline
   expect(longMemberMetrics.textOverflow).not.toBe('ellipsis')
   expect(longMemberMetrics.scrollWidth).toBeLessThanOrEqual(longMemberMetrics.clientWidth)
   expect(await documentOverflows(page)).toBe(false)
+  await page.getByRole('navigation', { name: 'Administration sections' }).getByRole('link', { name: /Invitations/ }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Invitations' })).toBeVisible()
   await page.getByRole('button', { name: `Revoke invitation to ${inviteEmail}` }).click()
   await expect(page.getByRole('button', { name: 'Confirm revoke invitation' })).toBeVisible()
   expect(await documentOverflows(page)).toBe(false)
@@ -149,6 +153,8 @@ test('destructive account and administration actions explain consequences inline
   await expect(page.getByText(inviteEmail)).toHaveCount(0)
   expect(sql(`SELECT count(*) FROM invite WHERE email = '${inviteEmail}' AND revoked_at IS NULL`)).toBe('0')
 
+  await page.getByRole('navigation', { name: 'Administration sections' }).getByRole('link', { name: /Members/ }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Members' })).toBeVisible()
   await page.getByRole('button', { name: 'Remove Safety Member' }).click()
   await expect(page.getByText(/will lose access to this organisation/i)).toBeVisible()
   expect(await documentOverflows(page)).toBe(false)
@@ -159,6 +165,8 @@ test('destructive account and administration actions explain consequences inline
   await expect(page.getByText('Safety Member')).toHaveCount(0)
   expect(sql(`SELECT count(*) FROM membership m JOIN app_user u ON u.id = m.user_id WHERE u.email = '${memberEmail}'`)).toBe('0')
 
+  await page.getByRole('navigation', { name: 'Administration sections' }).getByRole('link', { name: 'Danger zone' }).click()
+  await expect(page.getByRole('heading', { level: 1, name: 'Danger zone' })).toBeVisible()
   let releaseDelete!: () => void
   await page.route('**/api/v1/w/lab', async (route) => {
     if (route.request().method() !== 'DELETE') return route.continue()
