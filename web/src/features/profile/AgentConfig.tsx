@@ -11,7 +11,7 @@ import { onboardingQuery } from '../onboarding/onboardingQuery'
 import { RepoInstructions } from '../onboarding/RepoInstructions'
 import { apiTokensQuery, createAgentToken, type ApiToken, type CreatedApiToken } from './apiTokens'
 
-/** The anchor the dashboard prompt and command palette link to. */
+/** Retained for existing bookmarks to this section. */
 const AGENT_CONFIG_ANCHOR = 'agent-config'
 
 function lastUsed(tokens: ApiToken[] | undefined): ApiToken | null {
@@ -58,7 +58,7 @@ export function AgentConfig({ workspace }: { workspace: Membership }) {
   const recent = lastUsed(tokens.data?.tokens)
 
   return (
-    <section id={AGENT_CONFIG_ANCHOR} className="mt-8 scroll-mt-4 space-y-3" aria-labelledby="agent-config-heading">
+    <section id={AGENT_CONFIG_ANCHOR} className="scroll-mt-4 space-y-3" aria-labelledby="agent-config-heading">
       <SectionHeader id="agent-config-heading" title="Agent config" />
       <p className="max-w-[46rem] text-grey-500 [overflow-wrap:anywhere]">
         Connect Claude Code, Codex, Cursor, or another coding agent so it logs your work in {workspace.workspace_name} as you go.

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
+import { NavLink } from '../../app/nav'
 import { api } from '../../lib/api'
 import { userLabel } from '../../lib/userLabel'
 import { useSession } from '../auth/useSession'
@@ -13,13 +14,52 @@ import { RelativeTime } from '../../ui/RelativeTime'
 import { onboardingQuery } from '../onboarding/onboardingQuery'
 import { AgentConfig } from './AgentConfig'
 import { apiTokensQuery, type CreatedApiToken } from './apiTokens'
+import { PROFILE_PAGES, type ProfilePageId } from './profilePages'
 
 export function ProfileRoute() {
-  const { slug } = useParams({ from: '/w/$slug/settings/profile' })
-  return <Profile slug={slug} />
+  const { slug, page } = useParams({ from: '/w/$slug/settings/profile/$page' })
+  // Workspace changes reset private state. Section changes reset only content,
+  // keeping the section navigation mounted so keyboard focus stays predictable.
+  return <Profile key={slug} slug={slug} page={page as ProfilePageId} />
 }
 
-export function Profile({ slug }: { slug: string }) {
+export function Profile({ slug, page = 'general' }: { slug: string; page?: ProfilePageId }) {
+  const session = useSession(slug)
+  if (session.isLoading) return <LoadingState label="Loading profile…" />
+  if (!session.user) return null
+  const current = PROFILE_PAGES.find((candidate) => candidate.id === page)!
+  return <div className="w-full min-w-0">
+    <PageHeader eyebrow="Profile" title={current.label} description={current.description} />
+    <div className="grid gap-4 lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-8">
+      <div className="min-w-0">
+        <nav aria-label="Profile sections" className="lg:sticky lg:top-4">
+          <ul className="flex flex-wrap gap-1 border-b border-grey-200 pb-2 lg:flex-col lg:flex-nowrap lg:gap-0.5 lg:border-b-0 lg:pb-0">
+            {PROFILE_PAGES.map((section) => <li key={section.id} className="shrink-0">
+              <NavLink to={`/w/${slug}/settings/profile/${section.id}`}
+                className="flex min-h-10 items-center rounded-[var(--radius-control)] border border-transparent px-2.5 text-sm text-grey-700 no-underline hover:bg-grey-100 hover:text-ink lg:min-h-8"
+                activeClassName="border-grey-200 bg-grey-100 font-medium !text-ink">
+                {section.label}
+              </NavLink>
+            </li>)}
+          </ul>
+        </nav>
+      </div>
+      <div key={page} className="min-w-0">
+        {page === 'general' ? <section className="space-y-3" aria-labelledby="identity-heading">
+          <SectionHeader id="identity-heading" title="Identity" />
+          <p className="break-words font-medium">{userLabel(session.user)}</p>
+          {session.user.email && session.user.email !== userLabel(session.user) ? <p className="break-all text-sm text-grey-500">{session.user.email}</p> : null}
+          <p className="max-w-[46rem] text-grey-500">Your identity and personal API tokens are shared across your organisations. Agent setup uses the current organisation.</p>
+        </section> : null}
+        {page === 'github' ? <GitHubProfile slug={slug} /> : null}
+        {page === 'agent-config' && session.workspace ? <AgentConfig workspace={session.workspace} /> : null}
+        {page === 'tokens' ? <ApiTokens /> : null}
+      </div>
+    </div>
+  </div>
+}
+
+export function GitHubProfile({ slug }: { slug: string }) {
   const session = useSession(slug)
   const client = useQueryClient()
   const [confirmingUnlink, setConfirmingUnlink] = useState(false)
@@ -32,16 +72,7 @@ export function Profile({ slug }: { slug: string }) {
   })
   if (session.isLoading) return <LoadingState label="Loading profile…" />
   if (!session.user) return null
-  return <div className="w-full min-w-0">
-    <PageHeader
-      title="Profile"
-      description="Manage your linked identity and personal access for tools and coding agents."
-    />
-    <div className="mb-8">
-      <p className="font-medium">{userLabel(session.user)}</p>
-      {session.user.email && session.user.email !== userLabel(session.user) ? <p className="mt-1 text-sm text-grey-500">{session.user.email}</p> : null}
-    </div>
-    <section className="space-y-3" aria-labelledby="github-profile-heading">
+  return <section className="space-y-3" aria-labelledby="github-profile-heading">
     <SectionHeader id="github-profile-heading" title="GitHub profile" />
     <p className="text-grey-500">Link your GitHub identity to attribute your work. Organisation installation ownership is verified separately in Administration.</p>
     {session.user.github_login ? <>
@@ -67,9 +98,6 @@ export function Profile({ slug }: { slug: string }) {
     }}>Link GitHub profile</a>}
     {unlink.error ? <p role="alert" className="text-blocked">{unlink.error.message}</p> : null}
     </section>
-    {session.workspace ? <AgentConfig workspace={session.workspace} /> : null}
-    <ApiTokens />
-  </div>
 }
 
 function TokenForm({
@@ -170,7 +198,7 @@ export function ApiTokens() {
   }
 
   return (
-    <section className="mt-8 space-y-3" aria-labelledby="api-tokens-heading">
+    <section className="space-y-3" aria-labelledby="api-tokens-heading">
       <SectionHeader id="api-tokens-heading" title="API tokens" />
       <p className="text-grey-500">Create a personal token for tools that need to write to your worklog.</p>
 

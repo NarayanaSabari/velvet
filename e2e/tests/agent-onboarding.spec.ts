@@ -102,7 +102,7 @@ test('a person who skips the agent connects one later from Profile > Agent confi
   const card = page.getByTestId('connect-agent-card')
   await expect(card).toBeVisible()
   await card.getByRole('link', { name: 'Connect an agent' }).click()
-  await expect(page).toHaveURL(new RegExp(`/w/${slug}/settings/profile#agent-config$`))
+  await expect(page).toHaveURL(new RegExp(`/w/${slug}/settings/profile/agent-config$`))
   const section = page.locator('section#agent-config')
   await expect(section.getByRole('heading', { name: 'Agent config' })).toBeInViewport()
   await expect(section.getByTestId('agent-config-status')).toContainText('No agent connected yet.')
@@ -114,7 +114,8 @@ test('a person who skips the agent connects one later from Profile > Agent confi
   const url = (await section.getByTestId('agent-mcp-url').textContent())!.trim()
   expect(url).toBe(`${baseURL}/api/v1/w/${slug}/mcp`)
   await expect(section.getByTestId('agent-snippet')).toContainText(`Bearer ${token}`)
-  await expect(page.locator('section[aria-labelledby="api-tokens-heading"]').getByText(/^Coding agent \d{4}/)).toBeVisible()
+  // Tokens are on their own page, not mounted alongside the one-time setup.
+  await expect(page.getByLabel('Token name')).toHaveCount(0)
   const connection = section.getByTestId('agent-connection')
   await expect(connection).toHaveAttribute('data-connected', 'false')
 
@@ -179,7 +180,7 @@ test('the dashboard prompt can be dismissed, and Agent config stays in Profile',
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k')
   await page.keyboard.type('agent config')
   await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(new RegExp(`/w/later-${suffix}/settings/profile#agent-config$`))
+  await expect(page).toHaveURL(new RegExp(`/w/later-${suffix}/settings/profile/agent-config$`))
   await expect(page.getByRole('button', { name: 'Set up an agent' })).toBeVisible()
 })
 

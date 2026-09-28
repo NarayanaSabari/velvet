@@ -12,8 +12,8 @@ test('creates an API token and uses it to create an issue', async ({
   baseURL,
   request,
 }) => {
-  await page.goto('/w/lab/settings/profile')
-  await expect(page.getByRole('heading', { name: 'API tokens' })).toBeVisible()
+  await page.goto('/w/lab/settings/profile/tokens')
+  await expect(page.getByRole('heading', { name: 'API tokens', level: 1 })).toBeVisible()
 
   const tokenName = `CLI writer ${Date.now()}`
   await page.getByLabel('Token name').fill(tokenName)

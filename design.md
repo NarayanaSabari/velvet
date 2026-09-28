@@ -190,9 +190,15 @@ The issue status is an explicit user action, and linked pull requests are eviden
 
 Settings should use clear sections, visible labels, and row-based records rather than dashboard-style cards.
 
-Profile uses the full workspace width for identity, GitHub linking, Agent config, and API-token rows, with the token name field and agent setup kept to a readable width.
+Profile uses the full workspace width, with one concern per routed page: `/settings/profile/general`, `/settings/profile/github`, `/settings/profile/agent-config`, and `/settings/profile/tokens`, all under `/w/$slug`.
+The shared header uses "Profile" as the eyebrow and the page name as the single `h1`, with "Page · Profile · Velvet" as the browser title.
+Like Administration, its section list is a sticky `11rem` desktop column at `lg` and wrapping tabs below it, with real links and `aria-current="page"`.
+The bare Profile address redirects to General, and old `#agent-config` bookmarks redirect to Agent config, preserving query strings.
+Unknown sections show not found.
+Leaving a section discards any one-time key and unfinished confirmation rather than restoring them with Back.
+The token name field and agent setup stay at a readable width within the full-width content.
 
-Agent config sits between GitHub profile and API tokens, at the `#agent-config` anchor.
+Agent config sits between GitHub and API tokens in the section list.
 It shows whether any agent key has been used, the organisation's MCP URL, and one primary action that creates a fresh key and reveals the same setup tabs and live connection status as onboarding.
 A key is never shown twice, so setting up again always makes a new key, which is also listed under API tokens.
 Viewers see a note that their agent can read but not write.

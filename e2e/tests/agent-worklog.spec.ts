@@ -106,7 +106,7 @@ test('an agent logs keyless work, proves it with a PR, and it reaches the recap'
   request,
 }) => {
   // --- The agent gets a token, the way a real one would: once, from the UI.
-  await page.goto('/w/lab/settings/profile')
+  await page.goto('/w/lab/settings/profile/tokens')
   await page.getByLabel('Token name').fill(AGENT_TOKEN_NAME)
   await page.getByRole('button', { name: 'Create token' }).click()
   const token = (await page.getByRole('status').locator('code').textContent())?.trim()

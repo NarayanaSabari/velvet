@@ -1,9 +1,14 @@
+import { PROFILE_PAGES } from '../features/profile/profilePages'
 import { ADMIN_PAGES } from '../features/admin/adminPages'
 
 export function productPageTitle(pathname: string): string {
   if (pathname === '/me/worklog') return 'Work log'
   if (/^\/w\/[^/]+\/?$/.test(pathname)) return 'Dashboard'
-  if (/\/settings\/profile\/?$/.test(pathname)) return 'Profile'
+  const profile = /\/settings\/profile(?:\/([^/]+))?\/?$/.exec(pathname)
+  if (profile) {
+    const page = PROFILE_PAGES.find((candidate) => candidate.id === (profile[1] ?? 'general'))
+    return page ? `${page.label} · Profile` : 'Page not found'
+  }
   if (/\/issues\/[^/]+\/?$/.test(pathname)) return 'Issue'
   if (/\/issues\/?$/.test(pathname)) return 'Issues'
   if (/\/sprints\/[^/]+\/?$/.test(pathname)) return 'Sprint'

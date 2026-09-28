@@ -186,7 +186,7 @@ it('links a profile through the distinct authorization endpoint and clears ident
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(['authors', 'lab'], ['octocat'])
   client.setQueryData(['reports', 'lab'], ['octocat'])
-  show(<Profile slug="lab" />, client)
+  show(<Profile slug="lab" page="github" />, client)
   await userEvent.click(await screen.findByRole('button', { name: 'Unlink GitHub profile' }))
   expect(screen.getByText(/future GitHub activity will not be attributed/i)).toBeInTheDocument()
   expect(linked).toBe(true)

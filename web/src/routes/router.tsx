@@ -18,6 +18,7 @@ import { landingWorkspace, sessionQueryOptions } from '../features/auth/useSessi
 import { NewOrganisation } from '../features/orgs/NewOrganisation'
 import { Onboarding } from '../features/onboarding/Onboarding'
 import { ProfileRoute } from '../features/profile/Profile'
+import { PROFILE_PAGES } from '../features/profile/profilePages'
 import { LandingPage } from '../features/landing/LandingPage'
 import { RootLayout, RootNotFound } from './root'
 import { PublicRecovery, PublicSessionPending, PublicSessionError } from '../features/auth/PublicRecovery'
@@ -189,6 +190,15 @@ const mentionsRoute = createRoute({
   },
 })
 
+const profilePageRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/w/$slug/settings/profile/$page',
+  beforeLoad: ({ params }) => {
+    if (!PROFILE_PAGES.some((page) => page.id === params.page)) throw notFound()
+  },
+  component: ProfileRoute,
+})
+
 const routes = [
   indexRoute,
   dashboardRoute,
@@ -205,6 +215,7 @@ const routes = [
   adminRoute,
   adminPageRoute,
   reportsRoute,
+  profilePageRoute,
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/not-invited',
@@ -253,7 +264,10 @@ const routes = [
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/w/$slug/settings/profile',
-    component: ProfileRoute,
+    beforeLoad: ({ params, location }) => {
+      const page = location.hash === 'agent-config' ? 'agent-config' : 'general'
+      throw redirect({ href: `/w/${params.slug}/settings/profile/${page}${location.searchStr}`, replace: true })
+    },
   }),
 ]
 
