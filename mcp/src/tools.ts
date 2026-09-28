@@ -395,8 +395,12 @@ export function createMcpServer(config: VelvetConfig, options: ToolServerOptions
     async ({ project }) => {
       try {
         const resolved = await scoped()
-        const sprints = await api.listSprints(project ?? resolved.project)
-        return toolResult(formatSprints(sprints, resolved.workspace))
+        const [sprints, projects] = await Promise.all([
+          api.listSprints(project ?? resolved.project),
+          api.listProjects(),
+        ])
+        const keys = new Map(projects.flatMap((item) => (item.id ? [[item.id, item.key] as const] : [])))
+        return toolResult(formatSprints(sprints, resolved.workspace, keys))
       } catch (error) {
         return toolError(error)
       }

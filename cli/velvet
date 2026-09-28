@@ -366,7 +366,7 @@ api_error() {
       die "permission denied (403): $message" "$EX_AUTH"
       ;;
     404)
-      die "not found (404): $message. Check VELVET_WORKSPACE and the issue key" "$EX_NOT_FOUND"
+      die "not found (404): $message. Check VELVET_WORKSPACE and the key you passed" "$EX_NOT_FOUND"
       ;;
     000)
       die "request failed: $message" "$EX_NETWORK"

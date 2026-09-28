@@ -106,7 +106,7 @@ export function Dashboard({ slug }: { slug: string }) {
     <div className="w-full min-w-0">
       <PageHeader
         title="Dashboard"
-        description="Your current sprint, assigned work, and latest activity in one view."
+        description="Each project's current sprint, your assigned work, and latest activity in one view."
         actions={canWrite && !creatingIssue ? (
           <Button variant="primary" onClick={() => setCreatingIssue(true)}>New issue</Button>
         ) : undefined}

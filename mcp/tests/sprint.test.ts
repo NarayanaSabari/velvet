@@ -122,6 +122,9 @@ describe('sprint scheduling', () => {
     const rendered = formatSprints([sprint], 'lab')
     expect(rendered).toContain('September 2026')
     expect(rendered).toContain('upcoming')
+
+    const named = formatSprints([{ ...sprint, project_id: 'p-1' }], 'lab', new Map([['p-1', 'web']]))
+    expect(named).toContain('project web')
     expect(rendered).toContain('2026-09-01 to 2026-09-30')
     // The id is what velvet_create_milestone needs next, so it must be shown.
     expect(rendered).toContain('s-1')

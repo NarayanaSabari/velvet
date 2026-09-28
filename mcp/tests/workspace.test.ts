@@ -33,7 +33,8 @@ describe('WorkspaceResolver', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('https://worklog.example.com/api/v1/me/resolve-repo')
     expect(init.method).toBe('POST')
-    expect(JSON.parse(String(init.body)).remote).toContain('velvet-otter-lab')
+    // Whatever this checkout's origin is called, it is what gets sent.
+    expect(JSON.parse(String(init.body)).remote).toMatch(/NarayanaSabari\/[\w.-]+/)
   })
 
   // A configured workspace is an explicit instruction and must not be second
