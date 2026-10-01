@@ -86,6 +86,36 @@ It accepts API tokens only; a browser session cookie is refused.
 Because the server cannot see a local checkout, `velvet_current_ticket` takes the branch name as an argument.
 The local stdio server in [`mcp/`](mcp/) remains for resolving the organisation from a git remote.
 
+### Preserving important images
+
+An agent can attach a user-shared reference, bug screenshot, or result image to an existing ticket or milestone, with a caption explaining why it matters.
+Images appear in the page's Images section, separate from GitHub evidence, and uploading never changes a status.
+
+```bash
+velvet upload-image ENG-142 /path/to/reference.png --caption "The user shared this to show the missing error message."
+velvet upload-image --milestone "$MILESTONE_ID" /path/to/design.webp --caption "Reference for the milestone's accepted layout."
+```
+
+The local MCP tool `velvet_upload_image` accepts an explicit local file path, a caption, and exactly one ticket key or milestone ID.
+The hosted MCP server cannot read files on the agent's machine.
+Its `velvet_prepare_image_upload` tool instead returns an upload endpoint and a short-lived, single-use credential for transferring the file as multipart HTTP, without putting image bytes into the model's context.
+Use the credential in `X-Velvet-Upload-Token`, not in a URL, and never save it in repository files or a work-log entry.
+The upload endpoint refuses browser cookies and rechecks the issuing API token and current membership before storing anything.
+
+Only upload relevant images to a clearly identified ticket or milestone, not every image in a conversation.
+If the destination is unclear, or the agent can see an image but cannot access its actual file, ask instead of inventing a target or claiming it was saved.
+Do not upload unrelated sensitive material.
+
+PNG, JPEG, and static WebP uploads are limited to 10 MiB and 20 megapixels, with a 512 MiB image-storage limit per organisation.
+Each ticket or milestone can hold up to 100 images, and each organisation up to 1000.
+Identical retries by the same uploader on the same target and with the same caption reuse the existing attachment without spending quota.
+The API validates image contents rather than trusting an extension or MIME declaration, rejects animations, and strips private metadata while preserving compressed pixels, colour profiles, and EXIF orientation.
+Image bytes and metadata live in Postgres and are included in the existing database backups.
+Authenticated members can view full images and download them, but there are no public image URLs.
+Members and admins can upload, viewers can only read, and an uploader who still has write access or an admin can delete an image after confirmation.
+Deletion of the parent ticket, milestone, or organisation removes its attachments too.
+The first release provides agent upload and portal viewing/removal, not a browser upload picker.
+
 ## Being told what to work on
 
 A manager names a sprint and a goal. Neither has to exist yet, and none of it requires administration: running a sprint is the work, not administration of it, so a member can do it and every change names who made it.

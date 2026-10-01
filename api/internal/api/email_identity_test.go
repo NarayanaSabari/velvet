@@ -31,6 +31,10 @@ func TestEmailOnlyIdentitySurvivesEveryUserProjection(t *testing.T) {
 	require.NoError(t, err)
 
 	sprint := newSprint(t, f)
+	// This projection test records activity now, so its reporting window must
+	// include today rather than the shared fixture's fixed September dates.
+	_, err = f.Pool.Exec(ctx, `UPDATE sprint SET starts_on=current_date-1, ends_on=current_date+1 WHERE id=$1`, sprint.ID)
+	require.NoError(t, err)
 	var milestone store.Milestone
 	require.NoError(t, f.Pool.QueryRow(ctx, `
 		INSERT INTO milestone (workspace_id, sprint_id, name, description, position)

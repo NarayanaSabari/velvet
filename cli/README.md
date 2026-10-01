@@ -33,6 +33,24 @@ For coding agents, [`mcp/`](../mcp/) provides typed stdio tools for the same API
 Prefer the MCP tools when the current agent exposes them, and use this CLI as the portable fallback.
 The MCP server uses the same `VELVET_URL`, `VELVET_TOKEN`, and `VELVET_WORKSPACE` environment variables, with envkit supplying the token.
 
+## Image attachments
+
+```bash
+velvet upload-image ENG-42 /path/to/screenshot.png --caption 'Shows the reported layout bug'
+velvet upload-image --milestone MILESTONE_ID /path/to/mockup.png --caption 'Approved design for this goal'
+```
+
+Uploads use the configured token and existing workspace/repository resolution.
+Exactly one explicit ticket key or milestone ID and a nonempty relevance caption are required.
+The CLI snapshots only the supplied regular local file, rejects final symlinks and special files, and caps reads at 10 MiB even if the file grows.
+It sends multipart `file` and `caption` to the target's `/images` endpoint and prints the attachment and page links.
+The server validates the actual image format and permissions.
+Uploads never change status, scan directories, fetch remote images, or pass image base64 through agent output.
+If no actual file is available, ask the user for it instead of claiming an upload.
+Do not attach unrelated sensitive material.
+
+Run the transport fixture tests with `python3 cli/test_upload_image.py` from the repository root.
+
 ## Commands
 
 ```text

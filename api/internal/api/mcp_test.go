@@ -260,6 +260,13 @@ func TestHostedMCPInstructionsNameTheOrganisationAndProjects(t *testing.T) {
 	require.Contains(t, instructions, "billing (Billing)")
 	require.NotContains(t, instructions, "old-site", "archived projects are not offered")
 	require.Contains(t, instructions, "never invent time spent")
+	require.Contains(t, instructions, "velvet_prepare_image_upload")
+	require.Contains(t, instructions, "binary multipart HTTP")
+	require.Contains(t, instructions, "exactly one explicit existing ticket or milestone")
+	require.Contains(t, instructions, "caption explaining the image's relevance")
+	require.Contains(t, instructions, "unrelated sensitive images")
+	require.Contains(t, instructions, "cannot see local files")
+	require.Contains(t, instructions, "cannot access the actual file, ask")
 }
 
 func TestHostedMCPInstructionsWithoutProjectsOrWriteAccess(t *testing.T) {
@@ -274,6 +281,7 @@ func TestHostedMCPInstructionsWithoutProjectsOrWriteAccess(t *testing.T) {
 	require.Contains(t, instructions, "viewer")
 	require.Contains(t, instructions, "cannot write")
 	require.NotContains(t, instructions, "After each meaningful unit of work")
+	require.NotContains(t, instructions, "velvet_prepare_image_upload")
 }
 
 // A large organisation cannot flood an agent's context with its project list.

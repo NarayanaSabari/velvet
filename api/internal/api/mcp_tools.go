@@ -169,6 +169,7 @@ func tool[In any](server *mcp.Server, baseURL string, api http.Handler, name, de
 }
 
 func registerMCPTools(server *mcp.Server, baseURL string, api http.Handler) {
+	registerImageMCPTools(server, baseURL, api)
 	tool(server, baseURL, api, "velvet_where_am_i",
 		"Report which Velvet organisation this agent writes to, the person it acts as, and their role.",
 		func(ctx context.Context, c *mcpCall, _ noInput) (string, error) {

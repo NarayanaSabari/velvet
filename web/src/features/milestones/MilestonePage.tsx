@@ -11,6 +11,7 @@ import { Markdown } from '../../ui/Markdown'
 import { ErrorState, LoadingState, NotFoundState } from '../../ui/QueryState'
 import { NavLink } from '../../app/nav'
 import { CommentComposer } from '../comments/CommentComposer'
+import { ImagesSection } from '../images/ImagesSection'
 import { CommentThread } from '../comments/CommentThread'
 import { IssueList } from '../issues/IssueList'
 import { useSession } from '../auth/useSession'
@@ -204,6 +205,8 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
           />
         </section>
       ) : null}
+
+      <ImagesSection key={`${slug}/${milestoneId}`} slug={slug} target="milestones" targetId={milestoneId} />
 
       <section data-testid="milestone-log">
         <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Log</h2>

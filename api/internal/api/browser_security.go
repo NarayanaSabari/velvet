@@ -20,7 +20,7 @@ func (s *Server) browserMutations(next http.Handler) http.Handler {
 		// An explicit bearer credential is not sent automatically by a browser,
 		// so it is not vulnerable to cookie CSRF. This middleware is browser-only,
 		// so bearer requests skip both its Origin and browser content-type checks.
-		if bearerRequest(r) {
+		if bearerRequest(r) || imageGrantRequest(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -29,7 +29,7 @@ func (s *Server) browserMutations(next http.Handler) http.Handler {
 			return
 		}
 		mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-		if err != nil || mediaType != "application/json" {
+		if err != nil || (mediaType != "application/json" && !(imageMultipartRequest(r) && mediaType == "multipart/form-data")) {
 			WriteError(w, http.StatusUnsupportedMediaType, "invalid_request", "application/json is required")
 			return
 		}

@@ -176,6 +176,14 @@ Below 1024px, the columns collapse into one document order without hiding status
 
 The main column contains the issue header, description, edit form, unified timeline, and comment composer.
 
+Ticket and milestone narratives include an Images section before the Timeline or Log.
+Its dense rows pair a bounded, contained preview with the filename, relevance caption, uploader, agent/user source, and timestamp.
+Images use protected same-origin API URLs, never public storage links.
+Full-size viewing and download use ordinary keyboard-accessible links, and an unavailable preview keeps the caption and actions readable.
+Only eligible writers see Delete, with an inline permanent-deletion confirmation, Cancel initially focused, and Escape returning focus to the trigger.
+Loading, retry, empty, deletion failure, and deleting states must remain explicit, and large dimensions or long filenames must not widen the page.
+This release's empty state directs the person to their agent, because browser upload is not yet provided.
+
 The rail contains status, metadata, labels, linked evidence, and sub-issues.
 
 The metadata rail's Project and Milestone selects always agree, because a milestone belongs to one project through its sprint.

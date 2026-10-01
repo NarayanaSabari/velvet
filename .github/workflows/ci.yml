@@ -75,12 +75,31 @@ jobs:
         working-directory: web
         run: npm run build
 
+  agents:
+    name: Agent clients
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mcp/package-lock.json
+      - name: Install MCP dependencies
+        working-directory: mcp
+        run: npm ci
+      - name: Build and test local MCP
+        working-directory: mcp
+        run: npm run build && npm test
+      - name: Test CLI uploads
+        run: python3 cli/test_upload_image.py
+
   e2e:
     name: End to end
     runs-on: ubuntu-latest
     # The whole production stack is built here, so run it only once the units
     # are green rather than paying for it on every broken commit.
-    needs: [api, web]
+    needs: [api, web, agents]
     steps:
       - uses: actions/checkout@v7
 
@@ -97,6 +116,10 @@ jobs:
       - name: Install Chromium
         working-directory: e2e
         run: npx playwright install --with-deps chromium
+
+      - name: Build local agent for browser acceptance
+        working-directory: mcp
+        run: npm ci && npm run build
 
       # Playwright's webServer brings up the real Compose stack: this suite
       # covers the deployment as well as the code, which is where several of

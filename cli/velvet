@@ -50,6 +50,7 @@ Commands:
   new TITLE [options]                     Create an issue and print its key
   log [KEY] [--project P] [--kind K] ...  Append a work-log entry
   attach KEY REFERENCE                    Attach a PR or commit as evidence
+  upload-image KEY PATH --caption TEXT     Upload a relevant image without changing status
   status KEY STATUS                       Change an issue status
   key-from-branch                         Extract an issue key from HEAD
 
@@ -1139,9 +1140,90 @@ PY
   fi
 }
 
+usage_upload_image() {
+  printf '%s\n' "Usage: velvet upload-image KEY PATH --caption TEXT" "       velvet upload-image --milestone ID PATH --caption TEXT" "Upload one explicit regular local image (maximum 10 MiB). Caption explains relevance. Status unchanged."
+}
+
+command_upload_image() {
+  local key="" milestone="" path="" caption="" target workspace_path filename image_id content_url
+  if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+    usage_upload_image
+    return 0
+  fi
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --milestone|--caption)
+        [ "$#" -ge 2 ] || die "$1 requires a value"
+        if [ "$1" = "--milestone" ]; then
+          [ -z "$milestone" ] || die "provide only one --milestone ID"
+          milestone=$2
+          [ -n "${milestone//[[:space:]]/}" ] || die "--milestone requires a nonempty ID"
+        else caption=$2; fi
+        shift 2 ;;
+      -*) die "unknown upload-image option: $1" ;;
+      *)
+        if [ -z "$milestone" ] && [ -z "$key" ]; then key=$1
+        elif [ -z "$path" ]; then path=$1
+        else die "upload-image requires exactly one target and one path"; fi
+        shift ;;
+    esac
+  done
+  [ -n "$path" ] && [ -n "${caption//[[:space:]]/}" ] || die "upload-image requires a path and nonempty --caption"
+  if [ -n "$key" ] && [ -n "$milestone" ]; then die "provide exactly one KEY or --milestone ID"; fi
+  [ -n "$key$milestone" ] || die "provide exactly one KEY or --milestone ID"
+  require_workspace
+  python3 - "$path" "$TMP_DIR/image" <<'PY'
+import os, stat, sys
+limit = 10 * 1024 * 1024
+try:
+    path, destination = sys.argv[1:]
+    info = os.lstat(path)
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError('image path must be a regular file, not a symlink or special file')
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, 'rb') as source:
+        opened = os.fstat(source.fileno())
+        if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+            raise ValueError('image file changed before reading')
+        if opened.st_size > limit:
+            raise ValueError('image exceeds 10 MiB limit')
+        data = source.read(limit + 1)
+        if len(data) > limit:
+            raise ValueError('image exceeds 10 MiB limit')
+        if not data:
+            raise ValueError('image file is empty')
+    with open(destination, 'xb') as output:
+        output.write(data)
+except (OSError, ValueError) as error:
+    print(f'velvet: {error}', file=sys.stderr)
+    sys.exit(2)
+PY
+  workspace_path=$(urlencode "$VELVET_WORKSPACE")
+  if [ -n "$key" ]; then target="issues/$(urlencode "$key")"; else target="milestones/$(urlencode "$milestone")"; fi
+  # Quote the multipart filename so user-controlled punctuation cannot become curl form directives.
+  filename=$(python3 - "$path" <<'PY'
+import os, sys
+print(os.path.basename(sys.argv[1]).replace('\\', '\\\\').replace('"', '\\"').replace('\r', '_').replace('\n', '_'))
+PY
+  )
+  if ! HTTP_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 60 \
+    --header "Accept: application/json" --header "Authorization: Bearer $VELVET_TOKEN" \
+    --form "file=@$TMP_DIR/image;filename=\"$filename\"" --form-string "caption=$caption" \
+    --output "$TMP_DIR/image.json" --write-out '%{http_code}' "$API_ROOT/w/$workspace_path/$target/images"); then
+    die "image upload request failed" "$EX_NETWORK"
+  fi
+  case "$HTTP_STATUS" in 2??) ;; *) api_error "$HTTP_STATUS" "$TMP_DIR/image.json" ;; esac
+  image_id=$(json_field "$TMP_DIR/image.json" id)
+  content_url=$(json_field "$TMP_DIR/image.json" content_url)
+  [ -n "$image_id" ] && [ -n "$content_url" ] || die "upload response did not include attachment id and content_url" "$EX_API"
+  printf 'Uploaded image %s. Status unchanged.\nAttachment: %s\nPage: %s/w/%s/%s\n' \
+    "$image_id" "$content_url" "$BASE_URL" "$workspace_path" "$target"
+}
+
 show_help_command() {
   case "${1:-}" in
     "") usage ;;
+    upload-image) usage_upload_image ;;
     me) usage_me ;;
     issues) usage_issues ;;
     issue) usage_issue ;;
@@ -1167,6 +1249,7 @@ main() {
         usage
       fi
       ;;
+    upload-image) command_upload_image "$@" ;;
     me) command_me "$@" ;;
     where) command_where "$@" ;;
     recap) command_recap "$@" ;;

@@ -19,6 +19,11 @@ describe('repository instructions', () => {
     expect(block).toContain('`ACM-42`')
     expect(block).toContain('connected to an organisation other than `acme`')
     expect(block).toContain('never invent time spent')
+    expect(block).toContain('explicit ticket or milestone')
+    expect(block).toContain('Hosted MCP cannot see local files')
+    expect(block).toContain('ask for it instead of claiming an upload')
+    expect(block).toContain('unrelated sensitive material')
+    expect(block).toContain('change status because of an upload')
   })
 
   it('offers the same block for AGENTS.md and CLAUDE.md, and a Cursor rule with front matter', () => {

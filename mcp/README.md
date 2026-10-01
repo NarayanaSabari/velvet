@@ -6,6 +6,26 @@
 `velvet-mcp` is a private stdio MCP server that gives coding agents typed tools for the Velvet work-log API.
 It uses the same `/api/v1` endpoints as [`cli/velvet`](../cli/velvet), without browser cookies or an `Origin` header.
 
+## Image attachments
+
+The local `velvet_upload_image` tool accepts `path`, `caption`, and exactly one of `key` or `milestone_id`.
+`path` must explicitly name an existing regular local file no larger than 10 MiB.
+Final symlinks, directories, special files, empty files, and files that grow beyond the bounded read are rejected.
+Only that file is read, with native `FormData` and authenticated `fetch` sending multipart `file` and `caption` to the target's `/images` API.
+The server validates image bytes and target permissions.
+No remote URL fetch, image base64, or model-generated image output is involved.
+`velvet_list_images` accepts exactly one of `key` or `milestone_id` and returns metadata without downloading image bytes.
+
+Attach important relevant user-provided images only to an explicit ticket or milestone, explaining their relevance in the caption.
+Do not attach unrelated sensitive material or change status because an image was uploaded.
+If no actual local file is available, ask for it and never claim an upload happened.
+
+Hosted MCP cannot access files on the agent's computer.
+Use hosted `velvet_prepare_image_upload` to obtain an upload endpoint and short-lived credential, then transfer the explicitly available local file using multipart HTTP with `X-Velvet-Upload-Token` and no cookies or Authorization header.
+Alternatively, use this local tool or the CLI with the configured API token.
+There is no browser upload page in this release.
+Do not send local paths or image base64 as hosted image content.
+
 ## Configuration
 
 The server requires these environment variables:
