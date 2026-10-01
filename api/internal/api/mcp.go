@@ -158,6 +158,11 @@ func buildMCPInstructions(ws store.Membership, who string, projects []store.Proj
 	}
 	b.WriteString("\nIf a repository's Velvet section names a different organisation, tell the person instead of logging here. " +
 		"Never change a ticket status unless the person explicitly asks, and never invent time spent.")
+	b.WriteString("\n\nPreserve important relevant user-shared images with velvet_prepare_image_upload, then transfer the actual image file as binary multipart HTTP using the returned credential. " +
+		"Choose exactly one explicit existing ticket or milestone and include a caption explaining the image's relevance. " +
+		"Do not upload unrelated sensitive images or change a status because an image was uploaded. " +
+		"This hosted server cannot see local files and accepts no local paths or base64 image data. " +
+		"If the destination is unclear or you cannot access the actual file, ask the person rather than inventing a target or claiming it was saved.")
 	return b.String()
 }
 
