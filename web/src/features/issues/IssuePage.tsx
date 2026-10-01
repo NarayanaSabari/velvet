@@ -17,6 +17,7 @@ import { RelativeTime } from '../../ui/RelativeTime'
 import { StatusBadge, STATUS_LABELS } from '../../ui/StatusBadge'
 import { EmptyState } from '../../ui/EmptyState'
 import { CommentComposer } from '../comments/CommentComposer'
+import { ImagesSection } from '../images/ImagesSection'
 import { ReplyEditor } from '../comments/CommentThread'
 import { EvidenceCard } from '../evidence/EvidenceCard'
 import { StatusDot, StatusSelect } from './StatusSelect'
@@ -410,6 +411,8 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
           />
         </section>
       ) : null}
+
+      <ImagesSection key={`${slug}/${issueKey}`} slug={slug} target="issues" targetId={issueKey} />
 
       <section data-testid="issue-timeline-section">
         <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Timeline</h2>

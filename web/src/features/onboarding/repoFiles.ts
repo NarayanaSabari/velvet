@@ -53,6 +53,8 @@ export function repoInstructions({
     `- Otherwise log against the project: \`velvet_log_work\` with \`project: "${project.key}"\`. Never skip logging because no ticket exists.`,
     `- File new tickets for this repository under \`project: "${project.key}"\`.`,
     `- If the \`velvet\` server is connected to an organisation other than \`${workspaceSlug}\`, say so instead of logging there.`,
+    '- Attach important relevant user-provided images to an explicit ticket or milestone and explain their relevance in the caption. Use local `velvet_upload_image` with an explicit regular file path, or hosted `velvet_prepare_image_upload` followed by a multipart file transfer using its short-lived `X-Velvet-Upload-Token`, without cookies or Authorization. Hosted MCP cannot see local files.',
+    '- If no actual image file is available, ask for it instead of claiming an upload. Never scan arbitrary paths, fetch arbitrary remote images, send image base64 through model output, attach unrelated sensitive material, or change status because of an upload.',
     '- Never change a ticket status unless asked, and never invent time spent.',
     '',
   ].join('\n')

@@ -1,3 +1,4 @@
+import type { ImageAttachment } from './images.js'
 import type {
   Comment,
   CommentsResponse,
@@ -291,6 +292,18 @@ export class VelvetApi {
     )
   }
 
+  async uploadImage(target: string, form: FormData): Promise<ImageAttachment> {
+    return this.request('POST', `/w/${encodePath(this.workspace)}/${target}/images`, form)
+  }
+
+  async listImages(target: string): Promise<unknown> {
+    return this.request('GET', `/w/${encodePath(this.workspace)}/${target}/images`)
+  }
+
+  targetUrl(target: string): string {
+    return `${this.config.baseUrl}/w/${encodePath(this.workspace)}/${target}`
+  }
+
   private async request<T>(
     method: string,
     path: string,
@@ -304,9 +317,10 @@ export class VelvetApi {
         headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${this.config.token}`,
-          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          ...(body === undefined || body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
         },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        ...(body === undefined ? {} : { body: body instanceof FormData ? body : JSON.stringify(body) }),
+        ...(body instanceof FormData ? { redirect: 'error' as const } : {}),
       })
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)

@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
@@ -19,6 +20,7 @@ import {
   formatTicket,
   formatWorklog,
 } from './format.js'
+import { imageForm, imageTarget } from './images.js'
 import { extractIssueKey } from './key.js'
 import { ISSUE_STATUSES, type VelvetConfig } from './types.js'
 import { WorkspaceResolver } from './workspace.js'
@@ -81,6 +83,50 @@ export function createMcpServer(config: VelvetConfig, options: ToolServerOptions
     api.useWorkspace(resolved.workspace)
     return resolved
   }
+
+  server.registerTool(
+    'velvet_upload_image',
+    {
+      description: 'Upload an important relevant user image from an explicitly provided local regular file to exactly one ticket or milestone. Caption must explain relevance. Never scan paths, fetch remote images, attach unrelated sensitive material, or change status. If no actual file is available, ask for it and never claim an upload. Hosted MCP cannot see local files.',
+      inputSchema: {
+        path: z.string().min(1).describe('Explicit local image file path, at most 10 MiB'),
+        caption: z.string().trim().min(1).describe('Why this image is relevant'),
+        key: z.string().trim().min(1).optional(),
+        milestone_id: z.string().trim().min(1).optional(),
+      },
+    },
+    async ({ path, caption, key, milestone_id }) => {
+      try {
+        const target = imageTarget(key, milestone_id)
+        await scoped()
+        const image = await api.uploadImage(target, await imageForm(resolve(cwd, path), caption))
+        if (!image.id || !image.content_url) throw new Error('upload response did not include attachment id and content_url')
+        return toolResult(`Uploaded ${image.filename} (${image.id}). Status unchanged.\nAttachment: ${image.content_url}\nPage: ${api.targetUrl(target)}`)
+      } catch (error) {
+        return toolError(error)
+      }
+    },
+  )
+
+  server.registerTool(
+    'velvet_list_images',
+    {
+      description: 'List image attachment metadata for exactly one explicit ticket or milestone, without fetching image bytes.',
+      inputSchema: {
+        key: z.string().trim().min(1).optional(),
+        milestone_id: z.string().trim().min(1).optional(),
+      },
+    },
+    async ({ key, milestone_id }) => {
+      try {
+        const target = imageTarget(key, milestone_id)
+        await scoped()
+        return toolResult(JSON.stringify(await api.listImages(target)))
+      } catch (error) {
+        return toolError(error)
+      }
+    },
+  )
 
   server.registerTool(
     'velvet_log_work',
