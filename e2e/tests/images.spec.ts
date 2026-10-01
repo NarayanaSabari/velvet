@@ -281,3 +281,81 @@ test('local stdio MCP preserves a real file on the ticket, not image bytes in it
   await page.reload()
   await assertImageLoaded(page, 'Local agent preserved the user reference.')
 })
+
+test('JPEG and WebP agent references can be viewed, downloaded and explicitly removed on mobile', async ({ page, baseURL }) => {
+  const reference = await sharedScreenshot(page, 'User reference: preserve the visible sign-in error.')
+  const token = await agentToken(page, baseURL!)
+  await mkdir(resolve('test-results'), { recursive: true })
+  for (const format of ['jpeg', 'webp'] as const) {
+    // Use the browser's real encoder on the same user-reference bitmap rather
+    // than a magic header fixture that merely pretends to be another format.
+    const encoded = await page.evaluate(async ({ bytes, format }) => {
+      const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: 'image/png' }))
+      const canvas = document.createElement('canvas')
+      canvas.width = bitmap.width
+      canvas.height = bitmap.height
+      canvas.getContext('2d')!.drawImage(bitmap, 0, 0)
+      bitmap.close()
+      const blob = await new Promise<Blob>((done) => canvas.toBlob((blob) => done(blob!), `image/${format}`, 0.95))
+      if (blob.type !== `image/${format}`) throw new Error('Browser did not encode the requested image format')
+      return Array.from(new Uint8Array(await blob.arrayBuffer()))
+    }, { bytes: Array.from(reference), format })
+    const filename = `user-reference-${suffix}.${format}`
+    const path = resolve('test-results', filename)
+    const relevance = `The user shared this ${format.toUpperCase()} reference to show the required sign-in error.`
+    await writeFile(path, Buffer.from(encoded))
+    const uploaded = await promisify(execFile)(resolve('..', 'cli', 'velvet'), ['upload-image', 'IMG-1', path, '--caption', relevance], {
+      env: { ...process.env, VELVET_URL: baseURL!, VELVET_WORKSPACE: slug, VELVET_TOKEN: token },
+    })
+    expect(uploaded.stdout).toContain('Status unchanged')
+    const listed = await page.request.get(`/api/v1/w/${slug}/issues/IMG-1/images`)
+    const image = ((await listed.json()).images as ImageAttachment[]).find((candidate) => candidate.caption === relevance)!
+    expect(image).toBeDefined()
+    expect(image.source).toBe('agent')
+    const content = await page.request.get(image.content_url)
+    expect(content.status()).toBe(200)
+    expect(content.headers()['content-type']).toBe(`image/${format}`)
+    expect(content.headers()['cache-control']).toBe('no-store')
+    const originalPixelsPreserved = await page.evaluate(async (images) => {
+      const pixels = []
+      for (const bytes of images) {
+        const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)]))
+        const canvas = document.createElement('canvas')
+        canvas.width = bitmap.width
+        canvas.height = bitmap.height
+        const context = canvas.getContext('2d')!
+        context.drawImage(bitmap, 0, 0)
+        bitmap.close()
+        pixels.push(context.getImageData(0, 0, canvas.width, canvas.height).data)
+      }
+      return pixels[0].length === pixels[1].length && pixels[0].every((value, index) => value === pixels[1][index])
+    }, [encoded, Array.from(await content.body())])
+    expect(originalPixelsPreserved).toBe(true)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(`/w/${slug}/issues/IMG-1`)
+    await page.reload()
+    const row = page.getByTestId(`image-item-${image.id}`)
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
+      await assertImageLoaded(page, relevance)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
+      const popupPromise = page.waitForEvent('popup')
+      await row.getByRole('link', { name: /open full image/i }).last().click()
+      const fullImage = await popupPromise
+      await expect.poll(() => fullImage.locator('img').evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth === 640 && element.naturalHeight === 360)).toBe(true)
+      await fullImage.close()
+      const downloadPromise = page.waitForEvent('download')
+      await row.getByRole('link', { name: /^Download/ }).click()
+      expect((await downloadPromise).suggestedFilename()).toBe(filename)
+    }
+    await row.getByRole('button', { name: /delete image:/i }).click()
+    await expect(row.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+    await row.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await assertImageLoaded(page, relevance)
+    await row.getByRole('button', { name: /delete image:/i }).click()
+    await row.getByRole('button', { name: 'Delete image', exact: true }).click()
+    await expect(row).toHaveCount(0)
+    expect((await page.request.get(image.content_url)).status()).toBe(404)
+    expect((await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1`)).json()).status).toBe('backlog')
+  }
+})
