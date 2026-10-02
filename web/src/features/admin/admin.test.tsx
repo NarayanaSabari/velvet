@@ -353,6 +353,16 @@ describe('Admin', () => {
     expect(screen.getByLabelText('Role for Sabari')).toHaveValue('admin')
   })
 
+  it('explains optional installation and membership-wide evidence visibility', async () => {
+    vi.stubGlobal('fetch', adminFetch())
+    renderAdmin('repositories')
+    const guidance = await screen.findByText(/GitHub installation is optional/)
+    expect(guidance).toHaveTextContent('Velvet members can create, comment on, and view work without GitHub access')
+    expect(guidance).toHaveTextContent('viewers are read-only')
+    expect(guidance).toHaveTextContent('all Velvet members and viewers in this organisation')
+    expect(guidance).toHaveTextContent('even without GitHub repository permissions')
+  })
+
   it('offers ownership verification without manual repository identifiers', async () => {
     const fetch = adminFetch()
     vi.stubGlobal('fetch', fetch)

@@ -298,6 +298,59 @@ func TestGitHubLinkFailureRequiresFreshFlow(t *testing.T) {
 	}
 }
 
+func TestScopedGitHubLinkPreservesGlobalIdentityAndRecordedRedirect(t *testing.T) {
+	f := testutil.NewFixture(t)
+	ctx := t.Context()
+	otherWS := secondOrg(t, f, "other-client")
+	// A global claim outside this organisation must not prevent a scoped link.
+	_, err := testutil.CreateLinkedUser(t, f.Store, store.GitHubIdentity{ID: 42, Login: "linked-owner"})
+	require.NoError(t, err)
+	stub := newGitHubAuthStub(t)
+	h := api.NewServer(f.Pool, &config.Config{BaseURL: "http://localhost:8080"}, api.Dependencies{GitHubUser: stub.client}).Handler()
+	start := githubRequest(h, "GET", "/api/v1/w/lab/me/github/link?workspace=other-client&next=https://evil.example", f.Token)
+	require.Equal(t, http.StatusFound, start.Code, start.Body.String())
+	callback := githubCallback(t, start.Header().Get("Location")) + "&slug=other-client&next=https://evil.example"
+	for range 2 {
+		done := githubRequest(h, "GET", callback, f.Token)
+		require.Equal(t, http.StatusFound, done.Code, done.Body.String())
+		require.Equal(t, "/w/lab/settings/profile/github", done.Header().Get("Location"))
+	}
+	require.Equal(t, 1, stub.exchanges)
+	user, err := f.Store.UserBySessionToken(ctx, f.Token)
+	require.NoError(t, err)
+	require.Equal(t, f.User.GitHubID, user.GitHubID)
+	require.Equal(t, f.User.GitHubLogin, user.GitHubLogin)
+	identity, err := f.Store.GitHubIdentityForMembership(ctx, f.WorkspaceID, f.User.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(42), identity.GitHubID)
+	require.Equal(t, "organisation", identity.Source)
+	other, err := f.Store.GitHubIdentityForMembership(ctx, otherWS, f.User.ID)
+	require.NoError(t, err)
+	require.Equal(t, *f.User.GitHubID, other.GitHubID)
+	require.Equal(t, "global", other.Source)
+}
+
+func TestScopedGitHubLinkRejectsMembershipRevokedDuringExchange(t *testing.T) {
+	f := testutil.NewFixture(t)
+	stub := newGitHubAuthStub(t)
+	h := api.NewServer(f.Pool, &config.Config{BaseURL: "http://localhost:8080"}, api.Dependencies{GitHubUser: stub.client}).Handler()
+	start := githubRequest(h, "GET", "/api/v1/w/lab/me/github/link", f.Token)
+	require.Equal(t, http.StatusFound, start.Code)
+	callback := githubCallback(t, start.Header().Get("Location"))
+	stub.beforeExchange = func() {
+		_, err := f.Pool.Exec(t.Context(), `DELETE FROM membership WHERE workspace_id=$1 AND user_id=$2`, f.WorkspaceID, f.User.ID)
+		require.NoError(t, err)
+	}
+	done := githubRequest(h, "GET", callback, f.Token)
+	require.Equal(t, http.StatusGone, done.Code, done.Body.String())
+	user, err := f.Store.UserBySessionToken(t.Context(), f.Token)
+	require.NoError(t, err)
+	require.Equal(t, f.User.GitHubID, user.GitHubID)
+	var completed bool
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT completed_at IS NOT NULL FROM github_authorization_state`).Scan(&completed))
+	require.False(t, completed)
+}
+
 func TestGitHubLinkCallbackExpiryDuringProfileLockRollsBack(t *testing.T) {
 	for _, table := range []string{"github_authorization_state", "session"} {
 		t.Run(table, func(t *testing.T) {

@@ -225,7 +225,7 @@ const worklogPullRequests = `
 
 // A commit is attributed through the organisation's GitHub identity, so
 // someone using a different account per client still sees their own commits.
-const worklogCommits = `
+var worklogCommits = `
 	SELECT to_char(src.committed_at, 'YYYY-MM-DD'),
 	       to_char(src.committed_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
 	       w.slug, w.name, p.key, p.name,
@@ -241,6 +241,7 @@ const worklogCommits = `
 	WHERE src.committed_at::date BETWEEN $2::date AND $3::date
 	  AND ($4::text IS NULL OR w.slug = $4)
 	  AND lower(src.author_login) = lower(COALESCE(gi.github_login, u.github_login))
+	  AND (gi.membership_id IS NOT NULL OR (` + globalGitHubFallbackAvailable("m", "u") + `))
 	  AND ($5::text IS NULL OR p.key = $5)
 	ORDER BY src.committed_at DESC
 	LIMIT $6`

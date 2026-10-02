@@ -55,8 +55,12 @@ type WorkspaceMembership struct {
 	User        *User     `json:"user"`
 }
 
-const workspaceMembershipCols = `m.id, m.workspace_id, m.role::text,
-	u.id, u.email, u.github_id, u.github_login, u.name, u.avatar_url`
+var workspaceUserCols = `u.id, COALESCE(u.email, ''),
+	CASE WHEN gi.membership_id IS NOT NULL OR (` + globalGitHubFallbackAvailable("m", "u") + `) THEN COALESCE(gi.github_id,u.github_id) END,
+	CASE WHEN gi.membership_id IS NOT NULL OR (` + globalGitHubFallbackAvailable("m", "u") + `) THEN COALESCE(gi.github_login,u.github_login) END,
+	u.name, u.avatar_url`
+
+var workspaceMembershipCols = `m.id, m.workspace_id, m.role::text, ` + workspaceUserCols
 
 func scanWorkspaceMembership(row pgx.Row) (WorkspaceMembership, error) {
 	var m WorkspaceMembership
@@ -87,6 +91,7 @@ func (s *Store) ListWorkspaceMemberships(ctx context.Context, workspaceID uuid.U
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+workspaceMembershipCols+`
 		FROM membership m LEFT JOIN app_user u ON u.id = m.user_id
+		LEFT JOIN membership_github_identity gi ON gi.membership_id=m.id
 		WHERE m.workspace_id = $1
 		ORDER BY lower(u.email)`, workspaceID)
 	if err != nil {
@@ -109,8 +114,9 @@ func (s *Store) ListWorkspaceMemberships(ctx context.Context, workspaceID uuid.U
 // selectors. Pending invites are absent because they do not identify a user.
 func (s *Store) ListWorkspaceMembers(ctx context.Context, workspaceID uuid.UUID) ([]User, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT u.id, COALESCE(u.email, ''), u.github_id, u.github_login, u.name, u.avatar_url
+		SELECT `+workspaceUserCols+`
 		FROM membership m JOIN app_user u ON u.id = m.user_id
+		LEFT JOIN membership_github_identity gi ON gi.membership_id=m.id
 		WHERE m.workspace_id = $1
 		ORDER BY lower(COALESCE(u.github_login, u.email))`, workspaceID)
 	if err != nil {
@@ -158,6 +164,7 @@ func (s *Store) UpdateWorkspaceMembershipRole(ctx context.Context, workspaceID, 
 		out, err = scanWorkspaceMembership(tx.QueryRow(ctx, `
 			SELECT `+workspaceMembershipCols+`
 			FROM membership m LEFT JOIN app_user u ON u.id = m.user_id
+			LEFT JOIN membership_github_identity gi ON gi.membership_id=m.id
 			WHERE m.id = $1 AND m.workspace_id = $2`, membershipID, workspaceID))
 		if err != nil {
 			return err

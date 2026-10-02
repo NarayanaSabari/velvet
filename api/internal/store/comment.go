@@ -191,7 +191,9 @@ func (s *Store) CreateComment(ctx context.Context, in CreateCommentInput) (Comme
 			SELECT $1, u.id
 			FROM app_user u
 			JOIN membership m ON m.user_id = u.id AND m.workspace_id = $2
-			WHERE lower(u.github_login) = ANY($3::text[])
+			LEFT JOIN membership_github_identity gi ON gi.membership_id=m.id
+			WHERE lower(COALESCE(gi.github_login,u.github_login)) = ANY($3::text[])
+			  AND (gi.membership_id IS NOT NULL OR (`+globalGitHubFallbackAvailable("m", "u")+`))
 			ON CONFLICT DO NOTHING`, out.ID, in.WorkspaceID, logins)
 		return err
 	})
