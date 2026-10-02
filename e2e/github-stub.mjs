@@ -3,15 +3,20 @@ import { createHash, randomBytes } from 'node:crypto'
 
 // Disposable provider double for real browser/API integration, not production.
 const codes = new Map()
-const tokens = new Set()
+const tokens = new Map()
 const installationTokens = new Map()
-const control = { repositoryPresent: true, failListing: false, suspended: false, deleted: false, installationID: 99, readOnly: false }
+const control = { repositoryPresent: true, failListing: false, suspended: false, deleted: false, installationID: 99, readOnly: false, identityID: 70007 }
 const stats = { authorizations: 0, exchanges: 0, pkceVerified: 0, users: 0, installations: 0, installationTokens: 0, repositoryLists: 0 }
 const baseURL = process.env.BASE_URL || 'http://localhost:18399'
 const callback = `${baseURL}/api/v1/auth/github/callback`
 const clientId = 'local-github-client'
 const clientSecret = 'local-github-secret'
 const identity = { id: 70007, login: 'runtime-github-user', name: 'Runtime GitHub User', avatar_url: '' }
+const identities = new Map([
+  [70007, identity],
+  [70008, { id: 70008, login: 'runtime-client-a', name: 'Client A User', avatar_url: '' }],
+  [70009, { id: 70009, login: 'runtime-client-b', name: 'Client B User', avatar_url: '' }],
+])
 
 function json(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json' })
@@ -29,7 +34,7 @@ createServer(async (req, res) => {
     }
     let update
     try { update = JSON.parse(body) } catch { return json(res, 400, { error: 'invalid_test_control' }) }
-    if (!update || typeof update !== 'object' || Array.isArray(update) || Object.entries(update).some(([key, value]) => !(key in control) || (key === 'installationID' ? ![99, 100].includes(value) : typeof value !== 'boolean'))) {
+    if (!update || typeof update !== 'object' || Array.isArray(update) || Object.entries(update).some(([key, value]) => !(key in control) || (key === 'installationID' ? ![99, 100].includes(value) : key === 'identityID' ? !identities.has(value) : typeof value !== 'boolean'))) {
       return json(res, 400, { error: 'invalid_test_control' })
     }
     Object.assign(control, update)
@@ -70,7 +75,7 @@ createServer(async (req, res) => {
       return json(res, 400, { error: 'invalid_authorization_request' })
     }
     const code = randomBytes(24).toString('base64url')
-    codes.set(code, p.get('code_challenge'))
+    codes.set(code, { challenge: p.get('code_challenge'), identity: identities.get(control.identityID) })
     stats.authorizations++
     const destination = new URL(callback)
     destination.searchParams.set('code', code)
@@ -89,15 +94,15 @@ createServer(async (req, res) => {
     if (!(p.get('client_id') === clientId && p.get('client_secret') === clientSecret) &&
         req.headers.authorization !== `Basic ${basic}`) return json(res, 401, { error: 'invalid_client' })
     stats.exchanges++
-    const challenge = codes.get(p.get('code'))
+    const authorization = codes.get(p.get('code'))
     codes.delete(p.get('code'))
-    if (!challenge || p.get('redirect_uri') !== callback ||
-        createHash('sha256').update(p.get('code_verifier') || '').digest('base64url') !== challenge) {
+    if (!authorization || p.get('redirect_uri') !== callback ||
+        createHash('sha256').update(p.get('code_verifier') || '').digest('base64url') !== authorization.challenge) {
       return json(res, 400, { error: 'invalid_grant' })
     }
     stats.pkceVerified++
     const token = randomBytes(24).toString('base64url')
-    tokens.add(token)
+    tokens.set(token, authorization.identity)
     return json(res, 200, { access_token: token, token_type: 'bearer', expires_in: 3600 })
   }
   const token = (req.headers.authorization || '').replace(/^Bearer /i, '')
@@ -112,7 +117,7 @@ createServer(async (req, res) => {
   if (!tokens.has(token)) return json(res, 401, { message: 'Bad credentials' })
   if (req.method === 'GET' && url.pathname === '/user') {
     stats.users++
-    return json(res, 200, identity)
+    return json(res, 200, tokens.get(token))
   }
   if (req.method === 'GET' && url.pathname === '/user/installations') {
     return json(res, 200, { total_count: control.deleted ? 0 : 1, installations: control.deleted ? [] : [{ id: control.installationID, account: { id: 70007, login: identity.login, type: 'Organization' } }] })

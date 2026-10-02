@@ -181,6 +181,10 @@ it('links a profile through the distinct authorization endpoint and clears ident
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (url === '/api/v1/me/github' && init?.method === 'DELETE') { linked = false; return response(null, 204) }
     if (url === '/api/v1/me/tokens') return response({ tokens: [] })
+    if (url === '/api/v1/w/lab/me/github') return response({ identity: linked ? {
+      workspace_id: membership.workspace_id, user_id: identity.id, github_id: 1,
+      github_login: 'octocat', linked_at: '2026-10-01T00:00:00Z', source: 'global',
+    } : null })
     return response({ user: { ...identity, github_login: linked ? 'octocat' : null }, memberships: [membership], last_workspace: membership })
   }))
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -188,7 +192,7 @@ it('links a profile through the distinct authorization endpoint and clears ident
   client.setQueryData(['reports', 'lab'], ['octocat'])
   show(<Profile slug="lab" page="github" />, client)
   await userEvent.click(await screen.findByRole('button', { name: 'Unlink GitHub profile' }))
-  expect(screen.getByText(/future GitHub activity will not be attributed/i)).toBeInTheDocument()
+  expect(screen.getByText(/future GitHub activity will not use your global fallback/i)).toBeInTheDocument()
   expect(linked).toBe(true)
   await userEvent.click(screen.getByRole('button', { name: 'Confirm unlink GitHub profile' }))
   expect(await screen.findByRole('link', { name: 'Link GitHub profile' })).toHaveAttribute('href', '/api/v1/auth/github/link')

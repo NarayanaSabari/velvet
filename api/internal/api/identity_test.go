@@ -122,6 +122,30 @@ func TestGlobalGitHubLoginStillAttributesWithoutAPerOrgIdentity(t *testing.T) {
 	require.Equal(t, f.User.ID, *pr.AuthorID)
 }
 
+func TestOrganisationOverrideDisablesGlobalAttributionUntilRemoved(t *testing.T) {
+	f := testutil.NewFixture(t)
+	ctx := t.Context()
+	repo := testutil.LinkRepo(t, f, 555, "acme", "widgets")
+	require.NoError(t, f.Store.LinkMembershipGitHubIdentity(ctx, f.WorkspaceID, f.User.ID,
+		store.GitHubIdentity{ID: 2002, Login: "sabari-client"}))
+	global := insertPR(t, f, f.WorkspaceID, repo.ID, 1, "sabari")
+	require.Nil(t, global.AuthorID)
+	local := insertPR(t, f, f.WorkspaceID, repo.ID, 2, "sabari-client")
+	require.Equal(t, f.User.ID, *local.AuthorID)
+	require.NoError(t, f.Store.UpsertReview(ctx, store.UpsertReviewInput{
+		WorkspaceID: f.WorkspaceID, PullRequestID: local.ID, GitHubID: 5001,
+		ReviewerLogin: "sabari", State: "APPROVED", SubmittedAt: time.Now().UTC()}))
+	var reviewerID *uuid.UUID
+	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT reviewer_id FROM pr_review WHERE github_id=5001`).Scan(&reviewerID))
+	require.Nil(t, reviewerID)
+	require.NoError(t, f.Store.UnlinkMembershipGitHubIdentity(ctx, f.WorkspaceID, f.User.ID))
+	after := insertPR(t, f, f.WorkspaceID, repo.ID, 3, "sabari")
+	require.Equal(t, f.User.ID, *after.AuthorID)
+	var authorID *uuid.UUID
+	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT author_id FROM pull_request WHERE id=$1`, local.ID).Scan(&authorID))
+	require.Equal(t, f.User.ID, *authorID)
+}
+
 func TestAGitHubAccountCannotBeClaimedTwiceInOneOrganisation(t *testing.T) {
 	f := testutil.NewFixture(t)
 	ctx := t.Context()
@@ -161,8 +185,15 @@ func TestUnlinkingAnIdentityKeepsTheEvidenceItAttributed(t *testing.T) {
 		store.GitHubIdentity{ID: 2002, Login: "sabari-client"}))
 	pr := insertPR(t, f, clientWS, repo.ID, 1, "sabari-client")
 	require.NotNil(t, pr.AuthorID)
+	require.NoError(t, f.Store.UpsertReview(ctx, store.UpsertReviewInput{
+		WorkspaceID: clientWS, PullRequestID: pr.ID, GitHubID: 6001,
+		ReviewerLogin: "sabari-client", State: "APPROVED", SubmittedAt: time.Now().UTC()}))
 
 	require.NoError(t, f.Store.UnlinkMembershipGitHubIdentity(ctx, clientWS, f.User.ID))
+	// Later provider updates must not erase the attribution retained by unlink.
+	resynced := insertPR(t, f, clientWS, repo.ID, 1, "sabari-client")
+	require.NotNil(t, resynced.AuthorID)
+	require.Equal(t, f.User.ID, *resynced.AuthorID)
 
 	// Work that happened still happened.
 	var authorID *uuid.UUID
@@ -170,6 +201,11 @@ func TestUnlinkingAnIdentityKeepsTheEvidenceItAttributed(t *testing.T) {
 		`SELECT author_id FROM pull_request WHERE id = $1`, pr.ID).Scan(&authorID))
 	require.NotNil(t, authorID, "unlinking must not erase the record of past work")
 	require.Equal(t, f.User.ID, *authorID)
+	var reviewerID *uuid.UUID
+	require.NoError(t, f.Pool.QueryRow(ctx,
+		`SELECT reviewer_id FROM pr_review WHERE github_id = 6001`).Scan(&reviewerID))
+	require.NotNil(t, reviewerID)
+	require.Equal(t, f.User.ID, *reviewerID)
 
 	require.ErrorIs(t, f.Store.UnlinkMembershipGitHubIdentity(ctx, clientWS, f.User.ID),
 		store.ErrNotFound)
@@ -189,6 +225,7 @@ func TestWorkspaceGitHubIdentityEndpointReportsTheAttributingAccount(t *testing.
 	f.DecodeInto(rec, &body)
 	require.NotNil(t, body.Identity)
 	require.Equal(t, "sabari", body.Identity.GitHubLogin)
+	require.Equal(t, "global", body.Identity.Source)
 
 	// Linking an organisation-specific account takes precedence.
 	require.NoError(t, f.Store.LinkMembershipGitHubIdentity(ctx, f.WorkspaceID, f.User.ID,
@@ -197,6 +234,7 @@ func TestWorkspaceGitHubIdentityEndpointReportsTheAttributingAccount(t *testing.
 	f.DecodeInto(rec, &body)
 	require.NotNil(t, body.Identity)
 	require.Equal(t, "sabari-client", body.Identity.GitHubLogin)
+	require.Equal(t, "organisation", body.Identity.Source)
 
 	// Unlinking falls back to the global profile rather than reporting none.
 	rec = f.Do(http.MethodDelete, "/api/v1/w/lab/me/github", nil)
@@ -205,6 +243,7 @@ func TestWorkspaceGitHubIdentityEndpointReportsTheAttributingAccount(t *testing.
 	f.DecodeInto(rec, &body)
 	require.NotNil(t, body.Identity)
 	require.Equal(t, "sabari", body.Identity.GitHubLogin)
+	require.Equal(t, "global", body.Identity.Source)
 
 	// Someone with no GitHub account anywhere genuinely has no identity, which
 	// is an ordinary state rather than a failure.

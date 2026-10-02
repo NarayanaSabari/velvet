@@ -143,11 +143,30 @@ Membership is the only scope, so a recap never shows another person's work and d
 ## One person, one GitHub account per organisation
 
 Someone working for several clients often has a separate GitHub account for each.
-`app_user` holds one global login, so attribution used to work in at most one organisation and showed that person's pull requests as authored by nobody everywhere else.
+Velvet keeps one email-based login across organisations, and GitHub linking is optional.
+Members can create tickets, comment, and follow project updates without any GitHub account or repository access; viewers can read but not edit.
 
-An organisation-specific identity now takes precedence, with the global login kept as a fallback.
-Linking back-fills the pull requests and reviews already synced under that login, because evidence usually arrives before anyone links an account.
-Two people cannot claim one account inside an organisation, and unlinking keeps the evidence: work that happened still happened.
+There are two separate GitHub connections:
+
+- **Profile → GitHub** at `/w/{slug}/settings/profile/github` chooses the personal account that attributes your work in that organisation.
+  Select the organisation first, then Link account or Change account.
+  An organisation-specific account takes precedence over the global fallback, and changing it never changes your global account or another organisation's link.
+  Global-account controls are a separate section and provide a fallback only where no override or another member's account claim takes precedence.
+- **Administration → Repositories** at `/w/{slug}/admin/repositories` connects the GitHub App to the repository-owning user or GitHub organisation.
+  A Velvet admin with the required GitHub permissions connects it once, chooses the repositories in GitHub, and maps the synced repositories to Velvet projects.
+  Each Velvet organisation supports one installation, and an installation cannot be shared between Velvet organisations.
+
+Repeat those steps for each client, using the appropriate personal identity and repository installation.
+GitHub authorisation uses the account currently signed into GitHub, so switch there before linking if necessary.
+Switching organisations inside Velvet never requires switching GitHub accounts.
+Linking a personal identity does not grant repository access and is not required to join or work in Velvet.
+
+Synced GitHub evidence is visible to that Velvet organisation's members and viewers even when they cannot open the private repository in GitHub.
+Only connect repositories whose evidence can be shared with everyone in the Velvet organisation; GitHub's own permissions still control opening the original links.
+
+Linking an organisation-specific identity back-fills the pull requests and reviews already synced under that login, because evidence usually arrives before anyone links an account.
+Two people cannot claim one account inside an organisation, and removing an organisation link keeps existing evidence while restoring an available global fallback.
+An invitation is never blocked because of GitHub identity: if another member already has an organisation link for the joining person's global account, that fallback is not used here, and the person can still work without GitHub or link a different account.
 
 ## Pull requests are evidence, never a controller
 

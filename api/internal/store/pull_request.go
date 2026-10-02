@@ -148,7 +148,8 @@ func upsertPullRequest(ctx context.Context, db prQuerier, in UpsertPRInput) (Pul
 			body = EXCLUDED.body, additions = EXCLUDED.additions,
 			deletions = EXCLUDED.deletions, merged_at = EXCLUDED.merged_at,
 			closed_at = EXCLUDED.closed_at, head_ref = EXCLUDED.head_ref,
-			author_login = EXCLUDED.author_login, author_id = EXCLUDED.author_id,
+			author_login = EXCLUDED.author_login,
+			author_id = COALESCE(EXCLUDED.author_id, pull_request.author_id),
 			html_url = EXCLUDED.html_url,
 			gh_updated_at = EXCLUDED.gh_updated_at, updated_at = now()
 		WHERE EXCLUDED.gh_updated_at >= pull_request.gh_updated_at
@@ -550,8 +551,8 @@ type prExecutor interface {
 // The per-organisation identity is preferred over the global one on app_user,
 // because someone who uses a different GitHub account per client would
 // otherwise have their work attributed in only one organisation. The global
-// login remains a fallback so attribution that worked before this table
-// existed keeps working.
+// login remains a fallback only for members without an override, matching the
+// effective identity reported by the API and used by work-log commits.
 func memberByGitHubLogin(workspaceParam, loginParam string) string {
 	return `(SELECT COALESCE(
 		(SELECT gi.user_id FROM membership_github_identity gi
@@ -559,7 +560,8 @@ func memberByGitHubLogin(workspaceParam, loginParam string) string {
 		   AND lower(gi.github_login) = lower(` + loginParam + `)),
 		(SELECT u.id FROM app_user u
 		 JOIN membership m ON m.user_id = u.id AND m.workspace_id = ` + workspaceParam + `
-		 WHERE lower(u.github_login) = lower(` + loginParam + `))
+		 WHERE lower(u.github_login) = lower(` + loginParam + `)
+		   AND (` + globalGitHubFallbackAvailable("m", "u") + `))
 	))`
 }
 

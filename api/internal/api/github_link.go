@@ -257,6 +257,8 @@ func githubCompletionRedirect(w http.ResponseWriter, r *http.Request, a store.Gi
 	next := "/"
 	if a.Purpose == "installation" {
 		next = "/w/" + a.WorkspaceSlug + "/admin/repositories"
+	} else if a.Purpose == "link" && a.LinkWorkspaceID != uuid.Nil {
+		next = "/w/" + a.WorkspaceSlug + "/settings/profile/github"
 	}
 	http.Redirect(w, r, next, http.StatusFound)
 }

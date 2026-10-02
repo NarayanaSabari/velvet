@@ -144,7 +144,7 @@ func (s *Store) StartGitHubInstallationAuthorization(ctx context.Context, setup,
 }
 
 const githubAuthorizationSelect = `SELECT a.token_hash,a.session_id,a.user_id,a.purpose,COALESCE(a.setup_token_hash,''),COALESCE(g.workspace_id,'00000000-0000-0000-0000-000000000000'::uuid),COALESCE(w.slug,''),COALESCE(g.candidate_installation_id,0),a.completed_at IS NOT NULL,COALESCE(a.link_workspace_id,'00000000-0000-0000-0000-000000000000'::uuid)
- FROM github_authorization_state a JOIN session s ON s.id=a.session_id LEFT JOIN github_setup_state g ON g.token_hash=a.setup_token_hash LEFT JOIN workspace w ON w.id=g.workspace_id
+ FROM github_authorization_state a JOIN session s ON s.id=a.session_id LEFT JOIN github_setup_state g ON g.token_hash=a.setup_token_hash LEFT JOIN workspace w ON w.id=COALESCE(a.link_workspace_id,g.workspace_id)
  WHERE a.token_hash=$1 AND a.session_id=$2 AND a.user_id=$3 AND s.user_id=a.user_id AND s.expires_at>clock_timestamp() AND a.expires_at>clock_timestamp()
  AND (a.purpose='link' OR (g.session_id=a.session_id AND g.user_id=a.user_id AND g.expires_at>clock_timestamp() AND g.candidate_installation_id>0 AND g.claimed_at IS NOT NULL AND ((g.phase='authorization' AND g.completed_at IS NULL AND a.completed_at IS NULL) OR (g.phase='completed' AND g.completed_at IS NOT NULL AND a.completed_at IS NOT NULL))))`
 
@@ -194,7 +194,8 @@ func lockClaimedGitHubAuthorizationTx(ctx context.Context, tx pgx.Tx, a GitHubAu
 		return mapErr(err)
 	}
 	return mapErr(tx.QueryRow(ctx, `SELECT token_hash FROM github_authorization_state WHERE token_hash=$1 AND session_id=$2 AND user_id=$3 AND purpose=$4 AND COALESCE(setup_token_hash,'')=$5 AND claimed_at IS NOT NULL AND completed_at IS NULL AND expires_at>clock_timestamp()
-	 AND EXISTS(SELECT 1 FROM session WHERE id=$2 AND user_id=$3 AND expires_at>clock_timestamp())`, a.StateHash, a.SessionHash, a.UserID, a.Purpose, a.SetupHash).Scan(&hash))
+	 AND COALESCE(link_workspace_id,'00000000-0000-0000-0000-000000000000'::uuid)=$6
+	 AND EXISTS(SELECT 1 FROM session WHERE id=$2 AND user_id=$3 AND expires_at>clock_timestamp())`, a.StateHash, a.SessionHash, a.UserID, a.Purpose, a.SetupHash, a.LinkWorkspaceID).Scan(&hash))
 }
 
 func (s *Store) CompleteGitHubLink(ctx context.Context, a GitHubAuthorization, identity GitHubIdentity) error {
@@ -202,25 +203,31 @@ func (s *Store) CompleteGitHubLink(ctx context.Context, a GitHubAuthorization, i
 		return ErrNotFound
 	}
 	return s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := lockGitHubIdentityMutationTx(ctx, tx); err != nil {
+			return err
+		}
 		if err := lockGitHubSessionTx(ctx, tx, a.SessionHash, a.UserID); err != nil {
 			return err
 		}
 		if err := lockClaimedGitHubAuthorizationTx(ctx, tx, a); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `UPDATE app_user SET github_id=$1,github_login=$2,updated_at=clock_timestamp() WHERE id=$3`, identity.ID, identity.Login, a.UserID); err != nil {
-			return mapErr(err)
-		}
-		// A link started from inside an organisation also records the account
-		// this person uses there, in the same transaction, so attribution and
-		// the profile can never disagree about which identity was just linked.
+		// Organisation links never mutate the global profile or its uniqueness
+		// constraints. Other organisations retain their existing fallback.
 		if a.LinkWorkspaceID != uuid.Nil {
 			if err := linkMembershipIdentityTx(ctx, tx, a.LinkWorkspaceID, a.UserID, identity); err != nil {
 				return err
 			}
+		} else {
+			if err := checkEffectiveGitHubIdentityTx(ctx, tx, nil, a.UserID, identity); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `UPDATE app_user SET github_id=$1,github_login=$2,updated_at=clock_timestamp() WHERE id=$3`, identity.ID, identity.Login, a.UserID); err != nil {
+				return mapErr(err)
+			}
 		}
-		// The user update may have waited for another profile mutation. Recheck
-		// both expiries after that wait, rolling the identity update back if dead.
+		// Identity mutations may wait for profile, membership, or evidence locks.
+		// Recheck both expiries after those waits and roll back if either is dead.
 		var hash string
 		return mapErr(tx.QueryRow(ctx, `UPDATE github_authorization_state SET completed_at=clock_timestamp(),verifier='' WHERE token_hash=$1 AND expires_at>clock_timestamp()
 		 AND EXISTS(SELECT 1 FROM session WHERE id=$2 AND user_id=$3 AND expires_at>clock_timestamp()) RETURNING token_hash`, a.StateHash, a.SessionHash, a.UserID).Scan(&hash))
@@ -269,6 +276,9 @@ func (s *Store) CompletedGitHubSetup(ctx context.Context, setup, session string,
 
 func (s *Store) UnlinkGitHub(ctx context.Context, session string, userID uuid.UUID) error {
 	return s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := lockGitHubIdentityMutationTx(ctx, tx); err != nil {
+			return err
+		}
 		if err := lockGitHubSessionTx(ctx, tx, HashToken(session), userID); err != nil {
 			return err
 		}

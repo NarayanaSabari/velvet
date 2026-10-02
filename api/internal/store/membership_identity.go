@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -18,6 +17,53 @@ type MembershipGitHubIdentity struct {
 	GitHubID    int64     `json:"github_id"`
 	GitHubLogin string    `json:"github_login"`
 	LinkedAt    string    `json:"linked_at"`
+	Source      string    `json:"source"`
+}
+
+// Identity changes are rare. One transaction lock keeps scoped claims, global
+// fallback changes, and override removal atomic without cross-org lock ordering.
+// Acquire it before session, authorization, profile, or membership row locks.
+func lockGitHubIdentityMutationTx(ctx context.Context, tx pgx.Tx) error {
+	// Two-int keys are disjoint from the bigint installation-ID lock space.
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(782347912,1)`)
+	return err
+}
+
+// A scoped claim wins over a global fallback, including when the global owner
+// joins later. Membership is independent of GitHub and never blocked by this.
+func globalGitHubFallbackAvailable(member, user string) string {
+	return `NOT EXISTS (SELECT 1 FROM membership_github_identity own WHERE own.membership_id=` + member + `.id)
+		AND NOT EXISTS (SELECT 1 FROM membership_github_identity claimed
+			WHERE claimed.workspace_id=` + member + `.workspace_id AND claimed.user_id<>` + member + `.user_id
+			  AND (claimed.github_id=` + user + `.github_id OR lower(claimed.github_login)=lower(` + user + `.github_login)))`
+}
+
+// A nil workspace checks the organisations where a global change would become
+// effective. Other people's global accounts outside those organisations, or
+// hidden behind their own overrides, do not reserve a scoped account.
+func checkEffectiveGitHubIdentityTx(ctx context.Context, tx pgx.Tx, workspaceID *uuid.UUID, userID uuid.UUID, identity GitHubIdentity) error {
+	var collision bool
+	err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM membership m JOIN app_user u ON u.id=m.user_id
+			LEFT JOIN membership_github_identity gi ON gi.membership_id=m.id
+			WHERE m.user_id<>$1
+			  AND (gi.membership_id IS NOT NULL OR (`+globalGitHubFallbackAvailable("m", "u")+`))
+			  AND (COALESCE(gi.github_id,u.github_id)=$2
+			       OR lower(COALESCE(gi.github_login,u.github_login))=lower($3))
+			  AND (m.workspace_id=$4::uuid OR ($4::uuid IS NULL AND EXISTS (
+				SELECT 1 FROM membership own
+				WHERE own.workspace_id=m.workspace_id AND own.user_id=$1
+				  AND NOT EXISTS (SELECT 1 FROM membership_github_identity override WHERE override.membership_id=own.id)
+			  )))
+		)`, userID, identity.ID, identity.Login, workspaceID).Scan(&collision)
+	if err != nil {
+		return err
+	}
+	if collision {
+		return ErrDuplicate
+	}
+	return nil
 }
 
 // LinkMembershipGitHubIdentity records the GitHub account the caller uses in
@@ -25,6 +71,9 @@ type MembershipGitHubIdentity struct {
 // synced under that login.
 func (s *Store) LinkMembershipGitHubIdentity(ctx context.Context, workspaceID, userID uuid.UUID, identity GitHubIdentity) error {
 	return s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := lockGitHubIdentityMutationTx(ctx, tx); err != nil {
+			return err
+		}
 		return linkMembershipIdentityTx(ctx, tx, workspaceID, userID, identity)
 	})
 }
@@ -41,9 +90,11 @@ func linkMembershipIdentityTx(ctx context.Context, tx pgx.Tx, workspaceID, userI
 		return ErrNotFound
 	}
 
+	// Hold membership through attribution and the receipt so revocation either
+	// wins before this lookup or waits until the complete link has committed.
 	var membershipID uuid.UUID
 	if err := tx.QueryRow(ctx,
-		`SELECT id FROM membership WHERE workspace_id = $1 AND user_id = $2`,
+		`SELECT id FROM membership WHERE workspace_id = $1 AND user_id = $2 FOR UPDATE`,
 		workspaceID, userID).Scan(&membershipID); err != nil {
 		return mapErr(err)
 	}
@@ -51,15 +102,7 @@ func linkMembershipIdentityTx(ctx context.Context, tx pgx.Tx, workspaceID, userI
 	// A GitHub account already claimed by someone else in this organisation
 	// would make attribution ambiguous, so it is refused rather than silently
 	// reassigned.
-	var claimedBy uuid.UUID
-	err := tx.QueryRow(ctx,
-		`SELECT user_id FROM membership_github_identity
-		 WHERE workspace_id = $1 AND github_id = $2`,
-		workspaceID, identity.ID).Scan(&claimedBy)
-	switch {
-	case err == nil && claimedBy != userID:
-		return ErrDuplicate
-	case err != nil && !errors.Is(err, pgx.ErrNoRows):
+	if err := checkEffectiveGitHubIdentityTx(ctx, tx, &workspaceID, userID, identity); err != nil {
 		return err
 	}
 
@@ -101,6 +144,9 @@ func linkMembershipIdentityTx(ctx context.Context, tx pgx.Tx, workspaceID, userI
 // evidence it attributed is kept: work that happened still happened.
 func (s *Store) UnlinkMembershipGitHubIdentity(ctx context.Context, workspaceID, userID uuid.UUID) error {
 	return s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := lockGitHubIdentityMutationTx(ctx, tx); err != nil {
+			return err
+		}
 		var membershipID uuid.UUID
 		err := tx.QueryRow(ctx, `
 			DELETE FROM membership_github_identity
@@ -127,13 +173,15 @@ func (s *Store) GitHubIdentityForMembership(ctx context.Context, workspaceID, us
 		SELECT $1::uuid, $2::uuid,
 		       COALESCE(gi.github_id, u.github_id),
 		       COALESCE(gi.github_login, u.github_login),
-		       to_char(COALESCE(gi.linked_at, u.updated_at), 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM')
+		       to_char(COALESCE(gi.linked_at, u.updated_at), 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
+		       CASE WHEN gi.membership_id IS NOT NULL THEN 'organisation' ELSE 'global' END
 		FROM app_user u
 		JOIN membership m ON m.user_id = u.id AND m.workspace_id = $1
 		LEFT JOIN membership_github_identity gi ON gi.membership_id = m.id
 		WHERE u.id = $2
+		  AND (gi.membership_id IS NOT NULL OR (`+globalGitHubFallbackAvailable("m", "u")+`))
 		  AND COALESCE(gi.github_id, u.github_id) IS NOT NULL`,
 		workspaceID, userID).Scan(&out.WorkspaceID, &out.UserID,
-		&out.GitHubID, &out.GitHubLogin, &out.LinkedAt)
+		&out.GitHubID, &out.GitHubLogin, &out.LinkedAt, &out.Source)
 	return out, mapErr(err)
 }

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
 import { NavLink } from '../../app/nav'
@@ -14,6 +14,7 @@ import { RelativeTime } from '../../ui/RelativeTime'
 import { onboardingQuery } from '../onboarding/onboardingQuery'
 import { AgentConfig } from './AgentConfig'
 import { apiTokensQuery, type CreatedApiToken } from './apiTokens'
+import { organisationGitHubQuery } from './organisationGitHub'
 import { PROFILE_PAGES, type ProfilePageId } from './profilePages'
 
 export function ProfileRoute() {
@@ -62,6 +63,18 @@ export function Profile({ slug, page = 'general' }: { slug: string; page?: Profi
 export function GitHubProfile({ slug }: { slug: string }) {
   const session = useSession(slug)
   const client = useQueryClient()
+  const identity = useQuery({ ...organisationGitHubQuery(slug), enabled: Boolean(session.workspace) })
+  const content = useRef<HTMLDivElement>(null)
+  const organisationLink = useRef<HTMLAnchorElement>(null)
+  const [confirmingRemoval, setConfirmingRemoval] = useState(false)
+  const remove = useMutation({
+    mutationFn: () => api.del(`/w/${slug}/me/github`),
+    onSuccess: async () => {
+      setConfirmingRemoval(false)
+      await client.invalidateQueries({ queryKey: organisationGitHubQuery(slug).queryKey })
+      organisationLink.current?.focus()
+    },
+  })
   const [confirmingUnlink, setConfirmingUnlink] = useState(false)
   const unlink = useMutation({
     mutationFn: () => api.del('/me/github'),
@@ -72,22 +85,61 @@ export function GitHubProfile({ slug }: { slug: string }) {
   })
   if (session.isLoading) return <LoadingState label="Loading profile…" />
   if (!session.user) return null
-  return <section className="space-y-3" aria-labelledby="github-profile-heading">
-    <SectionHeader id="github-profile-heading" title="GitHub profile" />
-    <p className="text-grey-500">Link your GitHub identity to attribute your work. Organisation installation ownership is verified separately in Administration.</p>
+  return <div ref={content} className="space-y-6">
+    <section className="space-y-3" aria-labelledby="organisation-github-heading">
+      <SectionHeader id="organisation-github-heading" title={`GitHub identity for ${session.workspace?.workspace_name ?? slug}`} />
+      <p className="max-w-[46rem] text-grey-500">GitHub is optional. Velvet members can create, comment on, and view work without GitHub access. Viewers are read-only. Connected, synced evidence is visible through Velvet membership even without repository permissions.</p>
+      <p className="max-w-[46rem] text-grey-500">Switching Velvet organisations does not require switching GitHub accounts. Choose an account only when linking your own identity here or verifying an administrator installation in Administration. If GitHub uses the wrong account, sign in to the intended account on GitHub before trying again.</p>
+      {identity.isPending ? <LoadingState label="Loading organisation GitHub identity…" /> : null}
+      {identity.error ? <ErrorState message="Could not load organisation GitHub identity." onRetry={() => void identity.refetch()} retrying={identity.isRefetching} /> : null}
+      {identity.isSuccess && !identity.error ? <>
+        <p className="break-words">{identity.data ? `Effective account: @${identity.data.github_login}` : 'No effective GitHub identity for this organisation.'}</p>
+        {!identity.data && session.user.github_login ? <p className="max-w-[46rem] text-sm text-grey-500">Your global account is not available as a fallback here. Link a different account to attribute GitHub activity, or keep working without GitHub.</p> : null}
+        {identity.data ? <p className="text-sm text-grey-500">{identity.data.source === 'organisation' ? 'Source: organisation link. This overrides your global account here only.' : 'Source: global account fallback. No organisation override is linked.'}</p> : null}
+        <a ref={organisationLink} className="inline-flex min-h-10 items-center underline" href={`/api/v1/w/${slug}/me/github/link`} onClick={async (event) => {
+          event.preventDefault()
+          await clearPrivateQueries(client)
+          navigateTo(`/api/v1/w/${slug}/me/github/link`)
+        }}>{identity.data ? 'Change account' : 'Link account'}</a>
+        {identity.data?.source === 'organisation' && !confirmingRemoval ? <Button id="organisation-github-remove" className="block" onClick={() => { remove.reset(); setConfirmingRemoval(true) }}>Remove organisation link</Button> : null}
+        {confirmingRemoval ? <div className="space-y-2 border-t border-grey-200 pt-3" role="group" aria-label="Confirm organisation link removal" onKeyDown={(event) => {
+          if (event.key === 'Escape' && !remove.isPending) {
+            setConfirmingRemoval(false)
+            requestAnimationFrame(() => content.current?.querySelector<HTMLButtonElement>('#organisation-github-remove')?.focus())
+          }
+        }}>
+          <p>Remove the GitHub link for {session.workspace?.workspace_name ?? slug}?</p>
+          <p className="max-w-[46rem] text-sm text-grey-500">Only this organisation override is removed. Your global account will be used as a fallback if available, otherwise no identity will attribute future GitHub activity. Existing synced evidence remains visible to Velvet members. Other organisations and your global account are unchanged.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="danger" disabled={remove.isPending} onClick={() => remove.mutate()}>{remove.isPending ? 'Removing…' : 'Confirm remove organisation link'}</Button>
+            <Button autoFocus disabled={remove.isPending} onClick={() => { setConfirmingRemoval(false); requestAnimationFrame(() => content.current?.querySelector<HTMLButtonElement>('#organisation-github-remove')?.focus()) }}>Cancel</Button>
+          </div>
+          {remove.error ? <p role="alert" className="text-blocked">{remove.error.message} Try removing the link again, or cancel.</p> : null}
+        </div> : null}
+        {remove.isSuccess ? <p role="status">Organisation link removed.</p> : null}
+      </> : null}
+    </section>
+    <section className="space-y-3 border-t border-grey-200 pt-6" aria-labelledby="github-profile-heading">
+    <SectionHeader id="github-profile-heading" title="Global GitHub account" />
+    <p className="max-w-[46rem] text-grey-500">This is your shared global account, separate from the organisation link above. It is the fallback in organisations without their own link. Organisation installation ownership is verified separately in Administration.</p>
     {session.user.github_login ? <>
       <p>Linked to @{session.user.github_login}</p>
       {!confirmingUnlink ? (
-        <Button disabled={unlink.isPending} onClick={() => { unlink.reset(); setConfirmingUnlink(true) }}>Unlink GitHub profile</Button>
+        <Button id="global-github-unlink" disabled={unlink.isPending} onClick={() => { unlink.reset(); setConfirmingUnlink(true) }}>Unlink GitHub profile</Button>
       ) : (
-        <div className="space-y-2 border-t border-grey-200 pt-3">
+        <div className="space-y-2 border-t border-grey-200 pt-3" role="group" aria-label="Confirm global GitHub unlink" onKeyDown={(event) => {
+          if (event.key === 'Escape' && !unlink.isPending) {
+            setConfirmingUnlink(false)
+            requestAnimationFrame(() => content.current?.querySelector<HTMLButtonElement>('#global-github-unlink')?.focus())
+          }
+        }}>
           <p className="text-sm">Unlink @{session.user.github_login}?</p>
-          <p className="text-sm text-grey-500">Future GitHub activity will not be attributed to your profile until you link it again. Existing evidence remains.</p>
+          <p className="text-sm text-grey-500">Future GitHub activity will not use your global fallback until you link it again. Organisation overrides are unchanged. Existing evidence remains.</p>
           <div className="flex flex-wrap gap-2">
             <Button variant="danger" disabled={unlink.isPending} onClick={() => unlink.mutate()}>
               {unlink.isPending ? 'Unlinking…' : 'Confirm unlink GitHub profile'}
             </Button>
-            <Button disabled={unlink.isPending} onClick={() => setConfirmingUnlink(false)}>Cancel</Button>
+            <Button autoFocus disabled={unlink.isPending} onClick={() => { setConfirmingUnlink(false); requestAnimationFrame(() => content.current?.querySelector<HTMLButtonElement>('#global-github-unlink')?.focus()) }}>Cancel</Button>
           </div>
         </div>
       )}
@@ -98,6 +150,7 @@ export function GitHubProfile({ slug }: { slug: string }) {
     }}>Link GitHub profile</a>}
     {unlink.error ? <p role="alert" className="text-blocked">{unlink.error.message}</p> : null}
     </section>
+  </div>
 }
 
 function TokenForm({

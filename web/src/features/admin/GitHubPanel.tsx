@@ -80,6 +80,7 @@ export function GitHubPanel({ slug, repos }: {
 
   return (
     <section aria-label="Repositories">
+      <p className="mb-4 max-w-[46rem] text-sm text-grey-500">GitHub installation is optional. Velvet members can create, comment on, and view work without GitHub access, and viewers are read-only. Connecting repositories shares their synced evidence with all Velvet members and viewers in this organisation, even without GitHub repository permissions.</p>
       {connection.isPending ? <LoadingState label="Loading GitHub connection…" /> : null}
       {connection.error ? <p role="alert" className="text-sm text-blocked">Could not load GitHub connection.</p> : null}
 

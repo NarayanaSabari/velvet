@@ -97,3 +97,58 @@ func TestSecuritySessionTokenIsStoredHashedOnly(t *testing.T) {
 	require.NotEqual(t, f.Token, stored, "a raw token in the database is replayable")
 	require.Equal(t, store.HashToken(f.Token), stored)
 }
+
+// GitHub identity is optional attribution, never workspace authorization.
+func TestEmailOnlyWorkspaceAccessUsesMembershipRole(t *testing.T) {
+	for _, role := range []string{"member", "viewer"} {
+		t.Run(role, func(t *testing.T) {
+			f := testutil.NewFixture(t)
+			ctx := t.Context()
+			project := createProject(t, f, map[string]any{"key": "client", "name": "Client"})
+			issue := createIssue(t, f, map[string]any{"title": "Linked work", "project_id": project.ID.String()})
+			pr := testutil.InsertPullRequest(t, f, 42, "Linked work", "open")
+			attached := f.Do(http.MethodPost, "/api/v1/w/lab/issues/"+issue.Key+"/evidence",
+				map[string]any{"reference": "acme/widgets#42"})
+			require.Equal(t, http.StatusCreated, attached.Code, attached.Body.String())
+			user, err := f.Store.UpsertUserByEmail(ctx, role+"@example.com")
+			require.NoError(t, err)
+			require.Nil(t, user.GitHubID)
+			require.Nil(t, user.GitHubLogin)
+			_, err = f.Pool.Exec(ctx, `INSERT INTO membership(workspace_id,user_id,role) VALUES($1,$2,$3::membership_role)`, f.WorkspaceID, user.ID, role)
+			require.NoError(t, err)
+			f.Token, err = f.Store.CreateSession(ctx, user.ID, time.Hour)
+			require.NoError(t, err)
+			for _, path := range []string{
+				"/api/v1/w/lab/issues", "/api/v1/w/lab/issues/" + issue.Key,
+				"/api/v1/w/lab/projects", "/api/v1/w/lab/projects/client",
+				"/api/v1/w/lab/issues/" + issue.Key + "/comments",
+			} {
+				read := f.Do(http.MethodGet, path, nil)
+				require.Equal(t, http.StatusOK, read.Code, read.Body.String())
+			}
+			read := f.Do(http.MethodGet, "/api/v1/w/lab/issues/"+issue.Key+"/evidence", nil)
+			require.Equal(t, http.StatusOK, read.Code, read.Body.String())
+			require.Contains(t, read.Body.String(), pr.ID.String())
+			identity := f.Do(http.MethodGet, "/api/v1/w/lab/me/github", nil)
+			require.Equal(t, http.StatusOK, identity.Code, identity.Body.String())
+			require.JSONEq(t, `{"identity":null}`, identity.Body.String())
+			for _, request := range []struct {
+				method, path string
+				body         map[string]any
+				status       int
+			}{
+				{http.MethodPost, "/api/v1/w/lab/issues", map[string]any{"title": "New issue"}, http.StatusCreated},
+				{http.MethodPatch, "/api/v1/w/lab/issues/" + issue.Key, map[string]any{"title": "Updated issue"}, http.StatusOK},
+				{http.MethodPost, "/api/v1/w/lab/issues/" + issue.Key + "/comments", map[string]any{"body": "Client update"}, http.StatusCreated},
+				{http.MethodPost, "/api/v1/w/lab/projects", map[string]any{"key": "new-project", "name": "New project"}, http.StatusCreated},
+			} {
+				status := request.status
+				if role == "viewer" {
+					status = http.StatusForbidden
+				}
+				write := f.Do(request.method, request.path, request.body)
+				require.Equal(t, status, write.Code, write.Body.String())
+			}
+		})
+	}
+}

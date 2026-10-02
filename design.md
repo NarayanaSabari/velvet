@@ -206,6 +206,13 @@ Unknown sections show not found.
 Leaving a section discards any one-time key and unfinished confirmation rather than restoring them with Back.
 The token name field and agent setup stay at a readable width within the full-width content.
 
+GitHub settings place "GitHub identity for Organisation" before a separate "Global GitHub account" section.
+The first section names the selected organisation, labels an organisation-specific account versus the global fallback, and offers scoped linking or changing plus confirmed removal of an override.
+Removing an override explains the fallback and preserves existing evidence; global unlinking makes clear that organisation-specific links remain.
+Confirmation initially focuses Cancel and Escape restores focus to its trigger.
+Both sections explain that GitHub is optional for Velvet membership, and account-selection guidance applies only to authorisation, not workspace switching.
+GitHub App repository access is a distinct administrator concern under Repositories, with a warning that synced evidence is shared with the Velvet organisation even if members cannot open the private GitHub links.
+
 Agent config sits between GitHub and API tokens in the section list.
 It shows whether any agent key has been used, the organisation's MCP URL, and one primary action that creates a fresh key and reveals the same setup tabs and live connection status as onboarding.
 A key is never shown twice, so setting up again always makes a new key, which is also listed under API tokens.
