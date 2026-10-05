@@ -125,6 +125,10 @@ func (s *Server) handleCreateSprint(w http.ResponseWriter, r *http.Request) {
 		Name: body.Name, StartsOn: body.StartsOn, EndsOn: body.EndsOn,
 	})
 	if err != nil {
+		if errors.Is(err, store.ErrForbidden) {
+			writeStoreError(w, err, "sprint")
+			return
+		}
 		if errors.Is(err, store.ErrNotFound) {
 			WriteError(w, http.StatusNotFound, "not_found", "no such project")
 			return
@@ -187,6 +191,10 @@ func pathUUID(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, b
 }
 
 func writeStoreError(w http.ResponseWriter, err error, what string) {
+	if errors.Is(err, store.ErrForbidden) {
+		WriteError(w, http.StatusForbidden, "forbidden", "you do not have permission to change the "+what)
+		return
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		WriteError(w, http.StatusNotFound, "not_found", "no such "+what)
 		return

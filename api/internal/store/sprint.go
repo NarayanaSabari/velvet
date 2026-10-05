@@ -51,6 +51,9 @@ func scanSprint(row pgx.Row) (Sprint, error) {
 func (s *Store) CreateSprint(ctx context.Context, in CreateSprintInput) (Sprint, error) {
 	var out Sprint
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, in.WorkspaceID, in.ActorID); err != nil {
+			return err
+		}
 		if err := checkProjectInWorkspace(ctx, tx, in.WorkspaceID, in.ProjectID); err != nil {
 			return err
 		}
@@ -113,6 +116,9 @@ func (s *Store) GetSprint(ctx context.Context, workspaceID, id uuid.UUID) (Sprin
 func (s *Store) ActivateSprint(ctx context.Context, workspaceID, id, actorID uuid.UUID) (Sprint, error) {
 	var out Sprint
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `
 			UPDATE sprint SET state = 'completed', completed_at = now()
 			WHERE workspace_id = $1 AND state = 'active' AND id <> $2
@@ -144,6 +150,9 @@ func (s *Store) ActivateSprint(ctx context.Context, workspaceID, id, actorID uui
 func (s *Store) CloseSprint(ctx context.Context, workspaceID, id, actorID uuid.UUID) (Sprint, error) {
 	var out Sprint
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
 		row := tx.QueryRow(ctx, `
 			UPDATE sprint SET state = 'completed', completed_at = now()
 			WHERE workspace_id = $1 AND id = $2

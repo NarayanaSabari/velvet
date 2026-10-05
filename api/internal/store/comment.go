@@ -98,6 +98,9 @@ func mapCommentErr(err error) error {
 func (s *Store) CreateComment(ctx context.Context, in CreateCommentInput) (Comment, error) {
 	var out Comment
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, in.WorkspaceID, in.ActorID); err != nil {
+			return err
+		}
 		if err := checkCommentTarget(ctx, tx, in.WorkspaceID, in.TargetType, in.TargetID); err != nil {
 			return err
 		}
@@ -218,6 +221,9 @@ func excerpt(body string) string {
 func (s *Store) PromoteCommentToIssue(ctx context.Context, workspaceID, commentID, actorID uuid.UUID, title string) (Issue, error) {
 	var out Issue
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
 		var source Comment
 		var projectID *uuid.UUID
 		err := scanCommentRow(tx.QueryRow(ctx, `
@@ -362,6 +368,9 @@ func (s *Store) GetComment(ctx context.Context, workspaceID, id uuid.UUID) (Comm
 func (s *Store) UpdateComment(ctx context.Context, workspaceID, id, actorID uuid.UUID, body string) (Comment, error) {
 	var out Comment
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
 		var authorID uuid.UUID
 		err := tx.QueryRow(ctx, `
 			SELECT author_id FROM comment
@@ -390,17 +399,24 @@ func (s *Store) UpdateComment(ctx context.Context, workspaceID, id, actorID uuid
 
 // DeleteComment is a soft delete, so the audit trail keeps the row even after
 // the thread stops showing it. An admin may remove someone else's comment.
-func (s *Store) DeleteComment(ctx context.Context, workspaceID, id, actorID uuid.UUID, isAdmin bool) error {
+func (s *Store) DeleteComment(ctx context.Context, workspaceID, id, actorID uuid.UUID) error {
 	return s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
+		role, err := lockWorkspaceActorTx(ctx, tx, workspaceID, actorID)
+		if err != nil {
+			return err
+		}
 		var authorID uuid.UUID
-		err := tx.QueryRow(ctx, `
+		err = tx.QueryRow(ctx, `
 			SELECT author_id FROM comment
 			WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE`,
 			workspaceID, id).Scan(&authorID)
 		if err != nil {
 			return mapErr(err)
 		}
-		if authorID != actorID && !isAdmin {
+		if authorID != actorID && role != "admin" {
 			return ErrForbidden
 		}
 		_, err = tx.Exec(ctx, `

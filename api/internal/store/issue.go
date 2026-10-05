@@ -132,6 +132,9 @@ func nextIssuePosition(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, mi
 func (s *Store) CreateIssue(ctx context.Context, in CreateIssueInput) (Issue, error) {
 	var out Issue
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, in.WorkspaceID, in.ActorID); err != nil {
+			return err
+		}
 		if err := checkIssueReferences(ctx, tx, in.WorkspaceID, in.AssigneeID, in.MilestoneID, in.ProjectID, in.ParentID); err != nil {
 			return err
 		}
@@ -374,6 +377,9 @@ func (s *Store) GetIssueByKey(ctx context.Context, workspaceID uuid.UUID, key st
 func (s *Store) UpdateIssue(ctx context.Context, workspaceID, id, actorID uuid.UUID, patch IssuePatch) (Issue, error) {
 	var out Issue
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
 		before, err := scanIssue(tx.QueryRow(ctx,
 			`SELECT `+issueCols+`
 			 FROM issue WHERE workspace_id = $1 AND id = $2 FOR UPDATE`,

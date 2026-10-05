@@ -28,7 +28,13 @@ func TestEmittedTimestampsAreParseableAsISO8601(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO project (workspace_id, key, name) VALUES ($1, 'lab', 'Lab') RETURNING id`, wsID).Scan(&projectID))
 
+	user, err := st.UpsertUserByEmail(ctx, "timestamp@example.com")
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `INSERT INTO membership(workspace_id,user_id,role) VALUES($1,$2,'member')`, wsID, user.ID)
+	require.NoError(t, err)
+
 	sprint, err := st.CreateSprint(ctx, store.CreateSprintInput{
+		ActorID:     user.ID,
 		WorkspaceID: uuidMust(t, wsID),
 		ProjectID:   uuidMust(t, projectID),
 		Name:        "September",

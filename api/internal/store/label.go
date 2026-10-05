@@ -25,10 +25,19 @@ func scanLabel(row pgx.Row) (Label, error) {
 	return l, mapErr(err)
 }
 
-func (s *Store) CreateLabel(ctx context.Context, workspaceID uuid.UUID, name, color string) (Label, error) {
-	return scanLabel(s.pool.QueryRow(ctx, `
-		INSERT INTO label (workspace_id, name, color) VALUES ($1, $2, $3)
-		RETURNING `+labelCols, workspaceID, name, color))
+func (s *Store) CreateLabel(ctx context.Context, workspaceID, actorID uuid.UUID, name, color string) (Label, error) {
+	var out Label
+	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
+		var err error
+		out, err = scanLabel(tx.QueryRow(ctx, `
+			INSERT INTO label (workspace_id, name, color) VALUES ($1, $2, $3)
+			RETURNING `+labelCols, workspaceID, name, color))
+		return err
+	})
+	return out, err
 }
 
 func (s *Store) ListLabels(ctx context.Context, workspaceID uuid.UUID) ([]Label, error) {
@@ -51,23 +60,31 @@ func (s *Store) ListLabels(ctx context.Context, workspaceID uuid.UUID) ([]Label,
 	return out, rows.Err()
 }
 
-func (s *Store) DeleteLabel(ctx context.Context, workspaceID, id uuid.UUID) error {
-	tag, err := s.pool.Exec(ctx,
-		`DELETE FROM label WHERE workspace_id = $1 AND id = $2`, workspaceID, id)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+func (s *Store) DeleteLabel(ctx context.Context, workspaceID, id, actorID uuid.UUID) error {
+	return s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx,
+			`DELETE FROM label WHERE workspace_id = $1 AND id = $2`, workspaceID, id)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
 // SetIssueLabels replaces the whole set in one transaction, so a client never
 // has to reason about which individual attachments it must add or remove.
-func (s *Store) SetIssueLabels(ctx context.Context, workspaceID, issueID uuid.UUID, labelIDs []uuid.UUID) ([]Label, error) {
+func (s *Store) SetIssueLabels(ctx context.Context, workspaceID, issueID, actorID uuid.UUID, labelIDs []uuid.UUID) ([]Label, error) {
 	var out []Label
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
 		var exists bool
 		if err := tx.QueryRow(ctx, `
 			SELECT EXISTS (SELECT 1 FROM issue WHERE id = $1 AND workspace_id = $2)`,

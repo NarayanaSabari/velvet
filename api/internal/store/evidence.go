@@ -121,6 +121,9 @@ func (s *Store) AttachEvidenceToIssue(ctx context.Context, workspaceID, issueID,
 		return s.ManualLink(ctx, workspaceID, issueID, ref.ID, actorID)
 	case "commit":
 		return s.InTx(ctx, func(tx pgx.Tx) error {
+			if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+				return err
+			}
 			var key string
 			if err := tx.QueryRow(ctx,
 				`SELECT key FROM issue WHERE id = $1 AND workspace_id = $2`,

@@ -51,13 +51,14 @@ func TestAMemberCanRunSprintsAndEveryChangeIsRecorded(t *testing.T) {
 // A viewer reads the record but does not write it.
 func TestAViewerStillCannotRunSprints(t *testing.T) {
 	f := testutil.NewFixture(t)
+	projectID := f.SprintProject()
 	_, err := f.Pool.Exec(t.Context(),
 		`UPDATE membership SET role = 'viewer' WHERE workspace_id = $1 AND user_id = $2`,
 		f.WorkspaceID, f.User.ID)
 	require.NoError(t, err)
 
 	rec := f.Do(http.MethodPost, "/api/v1/w/lab/sprints",
-		map[string]any{"name": "September 2026", "starts_on": "2026-09-01", "ends_on": "2026-09-30", "project_id": f.SprintProject().String()})
+		map[string]any{"name": "September 2026", "starts_on": "2026-09-01", "ends_on": "2026-09-30", "project_id": projectID.String()})
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 }
 

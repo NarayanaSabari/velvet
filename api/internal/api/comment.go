@@ -197,7 +197,7 @@ func (s *Server) handleDeleteComment(w http.ResponseWriter, r *http.Request) {
 	}
 	ws, _ := CurrentWorkspace(r.Context())
 	user, _ := CurrentUser(r.Context())
-	err := s.store.DeleteComment(r.Context(), ws.WorkspaceID, id, user.ID, ws.Role == "admin")
+	err := s.store.DeleteComment(r.Context(), ws.WorkspaceID, id, user.ID)
 	if err != nil {
 		writeCommentError(w, err)
 		return

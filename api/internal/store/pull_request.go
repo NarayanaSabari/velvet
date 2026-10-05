@@ -241,42 +241,50 @@ func LinkPRTx(ctx context.Context, tx pgx.Tx, workspaceID, prID, issueID uuid.UU
 // belongs to the caller's workspace, so a valid UUID from another workspace
 // cannot be smuggled onto an issue.
 func (s *Store) ManualLink(ctx context.Context, workspaceID, issueID, prID, actorID uuid.UUID) error {
-	var owner uuid.UUID
-	err := s.pool.QueryRow(ctx,
-		`SELECT workspace_id FROM pull_request WHERE id = $1`, prID).Scan(&owner)
-	if err != nil {
-		return mapErr(err)
-	}
-	if owner != workspaceID {
-		return ErrForeignReference
-	}
-	var issueExists bool
-	if err := s.pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM issue WHERE id = $1 AND workspace_id = $2)`,
-		issueID, workspaceID).Scan(&issueExists); err != nil {
+	return s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
+		var owner uuid.UUID
+		if err := tx.QueryRow(ctx, `SELECT workspace_id FROM pull_request WHERE id = $1`, prID).Scan(&owner); err != nil {
+			return mapErr(err)
+		}
+		if owner != workspaceID {
+			return ErrForeignReference
+		}
+		var issueExists bool
+		if err := tx.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM issue WHERE id = $1 AND workspace_id = $2)`,
+			issueID, workspaceID).Scan(&issueExists); err != nil {
+			return err
+		}
+		if !issueExists {
+			return ErrNotFound
+		}
+		_, err := LinkPRTx(ctx, tx, workspaceID, prID, issueID, "manual", false, &actorID)
 		return err
-	}
-	if !issueExists {
-		return ErrNotFound
-	}
-	_, err = s.LinkPR(ctx, workspaceID, prID, issueID, "manual", false, &actorID)
-	return err
+	})
 }
 
 // Unlink removes an evidence link. The PR itself stays stored, so unlinking a
 // mistake does not lose the record of the work.
-func (s *Store) Unlink(ctx context.Context, workspaceID, issueID, prID uuid.UUID) error {
-	tag, err := s.pool.Exec(ctx, `
-		DELETE FROM pr_link
-		WHERE workspace_id = $1 AND issue_id = $2 AND pull_request_id = $3`,
-		workspaceID, issueID, prID)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+func (s *Store) Unlink(ctx context.Context, workspaceID, issueID, prID, actorID uuid.UUID) error {
+	return s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `
+			DELETE FROM pr_link
+			WHERE workspace_id = $1 AND issue_id = $2 AND pull_request_id = $3`,
+			workspaceID, issueID, prID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return nil
+	})
 }
 
 // IssueIDByKey resolves a key like ENG-1 within one workspace.

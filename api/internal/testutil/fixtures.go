@@ -187,8 +187,11 @@ func CreateForeignProject(t *testing.T, f *Fixture, key string) uuid.UUID {
 		`INSERT INTO workspace (name, slug, issue_prefix)
 		 VALUES ('Foreign projects', 'foreign-projects', 'FPR') RETURNING id`).Scan(&otherWS))
 
+	_, err := f.Pool.Exec(ctx, `INSERT INTO membership (workspace_id, user_id, role) VALUES ($1, $2, 'admin')`, otherWS, f.User.ID)
+	require.NoError(t, err)
+
 	project, err := f.Store.CreateProject(ctx, store.CreateProjectInput{
-		WorkspaceID: otherWS, Key: key, Name: "Foreign"})
+		WorkspaceID: otherWS, ActorID: f.User.ID, Key: key, Name: "Foreign"})
 	require.NoError(t, err)
 	return project.ID
 }

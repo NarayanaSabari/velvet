@@ -89,6 +89,9 @@ func nextMilestonePosition(ctx context.Context, tx pgx.Tx, workspaceID, sprintID
 func (s *Store) CreateMilestone(ctx context.Context, in CreateMilestoneInput) (Milestone, error) {
 	var out Milestone
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, in.WorkspaceID, in.ActorID); err != nil {
+			return err
+		}
 		// The sprint must belong to the caller's workspace, so a valid UUID
 		// from another workspace cannot be used as a parent.
 		var exists bool
@@ -249,6 +252,9 @@ func (s *Store) GetMilestone(ctx context.Context, workspaceID, id uuid.UUID) (Mi
 func (s *Store) UpdateMilestone(ctx context.Context, workspaceID, id, actorID uuid.UUID, patch MilestonePatch) (Milestone, error) {
 	var out Milestone
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
 		before, err := scanMilestone(tx.QueryRow(ctx,
 			`SELECT `+milestoneCols+`
 			 FROM milestone WHERE workspace_id = $1 AND id = $2 FOR UPDATE`,
