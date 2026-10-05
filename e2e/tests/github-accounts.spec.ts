@@ -89,6 +89,9 @@ async function link(page: Page, slug: string, identityID: number) {
 test('scoped OAuth keeps the global account and other organisation unchanged', async ({ page, accounts }) => {
   const { first, second, globalLogin, ownerID } = accounts
   await page.goto(`/w/${first}/settings/profile/github`)
+  const table = page.getByRole('table', { name: 'GitHub accounts by organisation' })
+  await expect(table.getByTestId(`github-account-row-${first}`)).toContainText('Global fallback')
+  await expect(table.getByTestId(`github-account-row-${second}`)).toContainText(globalLogin)
   await control(page.request, { identityID: 70008 })
   const completed = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/auth/github/callback')
   await page.getByRole('region', { name: 'GitHub identity for Client A', exact: true }).getByRole('link', { name: 'Change account', exact: true }).click()
@@ -98,6 +101,10 @@ test('scoped OAuth keeps the global account and other organisation unchanged', a
   await expect(page).toHaveURL(`/w/${first}/settings/profile/github`)
   expect(await effective(page, first)).toMatchObject({ github_login: 'runtime-client-a', source: 'organisation' })
   expect(await effective(page, second)).toMatchObject({ github_login: globalLogin, source: 'global' })
+  await expect(table.getByTestId(`github-account-row-${first}`)).toContainText('runtime-client-a')
+  await expect(table.getByTestId(`github-account-row-${first}`)).toContainText('ID 70008')
+  await expect(table.getByTestId(`github-account-row-${first}`)).toContainText('Organisation link')
+  await expect(table.getByTestId(`github-account-row-${second}`)).toContainText('Global fallback')
   expect(sql(`SELECT author_id FROM pull_request WHERE repo_id=(SELECT id FROM repo WHERE installation_id=${accounts.installation})`)).toBe(ownerID)
   expect(sql(`SELECT reviewer_id FROM pr_review WHERE github_id=${accounts.installation}`)).toBe(ownerID)
 
@@ -120,6 +127,8 @@ test('scoped OAuth keeps the global account and other organisation unchanged', a
   await section.getByRole('button', { name: 'Remove organisation link', exact: true }).click()
   await section.getByRole('button', { name: 'Confirm remove organisation link', exact: true }).click()
   await expect(section).toContainText(`@${globalLogin}`)
+  await expect(table.getByTestId(`github-account-row-${first}`)).toContainText('Global fallback')
+  await expect(table.getByTestId(`github-account-row-${second}`)).toContainText('runtime-client-b')
   expect(await effective(page, first)).toMatchObject({ github_login: globalLogin, source: 'global' })
   expect((await effective(page, second)).github_login).toBe('runtime-client-b')
   expect(sql(`SELECT author_id FROM pull_request WHERE repo_id=(SELECT id FROM repo WHERE installation_id=${accounts.installation})`)).toBe(ownerID)
@@ -203,6 +212,14 @@ test('email-only members create and update project tickets while viewers read sy
       headers: { Origin: baseURL! }, data: { body: 'Viewer cannot comment' },
     })).status()).toBe(403)
     expect((await viewer.request.get(`/api/v1/w/${second}/issues/${issue.key}`)).status()).toBe(404)
+    await viewer.goto(`/w/${first}/settings/profile/github`)
+    const viewerTable = viewer.getByRole('table', { name: 'GitHub accounts by organisation' })
+    for (const slug of [first, second]) {
+      const account = viewerTable.getByTestId(`github-account-row-${slug}`)
+      await expect(account).toContainText('Not linked')
+      await expect(account.getByRole('cell', { name: 'None', exact: true })).toBeVisible()
+      await expect(account).not.toContainText(accounts.globalLogin)
+    }
     await viewer.goto(`/w/${first}/projects`)
     await expect(viewer.getByTestId('project-row-delivery')).toContainText('Shared delivery')
     await expect(viewer.getByRole('button', { name: 'New project', exact: true })).toHaveCount(0)
@@ -219,14 +236,21 @@ test('organisation GitHub settings stay scoped, keyboard accessible and containe
   const { first, second } = accounts
   await link(page, first, 70008)
   await link(page, second, 70009)
-  for (const width of [1280, 390]) {
+  for (const width of [1280, 390, 1720]) {
     for (const colorScheme of ['light', 'dark'] as const) {
-      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
+      await page.setViewportSize({ width, height: width === 390 ? 844 : width === 1720 ? 1000 : 900 })
       await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
       await page.goto(`/w/${first}/settings/profile/github`)
       const section = page.getByRole('region', { name: /GitHub.*Client A|Client A.*GitHub/i })
       await expect(section).toContainText('@runtime-client-a')
       await expect(section).toContainText(/optional/i)
+      const table = page.getByRole('table', { name: 'GitHub accounts by organisation' })
+      await expect(table.getByTestId(`github-account-row-${first}`)).toContainText('ID 70008')
+      await expect(table.getByTestId(`github-account-row-${second}`)).toContainText('ID 70009')
+      await expect(table.locator('[aria-current]')).toHaveCount(0)
+      const otherOrg = table.getByRole('link', { name: 'Client B', exact: true })
+      await otherOrg.focus()
+      expect(await otherOrg.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none')
       const remove = section.getByRole('button', { name: 'Remove organisation link', exact: true })
       await remove.focus()
       expect(await remove.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none')
@@ -235,6 +259,7 @@ test('organisation GitHub settings stay scoped, keyboard accessible and containe
       await page.keyboard.press('Escape')
       await expect(remove).toBeFocused()
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+      await page.evaluate(() => window.scrollTo(0, 0))
       await page.screenshot({ path: `test-results/github-accounts-${width}-${colorScheme}.png`, fullPage: true })
     }
   }
@@ -242,8 +267,16 @@ test('organisation GitHub settings stay scoped, keyboard accessible and containe
   await page.getByRole('combobox', { name: 'Organisation', exact: true }).selectOption(second)
   await expect(page).toHaveURL(`/w/${second}`)
   await page.goto(`/w/${second}/settings/profile/github`)
-  await expect(page.getByRole('region', { name: /GitHub.*Client B|Client B.*GitHub/i })).toContainText('@runtime-client-b')
-  await expect(page.getByText('@runtime-client-a', { exact: true })).toHaveCount(0)
+  const current = page.getByRole('region', { name: /GitHub.*Client B|Client B.*GitHub/i })
+  await expect(current).toContainText('@runtime-client-b')
+  await expect(current.getByText('@runtime-client-a', { exact: true })).toHaveCount(0)
+  const table = page.getByRole('table', { name: 'GitHub accounts by organisation' })
+  await expect(table.getByTestId(`github-account-row-${first}`)).toContainText('runtime-client-a')
+  await expect(table.getByTestId(`github-account-row-${second}`)).toContainText('Current organisation')
+  await table.getByRole('link', { name: 'Client A', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(`/w/${first}/settings/profile/github`)
+  await expect(table.getByTestId(`github-account-row-${first}`)).toContainText('Current organisation')
 })
 
 test('scoped identity loading and removal errors recover without changing another organisation', async ({ page, accounts }) => {
@@ -285,6 +318,63 @@ test('scoped identity loading and removal errors recover without changing anothe
   await section.getByRole('button', { name: 'Confirm remove organisation link', exact: true }).click()
   await expect(section).toContainText('Source: global account fallback')
   await expect(section.getByRole('link', { name: 'Change account', exact: true })).toBeFocused()
+})
+
+test('the overview isolates a delayed or failed organisation row and retries only that account', async ({ page, accounts }) => {
+  test.setTimeout(60000)
+  const { first, second, globalLogin } = accounts
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  let requests = 0
+  await page.route(`**/api/v1/w/${second}/me/github`, async (route) => {
+    requests++
+    await gate
+    await route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: 'Identity unavailable' } } })
+  })
+  await page.goto(`/w/${first}/settings/profile/github`)
+  const firstRow = page.getByTestId(`github-account-row-${first}`)
+  const secondRow = page.getByTestId(`github-account-row-${second}`)
+  try {
+    await expect(firstRow).toContainText(`@${globalLogin}`)
+    await expect(secondRow.getByRole('status')).toContainText('Loading')
+    await expect(secondRow).not.toContainText('Not linked')
+  } finally { release() }
+  await expect(secondRow.getByRole('alert')).toHaveText('Could not load account.')
+  await expect(secondRow).not.toContainText('Not linked')
+  await expect(firstRow).toContainText(`@${globalLogin}`)
+  await page.unroute(`**/api/v1/w/${second}/me/github`)
+  const retry = secondRow.getByRole('button', { name: 'Retry GitHub account for Client B' })
+  await retry.focus()
+  await page.keyboard.press('Enter')
+  await expect(secondRow).toContainText(`@${globalLogin}`)
+  await expect(secondRow).toContainText('Global fallback')
+  expect(requests).toBeGreaterThan(0)
+})
+
+test('long organisation names and handles wrap inside the table and global unlink refreshes fallback rows', async ({ page, accounts }) => {
+  const { first, second } = accounts
+  const name = 'ClientWithAVeryLongUnbrokenOrganisationNameForAccountOverview'
+  const login = 'github-account-with-a-long-handle-12345'
+  sql(`UPDATE workspace SET name='${name}' WHERE slug='${second}';
+    UPDATE app_user SET github_login='${login}' WHERE id='${accounts.ownerID}'`)
+  await link(page, first, 70008)
+  for (const colorScheme of ['light', 'dark'] as const) {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
+    await page.goto(`/w/${first}/settings/profile/github`)
+    const table = page.getByRole('table', { name: 'GitHub accounts by organisation' })
+    await expect(table.getByTestId(`github-account-row-${second}`)).toContainText(`@${login}`)
+    expect(await table.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await page.screenshot({ path: `test-results/github-accounts-long-390-${colorScheme}.png`, fullPage: true })
+  }
+  await page.getByRole('button', { name: 'Unlink GitHub profile', exact: true }).click()
+  await page.getByRole('button', { name: 'Confirm unlink GitHub profile', exact: true }).click()
+  const fallback = page.getByTestId(`github-account-row-${second}`)
+  await expect(fallback).toContainText('Not linked')
+  await expect(fallback.getByRole('cell', { name: 'None', exact: true })).toBeVisible()
+  await expect(page.getByTestId(`github-account-row-${first}`)).toContainText('@runtime-client-a')
+  await expect(page.getByTestId(`github-account-row-${first}`)).toContainText('Organisation link')
 })
 
 test('a member cannot claim a colleague’s effective global account in the same organisation', async ({ page, browser, baseURL, accounts }) => {
@@ -353,6 +443,10 @@ test('invited members can join and work when their global account is already att
     await invited.goto(`/w/${accounts.first}/settings/profile/github`)
     await expect(invited.getByText('No effective GitHub identity for this organisation.', { exact: true })).toBeVisible()
     await expect(invited.getByText(/Your global account is not available as a fallback here/)).toBeVisible()
+    const unavailable = invited.getByTestId(`github-account-row-${accounts.first}`)
+    await expect(unavailable).toContainText('Not linked')
+    await expect(unavailable).toContainText('Global fallback unavailable')
+    await expect(unavailable).not.toContainText('@runtime-client-a')
     await invited.goto(`/w/${accounts.first}/issues`)
     await invited.locator('header').getByRole('button', { name: 'New issue', exact: true }).click()
     await invited.getByLabel('Issue title', { exact: true }).fill('Joining does not require GitHub access')
