@@ -29,7 +29,7 @@ function client() {
 }
 function renderTable(queryClient: QueryClient, members = memberships, hasGlobalAccount = true) {
   const content = (current: Membership[]) => <QueryClientProvider client={queryClient}>
-    <GitHubAccountsTable memberships={current} currentSlug="client-a" hasGlobalAccount={hasGlobalAccount} />
+    <GitHubAccountsTable memberships={current} currentSlug="client-a" globalAccount={hasGlobalAccount ? session.user : undefined} />
   </QueryClientProvider>
   const view = render(content(members))
   return { ...view, updateMemberships: (current: Membership[]) => view.rerender(content(current)) }
@@ -65,7 +65,7 @@ describe('GitHub accounts by organisation', () => {
     expect(row('client-c').getByText('Global fallback unavailable')).toBeVisible()
     expect(row('client-c').queryByText('@personal')).not.toBeInTheDocument()
     expect(screen.getByRole('table', { name: 'GitHub accounts by organisation' })).toBeVisible()
-    expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['Organisation', 'GitHub account', 'Link type'])
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['Organisation', 'GitHub account', 'Actions'])
     expect(fetch).toHaveBeenCalledTimes(3)
     expect(fetch.mock.calls.every(([, options]) => options?.method === 'GET')).toBe(true)
   })
@@ -98,7 +98,7 @@ describe('GitHub accounts by organisation', () => {
     vi.stubGlobal('fetch', fetch)
     renderTable(client(), memberships.slice(0, 2))
     expect(await row('client-b').findByRole('alert')).toHaveTextContent('Could not load account.')
-    expect(row('client-b').getByText('Unavailable')).toBeVisible()
+    expect(row('client-b').queryByRole('link', { name: 'Change GitHub account for Client B' })).not.toBeInTheDocument()
     expect(row('client-b').queryByText('Not linked')).not.toBeInTheDocument()
     expect(row('client-a').getByText('@work-account')).toBeVisible()
     fails = false
@@ -123,12 +123,13 @@ describe('GitHub accounts by organisation', () => {
     })
     vi.stubGlobal('fetch', fetch)
     render(<QueryClientProvider client={client()}><Profile slug="client-a" page="github" /></QueryClientProvider>)
-    await screen.findByText('Effective account: @work-account')
+    await screen.findByTestId('github-account-row-client-a')
+    await row('client-a').findByText('@work-account')
     expect(row('client-a').getByText('@work-account')).toBeVisible()
     expect(fetch.mock.calls.filter(([input, options]) => String(input) === '/api/v1/w/client-a/me/github' && options?.method !== 'DELETE')).toHaveLength(1)
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Remove organisation link' }))
-    await user.click(screen.getByRole('button', { name: 'Confirm remove organisation link' }))
+    await user.click(screen.getByRole('button', { name: 'Remove organisation link for Client A' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm remove organisation link for Client A' }))
     expect(await row('client-a').findByText('@personal')).toBeVisible()
     expect(row('client-a').getByText('Global fallback')).toBeVisible()
     expect(row('client-b').getByText('@personal')).toBeVisible()
@@ -146,7 +147,8 @@ describe('GitHub accounts by organisation', () => {
       throw new Error('Unexpected request')
     }))
     render(<QueryClientProvider client={client()}><Profile slug="client-a" page="github" /></QueryClientProvider>)
-    await screen.findByText('Effective account: @work-account')
+    await screen.findByTestId('github-account-row-client-a')
+    await row('client-a').findByText('@work-account')
     expect(await row('client-b').findByText('@personal')).toBeVisible()
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'Unlink GitHub profile' }))
@@ -165,11 +167,12 @@ describe('GitHub accounts by organisation', () => {
       return response({ identity: scoped })
     }))
     const view = renderTable(client(), memberships.slice(0, 2))
+    await screen.findByTestId('github-account-row-client-a')
     await row('client-a').findByText('@work-account')
     view.updateMemberships(memberships.slice(0, 1))
     release()
     await waitFor(() => expect(screen.queryByTestId('github-account-row-client-b')).not.toBeInTheDocument())
-    expect(screen.getAllByRole('row')).toHaveLength(2)
+    expect(screen.getAllByRole('row')).toHaveLength(3)
   })
 
   it('shows an ordinary unlinked account without a global fallback and makes no requests for no memberships', async () => {
@@ -186,5 +189,64 @@ describe('GitHub accounts by organisation', () => {
     expect(screen.getByText('No organisations to show.')).toBeVisible()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('removes only the selected non-current organisation and keeps other rows unchanged', async () => {
+    let removed = false
+    const fetch = vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/v1/w/client-b/me/github' && options?.method === 'DELETE') {
+        removed = true
+        return response(null, 204)
+      }
+      return response({ identity: url.includes('/client-b/') ? removed ? null : { ...scoped, workspace_id: 'w1', github_login: 'client-b-account' } : scoped })
+    })
+    vi.stubGlobal('fetch', fetch)
+    renderTable(client(), memberships.slice(0, 2))
+    await row('client-b').findByText('@client-b-account')
+    const user = userEvent.setup()
+    await user.click(row('client-b').getByRole('button', { name: 'Remove organisation link for Client B' }))
+    const confirmation = screen.getByRole('group', { name: 'Confirm organisation link removal for Client B' })
+    expect(within(confirmation).getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    expect(confirmation.closest('td')).toHaveAttribute('colspan', '3')
+    await user.click(within(confirmation).getByRole('button', { name: 'Confirm remove organisation link for Client B' }))
+    expect(await row('client-b').findByText('Not linked')).toBeVisible()
+    expect(row('client-a').getByText('@work-account')).toBeVisible()
+    expect(row('global').getByText('@personal')).toBeVisible()
+    expect(fetch.mock.calls.filter(([, options]) => options?.method === 'DELETE').map(([url]) => url)).toEqual(['/api/v1/w/client-b/me/github'])
+    await waitFor(() => expect(row('client-b').getByRole('link', { name: 'Link GitHub account for Client B' })).toHaveFocus())
+  })
+
+  it('does not show a cached account or offer mutations after a failed identity refetch', async () => {
+    const queryClient = client()
+    queryClient.setQueryData(organisationGitHubQuery('client-a').queryKey, scoped)
+    vi.stubGlobal('fetch', vi.fn(async () => response({ error: { message: 'Unavailable' } }, 503)))
+    renderTable(queryClient, memberships.slice(0, 1))
+    expect(await row('client-a').findByRole('alert')).toHaveTextContent('Could not load account.')
+    expect(row('client-a').queryByText('@work-account')).not.toBeInTheDocument()
+    expect(row('client-a').queryByRole('link', { name: 'Change GitHub account for Client A' })).not.toBeInTheDocument()
+    expect(row('client-a').queryByRole('button', { name: 'Remove organisation link for Client A' })).not.toBeInTheDocument()
+    expect(row('global').getByRole('button', { name: 'Unlink GitHub profile' })).toBeVisible()
+  })
+
+  it('keeps a failed global-default removal in its own confirmation for retry or cancel', async () => {
+    const fetch = vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
+      if (options?.method === 'DELETE') return response({ error: { message: 'Global removal failed' } }, 503)
+      return response({ identity: String(input).includes('/client-a/') ? scoped : global })
+    })
+    vi.stubGlobal('fetch', fetch)
+    renderTable(client(), memberships.slice(0, 2))
+    const user = userEvent.setup()
+    await row('client-a').findByText('@work-account')
+    await user.click(row('global').getByRole('button', { name: 'Unlink GitHub profile' }))
+    const confirmation = screen.getByRole('group', { name: 'Confirm global GitHub unlink' })
+    expect(confirmation).toHaveTextContent('Organisation overrides are unchanged')
+    await user.click(within(confirmation).getByRole('button', { name: 'Confirm unlink GitHub profile' }))
+    expect(await within(confirmation).findByRole('alert')).toHaveTextContent('Global removal failed')
+    expect(row('client-a').getByText('@work-account')).toBeVisible()
+    expect(row('client-b').getByText('@personal')).toBeVisible()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(row('global').getByRole('button', { name: 'Unlink GitHub profile' })).toHaveFocus())
+    expect(fetch.mock.calls.filter(([, options]) => options?.method === 'DELETE').map(([url]) => url)).toEqual(['/api/v1/me/github'])
   })
 })

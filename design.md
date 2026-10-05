@@ -210,11 +210,12 @@ GitHub settings start with a compact "GitHub accounts by organisation" table of 
 Organisation names link to their own GitHub settings and the current organisation is labelled explicitly.
 Rows load and retry independently, never treating a failed request as an unlinked account or guessing that an unavailable global fallback is effective.
 The semantic table wraps long names within the mobile viewport and shares the existing scoped identity query cache, so removing a link or unlinking the global account refreshes the overview too.
-Below it, "GitHub identity for Organisation" remains before a separate "Global GitHub account" section.
-The first section names the selected organisation, labels an organisation-specific account versus the global fallback, and offers scoped linking or changing plus confirmed removal of an override.
-Removing an override explains the fallback and preserves existing evidence; global unlinking makes clear that organisation-specific links remain.
-Confirmation initially focuses Cancel and Escape restores focus to its trigger.
-Both sections explain that GitHub is optional for Velvet membership, and account-selection guidance applies only to authorisation, not workspace switching.
+Each organisation row provides Link or Change and, for an organisation override, Remove directly in an Actions column.
+The link source remains beside the account, and a compact Global default row keeps shared-profile linking and removal available without a second settings section.
+Confirmation expands across the table width beneath the selected row, names its organisation, and explains that removing an override restores the fallback if available while preserving existing evidence.
+Removing the global default explicitly warns about fallback changes across organisations and leaves organisation-specific links alone.
+Confirmation initially focuses Cancel and Escape restores focus to that row's trigger; pending or failed identity rows do not offer destructive actions.
+Brief table guidance explains that GitHub is optional and that account selection applies only to authorisation, not workspace switching.
 GitHub App repository access is a distinct administrator concern under Repositories, with a warning that synced evidence is shared with the Velvet organisation even if members cannot open the private GitHub links.
 
 Agent config sits between GitHub and API tokens in the section list.
