@@ -393,6 +393,8 @@ Run deployment wiring and guarded entrypoint regressions from the repository roo
 
 `.github/workflows/ci.yml` runs all three suites on every push and pull request.
 The end-to-end job depends on the other two, so a broken unit test fails fast instead of paying to build the whole stack.
+Go vulnerability checks include test imports, and web/MCP dependency audits also run in CI.
+See the [security remediation ledger](docs/security/2026-10-05-remediation.md) for per-finding fixes, authorization race regressions, and the unimported OpenPGP advisory classification.
 
 The gate was checked against a deliberate regression, not just a green tree: reintroducing the timestamp bug on a branch turned CI red in the Go job with the expected message and skipped end-to-end, then the branch was deleted.
 
