@@ -154,7 +154,8 @@ func (s *Server) handleDetachPR(w http.ResponseWriter, r *http.Request) {
 		writeIssueError(w, err)
 		return
 	}
-	if err := s.store.Unlink(r.Context(), ws.WorkspaceID, issue.ID, prID); err != nil {
+	user, _ := CurrentUser(r.Context())
+	if err := s.store.Unlink(r.Context(), ws.WorkspaceID, issue.ID, prID, user.ID); err != nil {
 		writePRError(w, err)
 		return
 	}

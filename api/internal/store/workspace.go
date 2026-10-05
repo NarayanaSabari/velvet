@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -68,6 +69,25 @@ func lockWorkspaceActorTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID u
 	var role string
 	err := tx.QueryRow(ctx, `SELECT role::text FROM membership WHERE workspace_id=$1 AND user_id=$2`, workspaceID, actorID).Scan(&role)
 	return role, mapErr(err)
+}
+
+// LockWorkspaceWriterTx serializes user writes with access changes using the
+// same workspace-first lock order as administrator operations.
+func LockWorkspaceWriterTx(ctx context.Context, tx pgx.Tx, workspaceID, actorID uuid.UUID) error {
+	if actorID == uuid.Nil {
+		return ErrForbidden
+	}
+	role, err := lockWorkspaceActorTx(ctx, tx, workspaceID, actorID)
+	if errors.Is(err, ErrNotFound) {
+		return ErrForbidden
+	}
+	if err != nil {
+		return err
+	}
+	if role != "admin" && role != "member" {
+		return ErrForbidden
+	}
+	return nil
 }
 
 // LockWorkspaceAdminTx serializes access changes and rechecks the actor after

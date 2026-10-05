@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.26'
+          go-version-file: api/go.mod
           cache-dependency-path: api/go.sum
 
       - name: Build and vet
@@ -30,6 +30,10 @@ jobs:
         run: |
           go build ./...
           go vet ./...
+
+      - name: Check vulnerable dependencies
+        working-directory: api
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 -test ./...
 
       - name: Check formatting
         working-directory: api
@@ -63,6 +67,10 @@ jobs:
         working-directory: web
         run: npm ci
 
+      - name: Audit dependencies
+        working-directory: web
+        run: npm audit --audit-level=low
+
       - name: Typecheck
         working-directory: web
         run: npx tsc --noEmit
@@ -88,6 +96,9 @@ jobs:
       - name: Install MCP dependencies
         working-directory: mcp
         run: npm ci
+      - name: Audit MCP dependencies
+        working-directory: mcp
+        run: npm audit --audit-level=low
       - name: Build and test local MCP
         working-directory: mcp
         run: npm run build && npm test

@@ -66,6 +66,9 @@ func imageTargetIDs(in ImageInput) (*uuid.UUID, *uuid.UUID) {
 	return nil, &in.TargetID
 }
 func lockImageWorkspace(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
+	if err := lockWorkspaceTx(ctx, tx, id); err != nil {
+		return err
+	}
 	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('image-workspace:' || $1::text,0))`, id)
 	return err
 }
@@ -73,6 +76,9 @@ func lockImageWorkspace(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
 // Lock both current membership and the authenticating token through commit.
 // A concurrent revocation/demotion therefore serializes with this mutation.
 func imageWriter(ctx context.Context, tx pgx.Tx, in ImageInput) error {
+	if err := LockWorkspaceWriterTx(ctx, tx, in.WorkspaceID, in.ActorID); err != nil {
+		return err
+	}
 	var role string
 	if err := tx.QueryRow(ctx, `SELECT role::text FROM membership WHERE workspace_id=$1 AND user_id=$2 FOR SHARE`, in.WorkspaceID, in.ActorID).Scan(&role); err != nil {
 		return mapErr(err)
@@ -169,6 +175,9 @@ func (s *Store) ImageContent(ctx context.Context, workspaceID, id uuid.UUID) (Im
 }
 func (s *Store) DeleteImage(ctx context.Context, workspaceID, id, actorID uuid.UUID) error {
 	return s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
 		if err := lockImageWorkspace(ctx, tx, workspaceID); err != nil {
 			return err
 		}

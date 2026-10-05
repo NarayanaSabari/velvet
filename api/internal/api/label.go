@@ -55,7 +55,8 @@ func (s *Server) handleCreateLabel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ws, _ := CurrentWorkspace(r.Context())
-	label, err := s.store.CreateLabel(r.Context(), ws.WorkspaceID, body.Name, body.Color)
+	user, _ := CurrentUser(r.Context())
+	label, err := s.store.CreateLabel(r.Context(), ws.WorkspaceID, user.ID, body.Name, body.Color)
 	if err != nil {
 		writeLabelError(w, err)
 		return
@@ -69,7 +70,8 @@ func (s *Server) handleDeleteLabel(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.store.DeleteLabel(r.Context(), ws.WorkspaceID, id); err != nil {
+	user, _ := CurrentUser(r.Context())
+	if err := s.store.DeleteLabel(r.Context(), ws.WorkspaceID, id, user.ID); err != nil {
 		writeLabelError(w, err)
 		return
 	}
@@ -99,7 +101,8 @@ func (s *Server) handleSetIssueLabels(w http.ResponseWriter, r *http.Request) {
 		writeIssueError(w, err)
 		return
 	}
-	labels, err := s.store.SetIssueLabels(r.Context(), ws.WorkspaceID, issue.ID, labelIDs)
+	user, _ := CurrentUser(r.Context())
+	labels, err := s.store.SetIssueLabels(r.Context(), ws.WorkspaceID, issue.ID, user.ID, labelIDs)
 	if err != nil {
 		writeLabelError(w, err)
 		return

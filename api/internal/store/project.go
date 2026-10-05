@@ -76,18 +76,15 @@ func scanProject(row pgx.Row) (Project, error) {
 func (s *Store) CreateProject(ctx context.Context, in CreateProjectInput) (Project, error) {
 	var out Project
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
-		var err error
-		// A zero actor stores NULL rather than a zero UUID, matching
-		// RecordActivity: seed and system-created rows have no human author.
-		var createdBy *uuid.UUID
-		if in.ActorID != uuid.Nil {
-			createdBy = &in.ActorID
+		if err := LockWorkspaceWriterTx(ctx, tx, in.WorkspaceID, in.ActorID); err != nil {
+			return err
 		}
+		var err error
 		out, err = scanProject(tx.QueryRow(ctx, `
 			INSERT INTO project (workspace_id, key, name, description, created_by)
 			VALUES ($1, $2, $3, $4, $5)
 			RETURNING `+projectCols,
-			in.WorkspaceID, in.Key, in.Name, in.Description, createdBy))
+			in.WorkspaceID, in.Key, in.Name, in.Description, in.ActorID))
 		if err != nil {
 			return err
 		}
@@ -169,6 +166,9 @@ func (s *Store) ProjectIDByKey(ctx context.Context, workspaceID uuid.UUID, key s
 func (s *Store) UpdateProject(ctx context.Context, workspaceID, id, actorID uuid.UUID, patch ProjectPatch) (Project, error) {
 	var out Project
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
 		before, err := scanProject(tx.QueryRow(ctx,
 			`SELECT `+projectCols+` FROM project
 			 WHERE workspace_id = $1 AND id = $2 FOR UPDATE`,
@@ -231,6 +231,9 @@ func (s *Store) UpdateProject(ctx context.Context, workspaceID, id, actorID uuid
 // carrying no issue key can still be attributed. A nil project clears it.
 func (s *Store) SetRepoProject(ctx context.Context, workspaceID, repoID, actorID uuid.UUID, projectID *uuid.UUID) error {
 	return s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
 		if projectID != nil {
 			if err := checkProjectInWorkspace(ctx, tx, workspaceID, *projectID); err != nil {
 				return err

@@ -164,6 +164,8 @@ func (s *Server) handleSetRepoProject(w http.ResponseWriter, r *http.Request) {
 
 func writeProjectError(w http.ResponseWriter, err error, message string) {
 	switch {
+	case errors.Is(err, store.ErrForbidden):
+		WriteError(w, http.StatusForbidden, "forbidden", "you do not have permission to change the project")
 	case errors.Is(err, store.ErrNotFound):
 		WriteError(w, http.StatusNotFound, "not_found", "no such project")
 	case errors.Is(err, store.ErrDuplicate):
