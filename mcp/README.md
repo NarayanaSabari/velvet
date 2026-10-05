@@ -9,12 +9,39 @@ It uses the same `/api/v1` endpoints as [`cli/velvet`](../cli/velvet), without b
 ## Image attachments
 
 The local `velvet_upload_image` tool accepts `path`, `caption`, and exactly one of `key` or `milestone_id`.
+Every upload requires a fresh host form-elicitation confirmation showing the absolute local path, resolved workspace, destination URL, and relevance caption.
+The client must support form elicitation and return an accepted response with `confirm` exactly `true`.
+There is no model-supplied approval argument, affirmative default, or remembered approval.
+Clients advertising the legacy `elicitation: {}` capability are supported through the installed SDK's form-capability normalization.
+Missing or URL-only capability, decline, cancel, malformed responses, elicitation request failures, and cancellation during confirmation fail closed before the file is opened or read and before any upload request.
+The upload call itself does not discover a workspace or make network requests before confirmation.
+Set `VELVET_WORKSPACE`, or first call `velvet_where_am_i` to resolve the checkout's workspace through its normal metadata request.
+An unresolved upload destination is refused rather than guessed or discovered during upload.
+Read-only tools such as `velvet_list_images` and `velvet_where_am_i` do not require elicitation.
+
 `path` must explicitly name an existing regular local file no larger than 10 MiB.
 Final symlinks, directories, special files, empty files, and files that grow beyond the bounded read are rejected.
+After confirmation, a bounded read must have a PNG, JPEG, or WebP byte signature before multipart data is constructed or sent.
+Cancellation is checked before metadata access, opening, allocation, and each bounded read, and after asynchronous file operations.
+An already pending filesystem operation may finish, but cancellation stops subsequent reads and prevents the upload request, with the file handle always closed.
+The tool's cancellation signal is also passed to the upload fetch.
+Cancellation of an in-flight upload is best effort and cannot undo a request the API has already committed.
+Check the target's attachments before retrying an interrupted upload rather than assuming it was not saved.
+This lightweight signature filter rejects ordinary non-image files even with an image extension, but is not full decoding or metadata sanitization.
 Only that file is read, with native `FormData` and authenticated `fetch` sending multipart `file` and `caption` to the target's `/images` API.
-The server validates image bytes and target permissions.
+The API remains responsible for decoding image bytes, enforcing dimensions and animation rules, sanitizing metadata, and validating target permissions.
 No remote URL fetch, image base64, or model-generated image output is involved.
 `velvet_list_images` accepts exactly one of `key` or `milestone_id` and returns metadata without downloading image bytes.
+
+Elicitation enforces a protocol-response gate, not proof that a human reviewed the prompt.
+Use a host that presents the exact request to the user rather than automatically accepting it.
+Approval is for a path and destination, not an immutable snapshot of the file before confirmation.
+The existing no-final-symlink and inode checks remain in place, but parent symlinks and in-place file changes are not a trusted user-file picker.
+If the client cannot confirm, ask the user to run `velvet upload-image KEY PATH --caption TEXT` or `velvet upload-image --milestone ID PATH --caption TEXT` manually for the exact intended file and target.
+Never automatically fall back to the CLI or hosted transfer to bypass a refused or unsupported confirmation.
+This gate protects only this local stdio MCP upload tool.
+Native hosted upload preparation, terminal HTTP transfers, and the CLI remain governed by their own host approval policies, not this elicitation gate.
+It does not establish a global consent guarantee for other tools available to an agent.
 
 Attach important relevant user-provided images only to an explicit ticket or milestone, explaining their relevance in the caption.
 Do not attach unrelated sensitive material or change status because an image was uploaded.

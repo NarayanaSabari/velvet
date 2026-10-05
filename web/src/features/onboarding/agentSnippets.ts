@@ -54,13 +54,13 @@ export function agentSnippets(baseUrl: string, slug: string, token: string): Age
     {
       id: 'other',
       label: 'Other',
-      where: 'For agents that only run local MCP servers, bridge to Velvet with mcp-remote. Node 18 or later is required.',
+      where: 'For agents with native remote HTTP MCP support. Add this to their MCP settings; field names may vary by client.',
       code: json({
         mcpServers: {
-          velvet: { command: 'npx', args: ['-y', 'mcp-remote', url, '--header', header] },
+          velvet: { url, headers: { Authorization: `Bearer ${token}` } },
         },
       }),
-      after: `Any agent that supports remote HTTP MCP servers can use ${url} with the header ${header.replace(token, '<your key>')}.`,
+      after: 'This configuration does not download or execute a bridge. For stdio-only agents, build Velvet’s first-party local MCP server using the repository’s mcp/README.md and provide the token through your secret manager. Keep this configuration private and out of version control.',
     },
   ]
 }
