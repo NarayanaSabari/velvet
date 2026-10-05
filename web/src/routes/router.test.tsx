@@ -179,6 +179,7 @@ describe('Profile pages', () => {
           : { tokens: [] }
         if (url.endsWith('/projects')) return { projects: [] }
         if (url.endsWith('/onboarding')) return { base_url: 'https://velvet.example.com', state: { agent_connected: false } }
+        if (url.endsWith('/me/github')) return { identity: null }
         return {}
       },
     } as Response)))
