@@ -13,6 +13,7 @@ import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
 import { onboardingQuery } from '../onboarding/onboardingQuery'
 import { AgentConfig } from './AgentConfig'
+import { GitHubAccountsTable } from './GitHubAccountsTable'
 import { apiTokensQuery, type CreatedApiToken } from './apiTokens'
 import { organisationGitHubQuery } from './organisationGitHub'
 import { PROFILE_PAGES, type ProfilePageId } from './profilePages'
@@ -86,7 +87,8 @@ export function GitHubProfile({ slug }: { slug: string }) {
   if (session.isLoading) return <LoadingState label="Loading profile…" />
   if (!session.user) return null
   return <div ref={content} className="space-y-6">
-    <section className="space-y-3" aria-labelledby="organisation-github-heading">
+    <GitHubAccountsTable memberships={session.memberships} currentSlug={slug} hasGlobalAccount={Boolean(session.user.github_login)} />
+    <section className="space-y-3 border-t border-grey-200 pt-6" aria-labelledby="organisation-github-heading">
       <SectionHeader id="organisation-github-heading" title={`GitHub identity for ${session.workspace?.workspace_name ?? slug}`} />
       <p className="max-w-[46rem] text-grey-500">GitHub is optional. Velvet members can create, comment on, and view work without GitHub access. Viewers are read-only. Connected, synced evidence is visible through Velvet membership even without repository permissions.</p>
       <p className="max-w-[46rem] text-grey-500">Switching Velvet organisations does not require switching GitHub accounts. Choose an account only when linking your own identity here or verifying an administrator installation in Administration. If GitHub uses the wrong account, sign in to the intended account on GitHub before trying again.</p>

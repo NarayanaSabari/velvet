@@ -206,7 +206,11 @@ Unknown sections show not found.
 Leaving a section discards any one-time key and unfinished confirmation rather than restoring them with Back.
 The token name field and agent setup stay at a readable width within the full-width content.
 
-GitHub settings place "GitHub identity for Organisation" before a separate "Global GitHub account" section.
+GitHub settings start with a compact "GitHub accounts by organisation" table of the signed-in person's memberships, showing each effective account, numeric GitHub ID, and organisation-link or global-fallback source.
+Organisation names link to their own GitHub settings and the current organisation is labelled explicitly.
+Rows load and retry independently, never treating a failed request as an unlinked account or guessing that an unavailable global fallback is effective.
+The semantic table wraps long names within the mobile viewport and shares the existing scoped identity query cache, so removing a link or unlinking the global account refreshes the overview too.
+Below it, "GitHub identity for Organisation" remains before a separate "Global GitHub account" section.
 The first section names the selected organisation, labels an organisation-specific account versus the global fallback, and offers scoped linking or changing plus confirmed removal of an override.
 Removing an override explains the fallback and preserves existing evidence; global unlinking makes clear that organisation-specific links remain.
 Confirmation initially focuses Cancel and Escape restores focus to its trigger.
