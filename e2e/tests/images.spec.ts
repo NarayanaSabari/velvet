@@ -97,11 +97,18 @@ async function assertImageLoaded(page: Page, captionText: string) {
   await expect.poll(() => image.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0)).toBe(true)
 }
 
-async function uploadThroughStdio(env: NodeJS.ProcessEnv, path: string): Promise<string> {
+type ImageApproval = 'accept' | 'decline' | 'cancel' | 'false' | 'unsupported'
+
+async function uploadThroughStdio(env: NodeJS.ProcessEnv, path: string, options: { approval?: ImageApproval; milestoneId?: string; caption?: string } = {}): Promise<string> {
+  const approval = options.approval ?? 'accept'
+  const relevance = options.caption ?? 'Local agent preserved the user reference.'
+  const target = options.milestoneId ? { milestone_id: options.milestoneId } : { key: 'IMG-1' }
+  const targetPath = options.milestoneId ? `milestones/${options.milestoneId}` : 'issues/IMG-1'
   return new Promise((resolveResult, reject) => {
     const agent = spawn(process.execPath, [resolve('..', 'mcp', 'dist', 'index.js')], { env, stdio: ['pipe', 'pipe', 'pipe'] })
     let buffer = ''
     let finished = false
+    let confirmations = 0
     const timeout = setTimeout(() => finish(new Error('Local MCP image upload timed out')), 15_000)
     function finish(error?: Error, text = '') {
       if (finished) return
@@ -124,17 +131,38 @@ async function uploadThroughStdio(env: NodeJS.ProcessEnv, path: string): Promise
         buffer = buffer.slice(newline + 1)
         let response
         try { response = JSON.parse(line) } catch { finish(new Error('Local MCP returned invalid JSON')); return }
+        if (response.method === 'elicitation/create') {
+          try {
+            expect(approval).not.toBe('unsupported')
+            expect(response.params.mode).toBe('form')
+            expect(response.params.message).toContain(`Absolute path: ${JSON.stringify(resolve(path))}`)
+            expect(response.params.message).toContain(`Workspace: ${JSON.stringify(env.VELVET_WORKSPACE)}`)
+            expect(response.params.message).toContain(`Destination: ${JSON.stringify(`${env.VELVET_URL}/w/${env.VELVET_WORKSPACE}/${targetPath}`)}`)
+            expect(response.params.message).toContain(`Relevance: ${JSON.stringify(relevance)}`)
+            expect(response.params.requestedSchema.required).toEqual(['confirm'])
+            expect(response.params.requestedSchema.properties.confirm.type).toBe('boolean')
+            expect(response.params.requestedSchema.properties.confirm.default).toBeUndefined()
+            confirmations += 1
+            send({ jsonrpc: '2.0', id: response.id, result: approval === 'decline' || approval === 'cancel'
+              ? { action: approval } : { action: 'accept', content: { confirm: approval === 'accept' } } })
+          } catch (error) {
+            finish(error instanceof Error ? error : new Error(String(error)))
+          }
+          continue
+        }
         if (response.error) { finish(new Error('Local MCP rejected the image request')); return }
         if (response.id === 1) {
           send({ jsonrpc: '2.0', method: 'notifications/initialized' })
-          send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'velvet_upload_image', arguments: { key: 'IMG-1', path, caption: 'Local agent preserved the user reference.' } } })
+          send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'velvet_upload_image', arguments: { ...target, path, caption: relevance } } })
         } else if (response.id === 2) {
-          if (response.result?.isError) finish(new Error('Local MCP could not upload the image'))
-          else finish(undefined, response.result.content.map((entry: { text?: string }) => entry.text ?? '').join('\n'))
+          const text = response.result.content.map((entry: { text?: string }) => entry.text ?? '').join('\n')
+          if (response.result?.isError) finish(new Error(text))
+          else if (confirmations !== 1) finish(new Error('Local MCP uploaded without exactly one user confirmation'))
+          else finish(undefined, text)
         }
       }
     })
-    send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'image-acceptance', version: '1' } } })
+    send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: approval === 'unsupported' ? {} : { elicitation: { form: {} } }, clientInfo: { name: 'image-acceptance', version: '1' } } })
   })
 }
 
@@ -280,6 +308,33 @@ test('local stdio MCP preserves a real file on the ticket, not image bytes in it
   await assertImageLoaded(page, 'Local agent preserved the user reference.')
   await page.reload()
   await assertImageLoaded(page, 'Local agent preserved the user reference.')
+  const milestoneCaption = 'User-approved local image for the milestone.'
+  const milestoneText = await uploadThroughStdio({ ...process.env, VELVET_URL: baseURL!, VELVET_WORKSPACE: slug, VELVET_TOKEN: token }, path,
+    { milestoneId: milestoneID, caption: milestoneCaption })
+  expect(milestoneText).toContain(`/w/${slug}/milestones/${milestoneID}`)
+  await page.goto(`/w/${slug}/milestones/${milestoneID}`)
+  await assertImageLoaded(page, milestoneCaption)
+})
+
+test('local stdio MCP requires exact-file consent and rejects non-images before upload', async ({ page, baseURL }) => {
+  const bytes = await sharedScreenshot(page, 'Image upload consent reference.')
+  const token = await agentToken(page, baseURL!)
+  const path = resolve('test-results', `consent-reference-${suffix}.png`)
+  await mkdir(resolve('test-results'), { recursive: true })
+  await writeFile(path, bytes)
+  const env = { ...process.env, VELVET_URL: baseURL!, VELVET_WORKSPACE: slug, VELVET_TOKEN: token }
+  const before = (await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1/images`)).json()).images.length
+  for (const approval of ['decline', 'cancel', 'false', 'unsupported'] as const) {
+    await expect(uploadThroughStdio(env, path, { approval })).rejects.toThrow(
+      approval === 'unsupported' ? /form elicitation support/ : /not confirmed/,
+    )
+    expect((await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1/images`)).json()).images).toHaveLength(before)
+  }
+  const nonImage = resolve('test-results', `not-an-image-${suffix}.png`)
+  await writeFile(nonImage, 'SYNTHETIC_NON_IMAGE_CONTENT_NOT_A_REAL_SECRET')
+  await expect(uploadThroughStdio(env, nonImage)).rejects.toThrow(/PNG|JPEG|WebP/)
+  expect((await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1/images`)).json()).images).toHaveLength(before)
+  expect((await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1`)).json()).status).toBe('backlog')
 })
 
 test('JPEG and WebP agent references can be viewed, downloaded and explicitly removed on mobile', async ({ page, baseURL }) => {
@@ -356,6 +411,12 @@ test('JPEG and WebP agent references can be viewed, downloaded and explicitly re
     await row.getByRole('button', { name: 'Delete image', exact: true }).click()
     await expect(row).toHaveCount(0)
     expect((await page.request.get(image.content_url)).status()).toBe(404)
+    const approvedCaption = `User-approved ${format.toUpperCase()} local MCP reference.`
+    const approved = await uploadThroughStdio({ ...process.env, VELVET_URL: baseURL!, VELVET_WORKSPACE: slug, VELVET_TOKEN: token }, path,
+      { caption: approvedCaption })
+    expect(approved).toContain('Status unchanged')
+    await page.reload()
+    await assertImageLoaded(page, approvedCaption)
     expect((await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1`)).json()).status).toBe('backlog')
   }
 })

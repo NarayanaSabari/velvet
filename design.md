@@ -205,6 +205,8 @@ The bare Profile address redirects to General, and old `#agent-config` bookmarks
 Unknown sections show not found.
 Leaving a section discards any one-time key and unfinished confirmation rather than restoring them with Back.
 The token name field and agent setup stay at a readable width within the full-width content.
+Other-agent setup uses native remote HTTP configuration, never an auto-downloaded executable bridge with a token in its arguments.
+Its guidance distinguishes remote HTTP clients from stdio-only clients, directs the latter to the first-party local server, and warns that token-bearing configuration must stay private.
 
 GitHub settings start with a compact "GitHub accounts by organisation" table of the signed-in person's memberships, showing each effective account, numeric GitHub ID, and organisation-link or global-fallback source.
 Organisation names link to their own GitHub settings and the current organisation is labelled explicitly.

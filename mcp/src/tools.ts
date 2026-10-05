@@ -76,8 +76,8 @@ export function createMcpServer(config: VelvetConfig, options: ToolServerOptions
     version: '0.1.0',
   })
 
-  // Every workspace-scoped tool resolves first, so one configuration works in
-  // every checkout rather than each project needing its own hardcoded slug.
+  // Workspace tools resolve lazily. Image uploads instead require a namespace
+  // already established by configuration or an earlier workspace tool call.
   const scoped = async () => {
     const resolved = await resolver.resolve()
     api.useWorkspace(resolved.workspace)
@@ -87,7 +87,7 @@ export function createMcpServer(config: VelvetConfig, options: ToolServerOptions
   server.registerTool(
     'velvet_upload_image',
     {
-      description: 'Upload an important relevant user image from an explicitly provided local regular file to exactly one ticket or milestone. Caption must explain relevance. Never scan paths, fetch remote images, attach unrelated sensitive material, or change status. If no actual file is available, ask for it and never claim an upload. Hosted MCP cannot see local files.',
+      description: 'Upload an important relevant user image from an explicitly provided local regular file to exactly one ticket or milestone. Mandatory per-call user form confirmation shows the exact absolute path, resolved workspace, destination, and relevance caption before reading or uploading. If the workspace is unresolved, call velvet_where_am_i first. Unsupported or refused confirmation requires asking the USER to run the CLI manually, never automatically bypassing consent. Never scan paths, fetch remote images, attach unrelated sensitive material, or change status. If no actual file is available, ask for it and never claim an upload. Hosted MCP cannot see local files.',
       inputSchema: {
         path: z.string().min(1).describe('Explicit local image file path, at most 10 MiB'),
         caption: z.string().trim().min(1).describe('Why this image is relevant'),
@@ -95,15 +95,44 @@ export function createMcpServer(config: VelvetConfig, options: ToolServerOptions
         milestone_id: z.string().trim().min(1).optional(),
       },
     },
-    async ({ path, caption, key, milestone_id }) => {
+    async ({ path, caption, key, milestone_id }, extra) => {
+      const manualUpload = 'Ask the user to run velvet upload-image manually with this exact file, target, and caption. Do not automatically bypass confirmation with the CLI.'
       try {
         const target = imageTarget(key, milestone_id)
-        await scoped()
-        const image = await api.uploadImage(target, await imageForm(resolve(cwd, path), caption))
+        const absolutePath = resolve(cwd, path)
+        if (!server.server.getClientCapabilities()?.elicitation?.form) {
+          throw new Error('Local image upload requires a client with form elicitation support.')
+        }
+        const workspace = api.currentWorkspace
+        if (!workspace) {
+          throw new Error('Resolve the destination with velvet_where_am_i first, or configure VELVET_WORKSPACE, then retry the image upload.')
+        }
+        const destination = api.targetUrl(target)
+        const consent = await server.server.elicitInput({
+          mode: 'form',
+          message: `Allow reading and uploading this local image?\nAbsolute path: ${JSON.stringify(absolutePath)}\nWorkspace: ${JSON.stringify(workspace)}\nDestination: ${JSON.stringify(destination)}\nRelevance: ${JSON.stringify(caption)}\nOnly this file will be sent. Status will not change.`,
+          requestedSchema: {
+            type: 'object',
+            properties: {
+              confirm: { type: 'boolean', title: 'Allow reading and uploading this exact file to this destination?' },
+            },
+            required: ['confirm'],
+          },
+        }, { signal: extra.signal })
+        if (consent.action !== 'accept' || consent.content?.confirm !== true) {
+          throw new Error('Local image upload was not confirmed.')
+        }
+        extra.signal.throwIfAborted()
+        if (api.currentWorkspace !== workspace || api.targetUrl(target) !== destination) {
+          throw new Error('Image upload destination changed during confirmation. Retry to confirm the new destination.')
+        }
+        const form = await imageForm(absolutePath, caption, extra.signal)
+        extra.signal.throwIfAborted()
+        const image = await api.uploadImage(target, form, extra.signal)
         if (!image.id || !image.content_url) throw new Error('upload response did not include attachment id and content_url')
         return toolResult(`Uploaded ${image.filename} (${image.id}). Status unchanged.\nAttachment: ${image.content_url}\nPage: ${api.targetUrl(target)}`)
       } catch (error) {
-        return toolError(error)
+        return toolError(new Error(`${errorMessage(error)} ${manualUpload}`))
       }
     },
   )

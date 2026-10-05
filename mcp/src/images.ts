@@ -20,6 +20,14 @@ export interface ImageAttachment {
 
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
+/** Coarse outbound filter only. The API still decodes and sanitizes the image. */
+function imageContentType(bytes: Buffer): string {
+  if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png'
+  if (bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'image/jpeg'
+  if (bytes.length >= 12 && bytes.subarray(0, 4).equals(Buffer.from('RIFF')) && bytes.subarray(8, 12).equals(Buffer.from('WEBP'))) return 'image/webp'
+  throw new Error('image must have a PNG, JPEG, or WebP signature')
+}
+
 export function imageTarget(key?: string, milestoneId?: string): string {
   if (Boolean(key?.trim()) === Boolean(milestoneId?.trim())) {
     throw new Error('Provide exactly one key or milestone_id')
@@ -30,26 +38,35 @@ export function imageTarget(key?: string, milestoneId?: string): string {
 }
 
 /** Read only the explicitly provided regular file, never follow a final symlink. */
-export async function imageForm(path: string, caption: string): Promise<FormData> {
+export async function imageForm(path: string, caption: string, signal?: AbortSignal): Promise<FormData> {
   if (!caption.trim()) throw new Error('caption is required and must describe relevance')
+  signal?.throwIfAborted()
   const info = await lstat(path)
+  signal?.throwIfAborted()
   if (!info.isFile()) throw new Error('image path must be a regular file, not a symlink or special file')
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
   try {
+    signal?.throwIfAborted()
     const stat = await handle.stat()
+    signal?.throwIfAborted()
     if (!stat.isFile() || stat.dev !== info.dev || stat.ino !== info.ino) throw new Error('image file changed before reading')
     if (stat.size > MAX_IMAGE_BYTES) throw new Error('image exceeds 10 MiB limit')
     const bytes = Buffer.alloc(MAX_IMAGE_BYTES + 1)
     let length = 0
     while (length < bytes.length) {
+      signal?.throwIfAborted()
       const result = await handle.read(bytes, length, bytes.length - length, null)
+      signal?.throwIfAborted()
       if (result.bytesRead === 0) break
       length += result.bytesRead
     }
+    signal?.throwIfAborted()
     if (length > MAX_IMAGE_BYTES) throw new Error('image exceeds 10 MiB limit')
     if (length === 0) throw new Error('image file is empty')
+    const content = bytes.subarray(0, length)
+    const contentType = imageContentType(content)
     const form = new FormData()
-    form.set('file', new Blob([new Uint8Array(bytes.subarray(0, length))]), basename(path))
+    form.set('file', new Blob([new Uint8Array(content)], { type: contentType }), basename(path))
     form.set('caption', caption.trim())
     return form
   } finally {
