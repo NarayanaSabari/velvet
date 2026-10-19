@@ -72,7 +72,7 @@ claude mcp add --transport http --scope user velvet https://velvet.example.com/a
 
 A new account is walked through this after sign-in at `/onboarding`: an organisation named after the person, a key shown once, and a ready-to-paste native HTTP setup for Claude Code, Codex, Cursor, VS Code, or another remote-MCP client.
 The Other setup never downloads or executes a third-party bridge with the key.
-For stdio-only agents, build the first-party [local MCP server](mcp/README.md) and supply its token through your secret manager.
+Velvet supports remote HTTP MCP clients only, and the [`velvet` CLI](cli/README.md) covers the same work log from a terminal.
 Keep token-bearing client configuration private and out of version control.
 The screen confirms the connection when the agent first calls Velvet.
 Anyone who skips that step, or wants to connect another agent, finds the same setup in Profile under Agent config at `/w/{slug}/settings/profile/agent-config`, which creates a fresh key per agent.
@@ -87,7 +87,6 @@ Agent config generates that section for any project, and it contains no key, so 
 The hosted server is stateless and dispatches every tool through the same REST handlers a direct request reaches, so membership, role, validation, and `source=agent` attribution are unchanged.
 It accepts API tokens only; a browser session cookie is refused.
 Because the server cannot see a local checkout, `velvet_current_ticket` takes the branch name as an argument.
-The local stdio server in [`mcp/`](mcp/) remains for resolving the organisation from a git remote.
 
 ### Preserving important images
 
@@ -99,7 +98,7 @@ velvet upload-image ENG-142 /path/to/reference.png --caption "The user shared th
 velvet upload-image --milestone "$MILESTONE_ID" /path/to/design.webp --caption "Reference for the milestone's accepted layout."
 ```
 
-The local MCP tool `velvet_upload_image` accepts an explicit local file path, a caption, and exactly one ticket key or milestone ID.
+The CLI accepts an explicit local file path, a caption, and exactly one ticket key or milestone ID.
 The hosted MCP server cannot read files on the agent's machine.
 Its `velvet_prepare_image_upload` tool instead returns an upload endpoint and a short-lived, single-use credential for transferring the file as multipart HTTP, without putting image bytes into the model's context.
 Use the credential in `X-Velvet-Upload-Token`, not in a URL, and never save it in repository files or a work-log entry.

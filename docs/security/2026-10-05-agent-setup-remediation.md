@@ -1,5 +1,8 @@
 # Agent setup and local image upload security, October 5, 2026
 
+> Superseded in part on October 19, 2026: the local stdio MCP server in `mcp/` was removed, so the local image approval rows below describe retired code.
+> Velvet now supports remote HTTP MCP clients only, and hosted image uploads use single-use grants.
+
 ## Scope
 
 The `velvet-otter-lab_5e33` report contains one confirmed Medium finding, `vuln-0001`, not four confirmed vulnerabilities.

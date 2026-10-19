@@ -56,7 +56,7 @@ test('a new person connects a coding agent through onboarding', async ({ page, b
   expect(other.args).toBeUndefined()
   expect(other.url).toBe(url)
   expect(other.headers.Authorization === `Bearer ${token}`).toBe(true)
-  await expect(page.getByRole('tabpanel')).toContainText('stdio-only')
+  await expect(page.getByRole('tabpanel')).toContainText('remote HTTP MCP clients only')
   const connection = page.getByTestId('agent-connection')
   await expect(connection).toHaveAttribute('data-connected', 'false')
   await expect(connection).toContainText('Waiting for your agent')

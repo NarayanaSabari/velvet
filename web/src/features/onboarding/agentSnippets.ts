@@ -60,7 +60,7 @@ export function agentSnippets(baseUrl: string, slug: string, token: string): Age
           velvet: { url, headers: { Authorization: `Bearer ${token}` } },
         },
       }),
-      after: 'This configuration does not download or execute a bridge. For stdio-only agents, build Velvet’s first-party local MCP server using the repository’s mcp/README.md and provide the token through your secret manager. Keep this configuration private and out of version control.',
+      after: 'This configuration does not download or execute a bridge. Velvet supports remote HTTP MCP clients only. From a terminal, the velvet CLI covers the same work log. Provide the token through your secret manager, and keep this configuration private and out of version control.',
     },
   ]
 }
