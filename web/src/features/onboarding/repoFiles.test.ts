@@ -21,6 +21,8 @@ describe('repository instructions', () => {
     expect(block).toContain('never invent time spent')
     expect(block).toContain('explicit ticket or milestone')
     expect(block).toContain('Hosted MCP cannot see local files')
+    expect(block).toContain('`velvet_prepare_image_upload`')
+    expect(block).not.toContain('velvet_upload_image')
     expect(block).toContain('ask for it instead of claiming an upload')
     expect(block).toContain('unrelated sensitive material')
     expect(block).toContain('change status because of an upload')
