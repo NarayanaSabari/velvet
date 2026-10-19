@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
@@ -247,6 +248,15 @@ func InsertForeignPullRequest(t *testing.T, f *Fixture, number int, title string
 		Title: title, State: "open", GHCreatedAt: &now, GHUpdatedAt: &now})
 	require.NoError(t, err)
 	return pr.ID
+}
+
+// UpsertReview mirrors a review the way the worker does, inside a
+// transaction, so tests share the one production write path.
+func UpsertReview(t *testing.T, f *Fixture, in store.UpsertReviewInput) {
+	t.Helper()
+	require.NoError(t, pgx.BeginFunc(t.Context(), f.Pool, func(tx pgx.Tx) error {
+		return store.UpsertReviewTx(t.Context(), tx, in)
+	}))
 }
 
 // GitHubStub answers every GitHub REST call with an empty object. Tests about

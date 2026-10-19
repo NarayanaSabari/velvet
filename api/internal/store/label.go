@@ -126,12 +126,6 @@ func (s *Store) SetIssueLabels(ctx context.Context, workspaceID, issueID, actorI
 	return out, err
 }
 
-// querier is the part of a pool and a transaction that a read needs, so one
-// query can serve both a standalone call and a step inside a transaction.
-type querier interface {
-	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
-}
-
 func labelsForIssue(ctx context.Context, q querier, workspaceID, issueID uuid.UUID) ([]Label, error) {
 	rows, err := q.Query(ctx, `
 		SELECT l.id, l.workspace_id, l.name, l.color

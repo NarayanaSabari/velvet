@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -192,7 +193,7 @@ func registerMCPTools(server *mcp.Server, baseURL string, api http.Handler) {
 			if body == "" {
 				return "", errors.New("body must not be empty")
 			}
-			if in.Kind != "" && !oneOf(in.Kind, mcpNoteKinds) {
+			if in.Kind != "" && !slices.Contains(mcpNoteKinds, in.Kind) {
 				return "", errors.New("kind must be progress, decision, blocker, or note")
 			}
 			base := c.scoped()
@@ -240,7 +241,7 @@ func registerMCPTools(server *mcp.Server, baseURL string, api http.Handler) {
 			if strings.TrimSpace(in.Title) == "" {
 				return "", errors.New("title is required")
 			}
-			if in.Status != "" && !oneOf(in.Status, mcpIssueStatuses) {
+			if in.Status != "" && !slices.Contains(mcpIssueStatuses, in.Status) {
 				return "", errors.New("status must be one of " + strings.Join(mcpIssueStatuses, ", "))
 			}
 			base := c.scoped()
@@ -271,7 +272,7 @@ func registerMCPTools(server *mcp.Server, baseURL string, api http.Handler) {
 	tool(server, baseURL, api, "velvet_list_issues",
 		"List compact ticket key, title, status, and assignee information in the organisation.",
 		func(ctx context.Context, c *mcpCall, in listIssuesInput) (string, error) {
-			if in.Status != "" && !oneOf(in.Status, mcpIssueStatuses) {
+			if in.Status != "" && !slices.Contains(mcpIssueStatuses, in.Status) {
 				return "", errors.New("status must be one of " + strings.Join(mcpIssueStatuses, ", "))
 			}
 			base := c.scoped()
@@ -353,7 +354,7 @@ func registerMCPTools(server *mcp.Server, baseURL string, api http.Handler) {
 		"Set a ticket status only on an explicit request from the person. Never call this automatically, and never "+
 			"because a pull request was merged.",
 		func(ctx context.Context, c *mcpCall, in setStatusInput) (string, error) {
-			if !oneOf(in.Status, mcpIssueStatuses) {
+			if !slices.Contains(mcpIssueStatuses, in.Status) {
 				return "", errors.New("status must be one of " + strings.Join(mcpIssueStatuses, ", "))
 			}
 			base := c.scoped()

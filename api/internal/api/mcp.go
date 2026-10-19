@@ -6,11 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -255,23 +256,9 @@ func mcpKey(value string) string {
 	return strings.ToUpper(strings.TrimSpace(value))
 }
 
-func oneOf(value string, allowed []string) bool {
-	for _, candidate := range allowed {
-		if value == candidate {
-			return true
-		}
-	}
-	return false
-}
-
 func sortedCounts(counts map[string]int) string {
-	keys := make([]string, 0, len(counts))
-	for key := range counts {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	parts := make([]string, 0, len(keys))
-	for _, key := range keys {
+	parts := make([]string, 0, len(counts))
+	for _, key := range slices.Sorted(maps.Keys(counts)) {
 		parts = append(parts, fmt.Sprintf("%s: %d", key, counts[key]))
 	}
 	return strings.Join(parts, ", ")

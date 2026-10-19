@@ -58,6 +58,14 @@ type Store struct {
 
 func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
+// querier is the part of a pool and a transaction that a statement needs, so
+// one query can serve both a standalone call and a step inside a transaction.
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
 func checkWorkspaceMember(ctx context.Context, tx pgx.Tx, workspaceID, userID uuid.UUID) error {
 	var exists bool
 	if err := tx.QueryRow(ctx, `
