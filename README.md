@@ -70,7 +70,10 @@ claude mcp add --transport http --scope user velvet https://velvet.example.com/a
   --header "Authorization: Bearer $VELVET_TOKEN"
 ```
 
-A new account is walked through this after sign-in at `/onboarding`: an organisation named after the person, a key shown once, and a ready-to-paste setup for Claude Code, Codex, Cursor, VS Code, or any agent through `mcp-remote`.
+A new account is walked through this after sign-in at `/onboarding`: an organisation named after the person, a key shown once, and a ready-to-paste native HTTP setup for Claude Code, Codex, Cursor, VS Code, or another remote-MCP client.
+The Other setup never downloads or executes a third-party bridge with the key.
+For stdio-only agents, build the first-party [local MCP server](mcp/README.md) and supply its token through your secret manager.
+Keep token-bearing client configuration private and out of version control.
 The screen confirms the connection when the agent first calls Velvet.
 Anyone who skips that step, or wants to connect another agent, finds the same setup in Profile under Agent config at `/w/{slug}/settings/profile/agent-config`, which creates a fresh key per agent.
 Profile has separate General, GitHub, Agent config, and API tokens pages, with the same section navigation as Administration.

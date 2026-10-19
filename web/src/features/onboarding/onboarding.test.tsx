@@ -86,9 +86,14 @@ describe('agent snippets', () => {
       mcpServers: { velvet: { url: 'https://v.example/api/v1/w/lab/mcp', headers: { Authorization: `Bearer ${TOKEN}` } } },
     })
     expect(JSON.parse(byId.vscode!.code).servers.velvet.type).toBe('http')
-    expect(JSON.parse(byId.other!.code).mcpServers.velvet.args).toEqual([
-      '-y', 'mcp-remote', 'https://v.example/api/v1/w/lab/mcp', '--header', `Authorization: Bearer ${TOKEN}`,
-    ])
+    const other = JSON.parse(byId.other!.code).mcpServers.velvet
+    expect(other).toEqual({ url: 'https://v.example/api/v1/w/lab/mcp', headers: { Authorization: `Bearer ${TOKEN}` } })
+    expect(other.command).toBeUndefined()
+    expect(other.args).toBeUndefined()
+    expect(byId.other!.code).not.toMatch(/mcp-remote|npx|--header/)
+    expect(byId.other!.where).toContain('native remote HTTP')
+    expect(byId.other!.after).toContain('stdio-only')
+    expect(byId.other!.after).toContain('secret manager')
     expect(byId.other!.after).not.toContain(TOKEN)
   })
 })

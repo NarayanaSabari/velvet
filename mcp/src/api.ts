@@ -292,8 +292,8 @@ export class VelvetApi {
     )
   }
 
-  async uploadImage(target: string, form: FormData): Promise<ImageAttachment> {
-    return this.request('POST', `/w/${encodePath(this.workspace)}/${target}/images`, form)
+  async uploadImage(target: string, form: FormData, signal?: AbortSignal): Promise<ImageAttachment> {
+    return this.request('POST', `/w/${encodePath(this.workspace)}/${target}/images`, form, undefined, signal)
   }
 
   async listImages(target: string): Promise<unknown> {
@@ -309,9 +309,11 @@ export class VelvetApi {
     path: string,
     body?: unknown,
     notFoundMessage?: string,
+    signal?: AbortSignal,
   ): Promise<T> {
     let response: Response
     try {
+      signal?.throwIfAborted()
       response = await this.fetchImpl(`${this.apiRoot}${path}`, {
         method,
         headers: {
@@ -321,8 +323,12 @@ export class VelvetApi {
         },
         ...(body === undefined ? {} : { body: body instanceof FormData ? body : JSON.stringify(body) }),
         ...(body instanceof FormData ? { redirect: 'error' as const } : {}),
+        ...(signal ? { signal } : {}),
       })
     } catch (error) {
+      if (signal?.aborted) {
+        throw new VelvetApiError('Image upload was cancelled. If the request was already sent, check the target attachments before retrying.', undefined, error)
+      }
       const detail = error instanceof Error ? error.message : String(error)
       throw new VelvetApiError(
         `Network request to Velvet failed: ${detail}. Check VELVET_URL and connectivity.`,
@@ -332,6 +338,7 @@ export class VelvetApi {
     }
 
     const raw = await response.text()
+    signal?.throwIfAborted()
     const data = parseBody(raw)
     if (!response.ok) {
       let message: string

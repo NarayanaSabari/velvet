@@ -50,12 +50,19 @@ test('a new person connects a coding agent through onboarding', async ({ page, b
   expect(JSON.parse((await page.getByTestId('agent-snippet').textContent())!)).toEqual({
     mcpServers: { velvet: { url, headers: { Authorization: `Bearer ${token}` } } },
   })
+  await page.getByRole('tab', { name: 'Other', exact: true }).click()
+  const other = JSON.parse((await page.getByTestId('agent-snippet').textContent())!).mcpServers.velvet
+  expect(other.command, 'Other setup must not launch an auto-downloaded bridge').toBeUndefined()
+  expect(other.args).toBeUndefined()
+  expect(other.url).toBe(url)
+  expect(other.headers.Authorization === `Bearer ${token}`).toBe(true)
+  await expect(page.getByRole('tabpanel')).toContainText('stdio-only')
   const connection = page.getByTestId('agent-connection')
   await expect(connection).toHaveAttribute('data-connected', 'false')
   await expect(connection).toContainText('Waiting for your agent')
 
   // The agent connects with exactly what the page showed.
-  const call = mcpAgent(page.request, url, token)
+  const call = mcpAgent(page.request, other.url, other.headers.Authorization.slice('Bearer '.length))
   const init = await call(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'e2e-agent', version: '1' } })
   expect(init.result.serverInfo.name).toBe('velvet')
   const tools = await call(2, 'tools/list', {})
@@ -81,7 +88,7 @@ test('a new person connects a coding agent through onboarding', async ({ page, b
   await expect(page.getByTestId('connect-agent-card')).toHaveCount(0)
   await page.goto(`/w/${slug}/issues/${key}`)
   await expect(page.getByText('Connected through onboarding.')).toBeVisible()
-  expect(sql(`SELECT c.source FROM comment c JOIN issue i ON i.id = c.target_id WHERE i.key = '${key}'`)).toBe('agent')
+  expect(sql(`SELECT c.source FROM comment c JOIN issue i ON i.id = c.target_id JOIN workspace w ON w.id = i.workspace_id WHERE w.slug = '${slug}' AND i.key = '${key}' AND c.body = 'Connected through onboarding.'`)).toBe('agent')
 })
 
 test('a person who skips the agent connects one later from Profile > Agent config', async ({ page, baseURL }) => {
@@ -116,11 +123,26 @@ test('a person who skips the agent connects one later from Profile > Agent confi
   await expect(section.getByTestId('agent-snippet')).toContainText(`Bearer ${token}`)
   // Tokens are on their own page, not mounted alongside the one-time setup.
   await expect(page.getByLabel('Token name')).toHaveCount(0)
+  await section.getByRole('tab', { name: 'Other', exact: true }).click()
+  const other = JSON.parse((await section.getByTestId('agent-snippet').textContent())!).mcpServers.velvet
+  expect(other.command, 'Profile must use the same safe native HTTP setup').toBeUndefined()
+  expect(other.args).toBeUndefined()
+  expect(other.url).toBe(url)
+  expect(other.headers.Authorization === `Bearer ${token}`).toBe(true)
+  for (const [width, height, colorScheme] of [[1280, 900, 'light'], [390, 844, 'dark']] as const) {
+    await page.setViewportSize({ width, height })
+    await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
+    await expect(section.getByRole('tab', { name: 'Other', exact: true })).toBeVisible()
+    await expect(section.getByTestId('agent-snippet')).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await page.screenshot({ path: `test-results/agent-other-${width}-${colorScheme}.png`, fullPage: true,
+      mask: [section.getByTestId('agent-token'), section.getByTestId('agent-snippet')] })
+  }
   const connection = section.getByTestId('agent-connection')
   await expect(connection).toHaveAttribute('data-connected', 'false')
 
   // A real agent call with that key flips the section to connected.
-  const call = mcpAgent(page.request, url, token)
+  const call = mcpAgent(page.request, other.url, other.headers.Authorization.slice('Bearer '.length))
   const init = await call(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'e2e-agent', version: '1' } })
   // What the agent is told on connect names this organisation, and there are
   // no projects yet, so it is told to ask rather than invent one.
@@ -156,7 +178,7 @@ test('a person who skips the agent connects one later from Profile > Agent confi
   expect(logged.result.content[0].text).toContain('Logged work to project skip-site')
   const again = await call(4, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'e2e-agent', version: '1' } })
   expect(again.result.instructions).toContain('skip-site (Skip Site)')
-  expect(sql(`SELECT c.source FROM comment c JOIN project p ON p.id = c.target_id WHERE p.key = 'skip-site' AND c.body = 'Set up Velvet for this repository.'`)).toBe('agent')
+  expect(sql(`SELECT c.source FROM comment c JOIN project p ON p.id = c.target_id JOIN workspace w ON w.id = p.workspace_id WHERE w.slug = '${slug}' AND p.key = 'skip-site' AND c.body = 'Set up Velvet for this repository.'`)).toBe('agent')
 
   // With an agent connected, the dashboard prompt is gone.
   await page.goto(`/w/${slug}`)
