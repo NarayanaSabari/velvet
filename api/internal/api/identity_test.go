@@ -84,9 +84,9 @@ func TestLinkingAnIdentityReattributesExistingEvidence(t *testing.T) {
 	pr := insertPR(t, f, clientWS, repo.ID, 1, "sabari-client")
 	require.Nil(t, pr.AuthorID, "before linking, nobody owns this work")
 
-	require.NoError(t, f.Store.UpsertReview(ctx, store.UpsertReviewInput{
+	testutil.UpsertReview(t, f, store.UpsertReviewInput{
 		WorkspaceID: clientWS, PullRequestID: pr.ID, GitHubID: 5001,
-		ReviewerLogin: "sabari-client", State: "APPROVED", SubmittedAt: time.Now().UTC()}))
+		ReviewerLogin: "sabari-client", State: "APPROVED", SubmittedAt: time.Now().UTC()})
 
 	require.NoError(t, f.Store.LinkMembershipGitHubIdentity(ctx, clientWS, f.User.ID,
 		store.GitHubIdentity{ID: 2002, Login: "sabari-client"}))
@@ -132,9 +132,9 @@ func TestOrganisationOverrideDisablesGlobalAttributionUntilRemoved(t *testing.T)
 	require.Nil(t, global.AuthorID)
 	local := insertPR(t, f, f.WorkspaceID, repo.ID, 2, "sabari-client")
 	require.Equal(t, f.User.ID, *local.AuthorID)
-	require.NoError(t, f.Store.UpsertReview(ctx, store.UpsertReviewInput{
+	testutil.UpsertReview(t, f, store.UpsertReviewInput{
 		WorkspaceID: f.WorkspaceID, PullRequestID: local.ID, GitHubID: 5001,
-		ReviewerLogin: "sabari", State: "APPROVED", SubmittedAt: time.Now().UTC()}))
+		ReviewerLogin: "sabari", State: "APPROVED", SubmittedAt: time.Now().UTC()})
 	var reviewerID *uuid.UUID
 	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT reviewer_id FROM pr_review WHERE github_id=5001`).Scan(&reviewerID))
 	require.Nil(t, reviewerID)
@@ -185,9 +185,9 @@ func TestUnlinkingAnIdentityKeepsTheEvidenceItAttributed(t *testing.T) {
 		store.GitHubIdentity{ID: 2002, Login: "sabari-client"}))
 	pr := insertPR(t, f, clientWS, repo.ID, 1, "sabari-client")
 	require.NotNil(t, pr.AuthorID)
-	require.NoError(t, f.Store.UpsertReview(ctx, store.UpsertReviewInput{
+	testutil.UpsertReview(t, f, store.UpsertReviewInput{
 		WorkspaceID: clientWS, PullRequestID: pr.ID, GitHubID: 6001,
-		ReviewerLogin: "sabari-client", State: "APPROVED", SubmittedAt: time.Now().UTC()}))
+		ReviewerLogin: "sabari-client", State: "APPROVED", SubmittedAt: time.Now().UTC()})
 
 	require.NoError(t, f.Store.UnlinkMembershipGitHubIdentity(ctx, clientWS, f.User.ID))
 	// Later provider updates must not erase the attribution retained by unlink.

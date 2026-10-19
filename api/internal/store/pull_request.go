@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // PullRequest is the mirrored state of one GitHub pull request. It is the
@@ -127,15 +126,11 @@ func (s *Store) UpsertPullRequest(ctx context.Context, in UpsertPRInput) (PullRe
 	return upsertPullRequest(ctx, s.pool, in)
 }
 
-type prQuerier interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-}
-
 func UpsertPullRequestTx(ctx context.Context, tx pgx.Tx, in UpsertPRInput) (PullRequest, error) {
 	return upsertPullRequest(ctx, tx, in)
 }
 
-func upsertPullRequest(ctx context.Context, db prQuerier, in UpsertPRInput) (PullRequest, error) {
+func upsertPullRequest(ctx context.Context, db querier, in UpsertPRInput) (PullRequest, error) {
 	pr, err := scanPR(db.QueryRow(ctx, `
 		INSERT INTO pull_request (workspace_id, repo_id, number, title, state, draft,
 			author_login, head_ref, body, additions, deletions, html_url,
@@ -537,18 +532,10 @@ type UpsertReviewInput struct {
 	SubmittedAt   time.Time
 }
 
-// UpsertReview mirrors a review, keyed on GitHub's review id so a redelivery
-// updates rather than duplicates.
-func (s *Store) UpsertReview(ctx context.Context, in UpsertReviewInput) error {
-	return upsertReview(ctx, s.pool, in)
-}
-
+// UpsertReviewTx mirrors a review, keyed on GitHub's review id so a
+// redelivery updates rather than duplicates.
 func UpsertReviewTx(ctx context.Context, tx pgx.Tx, in UpsertReviewInput) error {
 	return upsertReview(ctx, tx, in)
-}
-
-type prExecutor interface {
-	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }
 
 // memberByGitHubLogin resolves a GitHub login to the person it belongs to
@@ -573,7 +560,7 @@ func memberByGitHubLogin(workspaceParam, loginParam string) string {
 	))`
 }
 
-func upsertReview(ctx context.Context, db prExecutor, in UpsertReviewInput) error {
+func upsertReview(ctx context.Context, db querier, in UpsertReviewInput) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO pr_review (workspace_id, pull_request_id, github_id,
 			reviewer_login, reviewer_id, state, submitted_at)
@@ -608,7 +595,7 @@ func UpsertCommitTx(ctx context.Context, tx pgx.Tx, in UpsertCommitInput) error 
 	return upsertCommit(ctx, tx, in)
 }
 
-func upsertCommit(ctx context.Context, db prExecutor, in UpsertCommitInput) error {
+func upsertCommit(ctx context.Context, db querier, in UpsertCommitInput) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO commit_ref (sha, workspace_id, repo_id, issue_id, branch,
 			message, author_login, html_url, committed_at)

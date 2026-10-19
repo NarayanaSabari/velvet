@@ -22,9 +22,9 @@ func TestScopedIdentityCannotStealAnotherMembersGlobalFallback(t *testing.T) {
 	repo := testutil.LinkRepo(t, f, 555, "acme", "widgets")
 	pr := insertPR(t, f, f.WorkspaceID, repo.ID, 1, "sabari")
 	require.Equal(t, f.User.ID, *pr.AuthorID)
-	require.NoError(t, f.Store.UpsertReview(ctx, store.UpsertReviewInput{
+	testutil.UpsertReview(t, f, store.UpsertReviewInput{
 		WorkspaceID: f.WorkspaceID, PullRequestID: pr.ID, GitHubID: 5001,
-		ReviewerLogin: "sabari", State: "APPROVED", SubmittedAt: time.Now().UTC()}))
+		ReviewerLogin: "sabari", State: "APPROVED", SubmittedAt: time.Now().UTC()})
 	for _, identity := range []store.GitHubIdentity{
 		{ID: *f.User.GitHubID, Login: *f.User.GitHubLogin},
 		{ID: *f.User.GitHubID, Login: "renamed-owner"},
