@@ -17,6 +17,38 @@ import { useSession } from '../auth/useSession'
 import { MilestoneForm, type MilestoneInput } from '../work/CoreForms'
 import { projectsQuery } from '../work/workLinks'
 import { issuesForSprint } from './sprintIssues'
+import { MoveToast, SprintKanban, type StatusMove } from './SprintKanban'
+
+type SprintView = 'list' | 'board'
+
+/** The view lives in the URL so a board link opens as a board. */
+function readView(): SprintView {
+  return new URLSearchParams(window.location.search).get('view') === 'board' ? 'board' : 'list'
+}
+
+function writeView(view: SprintView) {
+  const url = new URL(window.location.href)
+  if (view === 'board') url.searchParams.set('view', 'board')
+  else url.searchParams.delete('view')
+  window.history.replaceState(window.history.state, '', url)
+}
+
+/** The board needs five readable columns. Below the shell's `sm` breakpoint
+ *  the page keeps the grouped list, which already changes status per row. */
+function useWideEnoughForBoard(): boolean {
+  const query = '(min-width: 640px)'
+  const [wide, setWide] = useState(() =>
+    typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : true,
+  )
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const media = window.matchMedia(query)
+    const update = () => setWide(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  return wide
+}
 
 /** Two weeks of silence on a milestone is the signal this product exists to
  * surface, so it is stated in words and only then reinforced with amber. */
@@ -418,6 +450,9 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
   const canWrite = workspace?.role === 'admin' || workspace?.role === 'member'
   const isAdmin = workspace?.role === 'admin'
   const [milestoneFormOpen, setMilestoneFormOpen] = useState(false)
+  const [view, setView] = useState<SprintView>(readView)
+  const wide = useWideEnoughForBoard()
+  const [lastMove, setLastMove] = useState<{ move: StatusMove; failed: boolean } | null>(null)
 
   const sprint = useQuery({
     queryKey: ['sprint', slug, sprintId],
@@ -467,6 +502,50 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
     },
   })
 
+  // A dropped card moves at once. The PATCH runs behind it, and a failure
+  // puts the card back and says so, so the board never shows a status the
+  // server did not accept.
+  const issueKeys = [
+    ['issues', slug, { sprint_id: sprintId }],
+    ['issues', slug, { milestone_id: null }],
+  ] as const
+  const moveIssue = useMutation({
+    mutationFn: (move: StatusMove) =>
+      api.patch<Issue>(`/w/${slug}/issues/${move.issue.key}`, { status: move.to }),
+    onMutate: async (move) => {
+      await Promise.all(issueKeys.map((queryKey) => queryClient.cancelQueries({ queryKey })))
+      const previous = issueKeys.map((queryKey) => [queryKey, queryClient.getQueryData(queryKey)] as const)
+      for (const queryKey of issueKeys) {
+        queryClient.setQueryData<{ issues: SprintIssue[] }>(queryKey, (data) =>
+          data
+            ? {
+                issues: data.issues.map((issue) =>
+                  issue.id === move.issue.id
+                    ? { ...issue, status: move.to, updated_at: new Date().toISOString() }
+                    : issue,
+                ),
+              }
+            : data,
+        )
+      }
+      setLastMove({ move, failed: false })
+      return { previous }
+    },
+    onError: (_error, move, context) => {
+      for (const [queryKey, data] of context?.previous ?? []) queryClient.setQueryData(queryKey, data)
+      setLastMove({ move, failed: true })
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['issues', slug] })
+      void queryClient.invalidateQueries({ queryKey: ['milestones', slug, sprintId] })
+    },
+  })
+
+  function chooseView(next: SprintView) {
+    setView(next)
+    writeView(next)
+  }
+
   if (isNotFound(sprint.error)) {
     return (
       <NotFoundState
@@ -502,13 +581,24 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
   )
   const canCreateMilestone = canWrite && sprintData.state !== 'completed'
   const milestoneAction = () => setMilestoneFormOpen(true)
-  const issueGroups = (
+  const openIssue = (issue: SprintIssue) => {
+    void navigate({ href: `/w/${slug}/issues/${issue.key}` })
+  }
+  const showBoard = view === 'board' && wide
+  const issueGroups = showBoard ? (
+    <SprintKanban
+      issues={issueRows}
+      members={members.data?.members ?? []}
+      milestones={milestoneRows}
+      canWrite={canWrite}
+      onOpen={openIssue}
+      onMove={(move) => moveIssue.mutate(move)}
+    />
+  ) : (
     <IssueGroups
       issues={issueRows}
       members={members.data?.members ?? []}
-      onOpen={(issue) => {
-        void navigate({ href: `/w/${slug}/issues/${issue.key}` })
-      }}
+      onOpen={openIssue}
     />
   )
 
@@ -575,10 +665,31 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
       </section>
 
       <section aria-labelledby="sprint-issues-heading">
-        <div className="mb-3 flex items-baseline gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
           <h2 id="sprint-issues-heading" className="text-base font-medium">Issues</h2>
           {sprintIssues.data || unfiledIssues.data ? (
             <span className="text-sm text-grey-500">{issueRows.length} total</span>
+          ) : null}
+          {wide ? (
+            <div
+              role="group"
+              aria-label="Issue view"
+              className="ml-auto inline-flex rounded-[var(--radius-control)] border border-grey-300 p-0.5"
+            >
+              {(['list', 'board'] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={view === option}
+                  onClick={() => chooseView(option)}
+                  className={`min-h-7 rounded px-3 text-xs ${
+                    view === option ? 'bg-ink text-paper' : 'text-grey-700 hover:bg-grey-100'
+                  }`}
+                >
+                  {option === 'list' ? 'List' : 'Board'}
+                </button>
+              ))}
+            </div>
           ) : null}
         </div>
         {sprintIssues.isPending || unfiledIssues.isPending ? (
@@ -603,6 +714,18 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
         ) : (
           issueGroups
         )}
+        {lastMove ? (
+          <MoveToast
+            move={lastMove.move}
+            failed={lastMove.failed}
+            onUndo={() => {
+              const { move } = lastMove
+              const current = issueRows.find((issue) => issue.id === move.issue.id) ?? move.issue
+              moveIssue.mutate({ issue: current, from: move.to, to: move.from })
+            }}
+            onDismiss={() => setLastMove(null)}
+          />
+        ) : null}
       </section>
     </div>
   )
