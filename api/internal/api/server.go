@@ -67,6 +67,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerImageRoutes(mux)
 	s.registerActivityRoutes(mux)
 	s.registerGitHubRoutes(mux)
+	s.registerSuggestionRoutes(mux)
 	s.registerGitHubAuthorizationRoutes(mux)
 	s.registerReportRoutes(mux)
 	s.registerWorklogRoutes(mux)

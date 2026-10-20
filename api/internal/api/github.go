@@ -180,7 +180,27 @@ func (s *Server) handleUnlinkedPRs(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not list pull requests")
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"pull_requests": prs})
+	ids := make([]uuid.UUID, len(prs))
+	for i, pr := range prs {
+		ids[i] = pr.ID
+	}
+	suggestions, err := s.store.PullRequestSuggestions(r.Context(), ws.WorkspaceID, ids)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "internal", "could not list pull requests")
+		return
+	}
+	type unlinkedPR struct {
+		store.PullRequest
+		Suggestion *store.LinkSuggestion `json:"suggestion"`
+	}
+	out := make([]unlinkedPR, len(prs))
+	for i, pr := range prs {
+		out[i] = unlinkedPR{PullRequest: pr}
+		if sg, ok := suggestions[pr.ID]; ok {
+			out[i].Suggestion = &sg
+		}
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"pull_requests": out})
 }
 
 func (s *Server) handleListRepos(w http.ResponseWriter, r *http.Request) {

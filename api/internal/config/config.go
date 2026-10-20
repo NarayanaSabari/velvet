@@ -39,6 +39,9 @@ type Config struct {
 	// TypeSafeAPIURL points the client at a stub in the e2e stack.
 	TypeSafeAPIURL string
 	TypeSafeModel  string
+	// TypeSafeConfigured lets the API server report whether suggestions can
+	// run without holding the key itself; only the worker calls TypeSafe.
+	TypeSafeConfigured bool
 }
 
 func Load() (*Config, error) {
@@ -62,6 +65,7 @@ func Load() (*Config, error) {
 	c.TypeSafeAPIKey = strings.TrimSpace(os.Getenv("TYPESAFE_API_KEY"))
 	c.TypeSafeAPIURL = os.Getenv("TYPESAFE_API_URL")
 	c.TypeSafeModel = envOr("TYPESAFE_MODEL", "jev-latest")
+	c.TypeSafeConfigured = c.TypeSafeAPIKey != "" || os.Getenv("TYPESAFE_CONFIGURED") == "true"
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
