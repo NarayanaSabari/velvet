@@ -40,6 +40,36 @@ createServer(async (req, res) => {
     Object.assign(control, update)
     return json(res, 200, control)
   }
+  if (req.method === 'POST' && url.pathname === '/v1/systemone') {
+    // Disposable TypeSafe double. It answers the suggestion question the way a
+    // careful reader would on toy data: the candidate sharing the most words
+    // with the work wins, and no overlap means "none of these".
+    if (req.headers.authorization !== 'Bearer e2e-typesafe-key') return json(res, 401, { detail: 'invalid key' })
+    let body = ''
+    for await (const chunk of req) {
+      body += chunk
+      if (body.length > 1 << 20) return json(res, 413, { error: 'too_large' })
+    }
+    let request
+    try { request = JSON.parse(body) } catch { return json(res, 400, { error: 'invalid_json' }) }
+    stats.typesafeRequests = (stats.typesafeRequests || 0) + 1
+    const words = (text) => new Set(String(text || '').toLowerCase().match(/[a-z]{4,}/g) || [])
+    const work = request.state?.work || {}
+    const workWords = words([work.title, work.body, work.branch].join(' '))
+    const answers = {}
+    for (const [id, question] of Object.entries(request.questions || {})) {
+      const options = Object.keys(question.criteria || {})
+      let best = 'none_of_these'
+      let bestScore = 0
+      for (const issue of request.state?.open_issues || []) {
+        const score = [...words(issue.title)].filter((w) => workWords.has(w)).length
+        if (options.includes(issue.key) && score > bestScore) { best = issue.key; bestScore = score }
+      }
+      const probabilities = Object.fromEntries(options.map((o) => [o, o === best ? 0.9 : 0.1 / Math.max(1, options.length - 1)]))
+      answers[id] = { type: 'choice', choice: best, confidence: 0.85, probabilities }
+    }
+    return json(res, 200, { model: 'jev-e2e-stub', answers, usage: { input_tokens: body.length, output_tokens: 1 } })
+  }
   if (req.method === 'GET' && url.pathname === '/install') {
     const state = url.searchParams.get('state') || ''
     if (!/^[A-Za-z0-9_-]{43}$/.test(state)) return json(res, 400, { error: 'invalid_installation_state' })

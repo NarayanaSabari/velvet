@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
@@ -17,6 +18,9 @@ export function SuggestionsPanel({ slug }: { slug: string }) {
     queryKey,
     queryFn: () => api.get<SuggestionSettings>(`/w/${slug}/suggestions/settings`),
   })
+  // The choice shows at once and stays while it saves; a failed save puts the
+  // saved value back.
+  const [pending, setPending] = useState<boolean | null>(null)
   const update = useMutation({
     mutationFn: (enabled: boolean) => api.patch<SuggestionSettings>(`/w/${slug}/suggestions/settings`, { enabled }),
     onSuccess: (next) => {
@@ -24,6 +28,7 @@ export function SuggestionsPanel({ slug }: { slug: string }) {
       void client.invalidateQueries({ queryKey: ['unlinked', slug] })
       void client.invalidateQueries({ queryKey: ['suggested-notes', slug] })
     },
+    onSettled: () => setPending(null),
   })
 
   return (
@@ -42,9 +47,12 @@ export function SuggestionsPanel({ slug }: { slug: string }) {
           <label className="flex min-h-10 items-center gap-2 text-sm">
             <input
               type="checkbox"
-              checked={update.isPending ? Boolean(update.variables) : settings.data.enabled}
+              checked={pending ?? settings.data.enabled}
               disabled={update.isPending}
-              onChange={(event) => update.mutate(event.target.checked)}
+              onChange={(event) => {
+                setPending(event.target.checked)
+                update.mutate(event.target.checked)
+              }}
             />
             Suggest which issue unlinked pull requests and project notes belong to
           </label>

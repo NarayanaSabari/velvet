@@ -122,11 +122,11 @@ export function resetWorkspaceData(): void {
   seededSessionToken()
 
   sql(`
-    TRUNCATE login_token, pr_link, pr_review, commit_ref, pull_request, repo, github_installation,
+    TRUNCATE login_token, link_suggestion, pr_link, pr_review, commit_ref, pull_request, repo, github_installation,
              github_event, job, comment_mention, comment, issue_label, label,
              sprint_snapshot, milestone, sprint, issue, project, activity
     RESTART IDENTITY CASCADE;
-    UPDATE workspace SET issue_counter = 0;
+    UPDATE workspace SET issue_counter = 0, jev_suggestions = true;
   `)
 }
 

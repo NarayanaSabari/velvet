@@ -71,6 +71,8 @@ services:
       GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY}
       # Empty in normal use; set for GitHub Enterprise or a local stub.
       GITHUB_API_URL: ${GITHUB_API_URL:-}
+      # The API never calls TypeSafe; it only reports whether the worker can.
+      TYPESAFE_CONFIGURED: ${TYPESAFE_API_KEY:+true}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -95,6 +97,11 @@ services:
       GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY}
       # Empty in normal use; set for GitHub Enterprise or a local stub.
       GITHUB_API_URL: ${GITHUB_API_URL:-}
+      # Optional. With a key the worker asks Jev which issue unlinked pull
+      # requests and project notes belong to; without one it suggests nothing.
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      TYPESAFE_API_URL: ${TYPESAFE_API_URL:-}
+      TYPESAFE_MODEL: ${TYPESAFE_MODEL:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

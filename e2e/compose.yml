@@ -21,12 +21,17 @@ services:
       GITHUB_INSTALLATION_URL: http://localhost:${E2E_PROVIDER_PORT:-18599}/install
       GITHUB_TOKEN_URL: http://github:18599/token
       GITHUB_API_URL: http://github:18599
+      TYPESAFE_CONFIGURED: "true"
     depends_on:
       github:
         condition: service_started
   worker:
     environment:
       GITHUB_API_URL: http://github:18599
+      # The provider stub doubles as TypeSafe, so suggestions run end to end
+      # without a real key or any request leaving the machine.
+      TYPESAFE_API_KEY: e2e-typesafe-key
+      TYPESAFE_API_URL: http://github:18599
     depends_on:
       github:
         condition: service_started
