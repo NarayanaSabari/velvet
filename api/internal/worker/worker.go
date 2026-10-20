@@ -16,6 +16,7 @@ import (
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/github"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/typesafe"
 )
 
 // reconcileInterval is how often a repo is re-fetched. Webhooks are missed in
@@ -34,6 +35,9 @@ const sessionCleanupInterval = 24 * time.Hour
 type Worker struct {
 	store *store.Store
 	gh    *github.Client
+	// suggester is nil unless a TypeSafe key is configured.
+	suggester          *typesafe.Client
+	suggestPausedUntil time.Time
 }
 
 func New(st *store.Store, gh *github.Client) *Worker {
@@ -48,6 +52,8 @@ func (w *Worker) Run(ctx context.Context) error {
 	defer ticker.Stop()
 	sessionTicker := time.NewTicker(sessionCleanupInterval)
 	defer sessionTicker.Stop()
+	suggestTicker := time.NewTicker(suggestInterval)
+	defer suggestTicker.Stop()
 	select {
 	case <-ctx.Done():
 		return nil
@@ -72,6 +78,8 @@ func (w *Worker) Run(ctx context.Context) error {
 			}
 		case <-sessionTicker.C:
 			w.cleanupAuthentication(ctx)
+		case <-suggestTicker.C:
+			w.runSuggestions(ctx)
 		default:
 		}
 

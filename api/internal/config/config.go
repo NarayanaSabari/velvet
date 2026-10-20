@@ -33,6 +33,12 @@ type Config struct {
 	// The App's URL slug, used to send admins to its installation page.
 	GitHubAppSlug     string
 	TrustedProxyCIDRs []netip.Prefix
+	// TypeSafe powers suggested issue links for unlinked pull requests and
+	// agent notes. Without a key the worker simply makes no suggestions.
+	TypeSafeAPIKey string
+	// TypeSafeAPIURL points the client at a stub in the e2e stack.
+	TypeSafeAPIURL string
+	TypeSafeModel  string
 }
 
 func Load() (*Config, error) {
@@ -53,6 +59,9 @@ func Load() (*Config, error) {
 	c.ResendAPIKey = os.Getenv("RESEND_API_KEY")
 	c.MailFrom = os.Getenv("MAIL_FROM")
 	c.GitHubAppSlug = os.Getenv("GITHUB_APP_SLUG")
+	c.TypeSafeAPIKey = strings.TrimSpace(os.Getenv("TYPESAFE_API_KEY"))
+	c.TypeSafeAPIURL = os.Getenv("TYPESAFE_API_URL")
+	c.TypeSafeModel = envOr("TYPESAFE_MODEL", "jev-latest")
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}

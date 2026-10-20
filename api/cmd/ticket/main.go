@@ -19,6 +19,7 @@ import (
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/github"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/mail"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
+	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/typesafe"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/worker"
 )
 
@@ -94,8 +95,12 @@ func run(ctx context.Context, args []string) error {
 		} else {
 			slog.Warn("GitHub App not configured; worker will not sync pull requests")
 		}
+		suggester := typesafe.New(cfg.TypeSafeAPIKey, cfg.TypeSafeAPIURL, cfg.TypeSafeModel)
+		if suggester == nil {
+			slog.Info("TYPESAFE_API_KEY not set; Jev link suggestions are off")
+		}
 		slog.Info("worker starting")
-		return worker.New(store.New(pool), client).Run(ctx)
+		return worker.New(store.New(pool), client).WithSuggester(suggester).Run(ctx)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
