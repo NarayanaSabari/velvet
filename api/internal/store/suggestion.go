@@ -374,7 +374,7 @@ func (s *Store) SuggestedNotes(ctx context.Context, workspaceID uuid.UUID, limit
 		JOIN issue i ON i.id = s.issue_id
 		JOIN workspace w ON w.id = s.workspace_id
 		WHERE s.workspace_id = $1 AND c.target_type = 'project' AND c.deleted_at IS NULL
-		  AND ` + notPromoted + `
+		  AND `+notPromoted+`
 		  AND `+openSuggestion+`
 		ORDER BY c.created_at DESC
 		LIMIT $2`, workspaceID, limit)
