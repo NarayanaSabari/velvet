@@ -353,16 +353,6 @@ func (s *Store) ListComments(ctx context.Context, workspaceID uuid.UUID, targetT
 	return out, nil
 }
 
-func (s *Store) GetComment(ctx context.Context, workspaceID, id uuid.UUID) (Comment, error) {
-	var c Comment
-	err := scanCommentRow(s.pool.QueryRow(ctx, `
-		SELECT `+commentCols+`
-		FROM comment c JOIN app_user u ON u.id = c.author_id
-		WHERE c.workspace_id = $1 AND c.id = $2 AND c.deleted_at IS NULL`,
-		workspaceID, id), &c)
-	return c, err
-}
-
 // UpdateComment is author-only: an edit changes what someone is on record as
 // having said, so not even an admin may do it for them.
 func (s *Store) UpdateComment(ctx context.Context, workspaceID, id, actorID uuid.UUID, body string) (Comment, error) {

@@ -259,6 +259,14 @@ func UpsertReview(t *testing.T, f *Fixture, in store.UpsertReviewInput) {
 	}))
 }
 
+// UpsertCommit records a commit the way the worker does, inside a transaction.
+func UpsertCommit(t *testing.T, f *Fixture, in store.UpsertCommitInput) {
+	t.Helper()
+	require.NoError(t, pgx.BeginFunc(t.Context(), f.Pool, func(tx pgx.Tx) error {
+		return store.UpsertCommitTx(t.Context(), tx, in)
+	}))
+}
+
 // GitHubStub answers every GitHub REST call with an empty object. Tests about
 // what the worker does with a delivery it already has do not need real API
 // responses, but the client must still point somewhere.

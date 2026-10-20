@@ -61,10 +61,10 @@ func TestRecapGathersWorkFromEveryOrganisation(t *testing.T) {
 	require.NoError(t, f.Store.SetRepoProject(ctx, clientWS, repo.ID, f.User.ID, &clientProject.ID))
 
 	insertPR(t, f, clientWS, repo.ID, 1, "sabari-client")
-	require.NoError(t, f.Store.UpsertCommit(ctx, store.UpsertCommitInput{
+	testutil.UpsertCommit(t, f, store.UpsertCommitInput{
 		SHA: "1111111111111111111111111111111111111111", WorkspaceID: clientWS,
 		RepoID: repo.ID, Branch: "main", Message: "Client commit",
-		AuthorLogin: "sabari-client", CommittedAt: time.Now().UTC()}))
+		AuthorLogin: "sabari-client", CommittedAt: time.Now().UTC()})
 
 	entries := recap(t, f, "")
 	counts := kindsIn(entries)
@@ -260,10 +260,10 @@ func TestRecapCommitsFollowThePerOrganisationIdentity(t *testing.T) {
 	require.NoError(t, err)
 
 	sha := "2222222222222222222222222222222222222222"
-	require.NoError(t, f.Store.UpsertCommit(ctx, store.UpsertCommitInput{
+	testutil.UpsertCommit(t, f, store.UpsertCommitInput{
 		SHA: sha, WorkspaceID: clientWS, RepoID: repo.ID, Branch: "main",
 		Message: "Client commit", AuthorLogin: "sabari-client",
-		CommittedAt: time.Now().UTC()}))
+		CommittedAt: time.Now().UTC()})
 
 	// Without the organisation's identity the commit is not recognised as
 	// this person's, which is exactly the bug per-org identity exists to fix.
