@@ -6,14 +6,72 @@ import { CommentComposer } from './CommentComposer'
 import { CommentThread } from './CommentThread'
 
 describe('CommentComposer', () => {
-  it('submits on Cmd+Enter', async () => {
+  it.each(['Meta', 'Control'])('submits on %s+Enter', async (modifier) => {
     const onSubmit = vi.fn()
     const user = userEvent.setup()
     render(<CommentComposer onSubmit={onSubmit} />)
 
     await user.type(screen.getByRole('textbox'), 'Progress update')
-    await user.keyboard('{Meta>}{Enter}{/Meta}')
+    await user.keyboard(`{${modifier}>}{Enter}{/${modifier}}`)
     expect(onSubmit).toHaveBeenCalledWith('Progress update')
+  })
+
+  it('previews Markdown without submitting or losing the draft', async () => {
+    const onSubmit = vi.fn()
+    const user = userEvent.setup()
+    render(<CommentComposer onSubmit={onSubmit} />)
+
+    const box = screen.getByRole('textbox', { name: 'Comment' })
+    await user.type(box, '**Progress** update')
+    await user.click(screen.getByRole('button', { name: 'Preview' }))
+
+    expect(screen.getByRole('region', { name: 'Comment preview' }).querySelector('strong')).toHaveTextContent('Progress')
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Preview' })).toHaveAttribute('aria-pressed', 'true')
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Write' }))
+    expect(screen.getByRole('textbox')).toHaveValue('**Progress** update')
+    expect(screen.getByRole('button', { name: 'Write' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('explains an empty preview', async () => {
+    const user = userEvent.setup()
+    render(<CommentComposer onSubmit={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Preview' }))
+    expect(screen.getByRole('region', { name: 'Comment preview' })).toHaveTextContent('Nothing to preview yet.')
+  })
+
+  it('inserts a fenced Mermaid sample at the caret and restores editor focus', async () => {
+    const onSubmit = vi.fn()
+    const user = userEvent.setup()
+    render(<CommentComposer onSubmit={onSubmit} />)
+
+    const box = screen.getByRole('textbox') as HTMLTextAreaElement
+    await user.type(box, 'BeforeAfter')
+    box.setSelectionRange(6, 6)
+    await user.click(screen.getByRole('button', { name: '+ Diagram' }))
+
+    const inserted = 'Before\n```mermaid\nflowchart TD\n  A[Start] --> B[Next step]\n```\nAfter'
+    expect(box).toHaveValue(inserted)
+    await waitFor(() => expect(box).toHaveFocus())
+    expect(box.selectionStart).toBe(inserted.length - 'After'.length)
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('can insert a diagram from preview without discarding surrounding text', async () => {
+    const user = userEvent.setup()
+    render(<CommentComposer onSubmit={vi.fn()} />)
+
+    const box = screen.getByRole('textbox') as HTMLTextAreaElement
+    await user.type(box, 'Replace this')
+    box.setSelectionRange(8, 12)
+    await user.click(screen.getByRole('button', { name: 'Preview' }))
+    await user.click(screen.getByRole('button', { name: '+ Diagram' }))
+
+    expect(screen.getByRole('textbox')).toHaveValue('Replace \n```mermaid\nflowchart TD\n  A[Start] --> B[Next step]\n```\n')
+    expect(screen.queryByRole('region', { name: 'Comment preview' })).not.toBeInTheDocument()
   })
 
   it('refuses an empty body', async () => {
@@ -36,6 +94,7 @@ describe('CommentComposer', () => {
     await user.click(screen.getByRole('button', { name: /comment/i }))
 
     expect(box).toHaveValue('A long update worth keeping')
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not post. Your draft is still here')
   })
 
   it('preserves edits made while submission is pending', async () => {
@@ -52,6 +111,7 @@ describe('CommentComposer', () => {
     const box = screen.getByRole('textbox')
     await user.type(box, 'Original update')
     await user.click(screen.getByRole('button', { name: /comment/i }))
+    expect(screen.getByRole('button', { name: 'Commenting…' })).toBeDisabled()
     await user.clear(box)
     await user.type(box, 'New draft typed while saving')
     resolveSubmit()

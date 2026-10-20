@@ -315,6 +315,14 @@ A clear action is disabled when no filter is active and must reset every filter 
 
 Preserve drafts when a request fails, as `CommentComposer` does, and explain how to retry.
 
+`CommentComposer` offers Write and Preview plus a Diagram action that inserts a fenced `mermaid` sample at the selection without discarding the surrounding draft.
+The shared `Markdown` renderer displays Mermaid fences in comments and replies, including agent-authored comments, with the same Diagram / Source, Copy source, and Expand controls.
+Rendering is lazy and local, with a flat monochrome theme that follows the system color scheme.
+Expanded diagrams use a native dialog with Escape dismissal and focus returned to Expand.
+Loading and syntax errors are explicit, and a failed diagram always keeps its source readable.
+Diagrams are limited to 20,000 characters and 500 edges, do not accept configuration blocks or external images, and display sanitized SVG inside a script-free, network-blocked sandbox.
+Ordinary code fences keep their existing presentation.
+
 Do not use `transition: all`.
 
 Name the exact animated properties and keep high-frequency or keyboard-triggered actions instant where animation would add delay.
