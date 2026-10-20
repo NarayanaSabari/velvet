@@ -119,7 +119,9 @@ test('public authentication keeps the sign-in task primary at both viewports', a
     await expect(page.getByRole('heading', { level: 1, name: 'Sign in to Velvet' })).toBeVisible()
     await expect(page.getByLabel('Email')).toBeVisible()
     await expect(page.locator('.landing-layout-auth')).toBeVisible()
-    await expect(page.locator('.landing-intro')).toBeHidden()
+    // Sign-in shares the landing headline, and the form is reachable without scrolling.
+    await expect(page.locator('.landing-intro')).toBeVisible()
+    await expect(page.getByLabel('Email')).toBeInViewport()
     expect(await overflow(page)).toBeLessThanOrEqual(0)
     await page.screenshot({
       path: `test-results/sign-in-${viewport.width}-light.png`,

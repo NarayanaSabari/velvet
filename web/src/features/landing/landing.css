@@ -44,36 +44,46 @@
   padding-block: 16px;
 }
 
-/* Authentication is a task, not a marketing browse. Keep the public chrome,
-   then give the form the quietest and shortest path to completion. */
+.landing-signin-head { padding-block: 12px 16px; }
+
+/* Sign-in pages share the landing split: the headline on the left and the
+   form where the sample work log sits. On phones the form follows the
+   headline directly, and the proofs are left out so it stays in view. */
 .landing-layout-auth {
-  display: block;
-  width: min(100%, 48rem);
   height: auto;
   min-height: calc(100dvh - 68px);
+  grid-template-rows: auto auto;
+  align-content: start;
+}
+
+.landing-layout-auth .landing-proofs { display: none; }
+.landing-layout-auth .landing-signin-form { margin-block: 0; padding-block: 24px; }
+
+/* Onboarding and new organisation are longer tasks. They keep a centred
+   bordered surface without the landing content. */
+.landing-layout-auth.landing-layout-expanded {
+  display: block;
+  width: min(100%, 56rem);
   margin-inline: auto;
   padding-top: clamp(32px, 8vh, 72px);
 }
 
-.landing-layout-auth .landing-intro,
-.landing-layout-auth .landing-proofs {
+.landing-layout-auth.landing-layout-expanded .landing-intro,
+.landing-layout-auth.landing-layout-expanded .landing-proofs {
   display: none;
 }
 
-.landing-layout-auth .landing-signin {
+.landing-layout-auth.landing-layout-expanded .landing-signin {
   border: 1px solid var(--color-grey-200);
   border-radius: var(--radius-surface);
   padding: 20px;
 }
 
-.landing-layout-auth .landing-signin-form {
-  max-width: none;
+.landing-layout-auth.landing-layout-expanded .landing-signin-head { padding-top: 0; }
+
+.landing-layout-auth.landing-layout-expanded .landing-signin-form {
   margin-block: 0;
   padding: 24px 0 4px;
-}
-
-.landing-layout-auth.landing-layout-expanded {
-  width: min(100%, 56rem);
 }
 
 /* Onboarding can contain many invitations. Keep its content in normal flow. */
@@ -153,13 +163,15 @@
   .landing-proofs article { display: flex; flex-direction: column; justify-content: center; padding: 20px; }
   .landing-layout-expanded { grid-template-rows: auto auto; }
 
-  .landing-layout-auth,
+  .landing-layout-auth { align-content: stretch; }
+  .landing-layout-auth .landing-proofs { display: grid; }
+
   .landing-layout-auth.landing-layout-expanded {
     display: block;
     padding: clamp(48px, 10vh, 96px) 24px;
   }
 
-  .landing-layout-auth .landing-signin { margin-left: 0; }
+  .landing-layout-auth.landing-layout-expanded .landing-signin { margin-left: 0; }
 }
 
 @media (min-width: 1024px) and (max-height: 780px) {

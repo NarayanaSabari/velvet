@@ -33,6 +33,8 @@ export function PublicPageLayout({ children, signingIn = false, title = 'Know wh
   expanded?: boolean
 }) {
   const Headline = signingIn ? 'p' : 'h1'
+  // On sign-in pages the form's h1 follows this column, so it must not open with an h2.
+  const ProjectTitle = signingIn ? 'p' : 'h2'
   useEffect(() => {
     const previousTitle = document.title
     document.title = `${title} · Velvet`
@@ -105,7 +107,7 @@ export function PublicPageLayout({ children, signingIn = false, title = 'Know wh
             </p>
           </div>
           <div className="landing-project">
-            <h2 className="text-lg font-medium">One project. A lasting record.</h2>
+            <ProjectTitle className="text-lg font-medium">One project. A lasting record.</ProjectTitle>
             <dl className="mt-4 divide-y divide-grey-200 border-y border-grey-200">
               {[
                 ['Project', 'The long-running body of work'],
