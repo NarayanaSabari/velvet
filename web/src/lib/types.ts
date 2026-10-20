@@ -303,13 +303,3 @@ export interface StaleIssueRow {
   last_signal_at?: string
   days_silent: number
 }
-
-export interface SprintSnapshot {
-  sprint_id: string
-  workspace_id: string
-  milestones_planned: number
-  milestones_completed: number
-  issue_counts: Record<string, number>
-  person_totals: Record<string, number>
-  captured_at: string
-}

@@ -38,7 +38,7 @@ func TestUserWritersRejectRevokedAndNilActors(t *testing.T) {
 	require.NoError(t, f.Store.ManualLink(ctx, ws, issue.ID, pr.ID, f.User.ID))
 	var repoID uuid.UUID
 	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT repo_id FROM pull_request WHERE id=$1`, pr.ID).Scan(&repoID))
-	require.NoError(t, f.Store.UpsertCommit(ctx, store.UpsertCommitInput{SHA: "synthetic", WorkspaceID: ws, RepoID: repoID, Branch: "main", CommittedAt: time.Now()}))
+	testutil.UpsertCommit(t, f, store.UpsertCommitInput{SHA: "synthetic", WorkspaceID: ws, RepoID: repoID, Branch: "main", CommittedAt: time.Now()})
 	var activityBefore int
 	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT count(*) FROM activity WHERE actor_id=$1`, actor.ID).Scan(&activityBefore))
 	title := "Changed"
@@ -134,9 +134,9 @@ func TestUserWritersRejectRevokedAndNilActors(t *testing.T) {
 	got, err := f.Store.GetIssueByKey(ctx, ws, issue.Key)
 	require.NoError(t, err)
 	require.Equal(t, "Original", got.Title)
-	gotComment, err := f.Store.GetComment(ctx, ws, comment.ID)
-	require.NoError(t, err)
-	require.Equal(t, "Original", gotComment.Body)
+	var commentBody string
+	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT body FROM comment WHERE workspace_id=$1 AND id=$2 AND deleted_at IS NULL`, ws, comment.ID).Scan(&commentBody))
+	require.Equal(t, "Original", commentBody)
 	gotSprint, err := f.Store.GetSprint(ctx, ws, sprint.ID)
 	require.NoError(t, err)
 	require.Equal(t, "upcoming", gotSprint.State)
@@ -164,8 +164,9 @@ func TestDeleteCommentRechecksAdminDemotedToMember(t *testing.T) {
 	_, err = f.Store.UpdateWorkspaceMembershipRole(t.Context(), f.WorkspaceID, membershipID, f.User.ID, "member")
 	require.NoError(t, err)
 	require.ErrorIs(t, f.Store.DeleteComment(t.Context(), f.WorkspaceID, comment.ID, actor.ID), store.ErrForbidden)
-	_, err = f.Store.GetComment(t.Context(), f.WorkspaceID, comment.ID)
-	require.NoError(t, err)
+	var remaining int
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM comment WHERE workspace_id=$1 AND id=$2 AND deleted_at IS NULL`, f.WorkspaceID, comment.ID).Scan(&remaining))
+	require.Equal(t, 1, remaining)
 }
 
 func TestWriterRechecksAfterWorkspaceLock(t *testing.T) {

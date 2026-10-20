@@ -165,23 +165,13 @@ func upsertPullRequest(ctx context.Context, db querier, in UpsertPRInput) (PullR
 		in.RepoID, in.Number))
 }
 
-// LinkPR attaches a PR to an issue as evidence and reports whether the link
+// LinkPRTx attaches a PR to an issue as evidence and reports whether the link
 // was new. Activity is recorded only for a new link, in the same transaction,
 // so a redelivered event cannot re-announce an attachment that already
 // happened.
 //
 // It never touches issue.status. A PR is proof of work, not a controller of
 // it; the decision that an issue is done belongs to a person.
-func (s *Store) LinkPR(ctx context.Context, workspaceID, prID, issueID uuid.UUID, source string, closing bool, actorID *uuid.UUID) (bool, error) {
-	created := false
-	err := s.InTx(ctx, func(tx pgx.Tx) error {
-		var err error
-		created, err = LinkPRTx(ctx, tx, workspaceID, prID, issueID, source, closing, actorID)
-		return err
-	})
-	return created, err
-}
-
 func LinkPRTx(ctx context.Context, tx pgx.Tx, workspaceID, prID, issueID uuid.UUID, source string, closing bool, actorID *uuid.UUID) (bool, error) {
 	tag, err := tx.Exec(ctx, `
 			INSERT INTO pr_link (workspace_id, pull_request_id, issue_id, link_source, closing)
@@ -535,7 +525,15 @@ type UpsertReviewInput struct {
 // UpsertReviewTx mirrors a review, keyed on GitHub's review id so a
 // redelivery updates rather than duplicates.
 func UpsertReviewTx(ctx context.Context, tx pgx.Tx, in UpsertReviewInput) error {
-	return upsertReview(ctx, tx, in)
+	_, err := tx.Exec(ctx, `
+		INSERT INTO pr_review (workspace_id, pull_request_id, github_id,
+			reviewer_login, reviewer_id, state, submitted_at)
+		SELECT $1, $2, $3, $4, `+memberByGitHubLogin("$1", "$4")+`, $5, $6
+		ON CONFLICT (github_id) DO UPDATE SET
+			state = EXCLUDED.state, submitted_at = EXCLUDED.submitted_at`,
+		in.WorkspaceID, in.PullRequestID, in.GitHubID, in.ReviewerLogin,
+		in.State, in.SubmittedAt)
+	return err
 }
 
 // memberByGitHubLogin resolves a GitHub login to the person it belongs to
@@ -560,18 +558,6 @@ func memberByGitHubLogin(workspaceParam, loginParam string) string {
 	))`
 }
 
-func upsertReview(ctx context.Context, db querier, in UpsertReviewInput) error {
-	_, err := db.Exec(ctx, `
-		INSERT INTO pr_review (workspace_id, pull_request_id, github_id,
-			reviewer_login, reviewer_id, state, submitted_at)
-		SELECT $1, $2, $3, $4, `+memberByGitHubLogin("$1", "$4")+`, $5, $6
-		ON CONFLICT (github_id) DO UPDATE SET
-			state = EXCLUDED.state, submitted_at = EXCLUDED.submitted_at`,
-		in.WorkspaceID, in.PullRequestID, in.GitHubID, in.ReviewerLogin,
-		in.State, in.SubmittedAt)
-	return err
-}
-
 // UpsertCommitInput is one commit from a push.
 type UpsertCommitInput struct {
 	SHA         string
@@ -585,18 +571,10 @@ type UpsertCommitInput struct {
 	CommittedAt time.Time
 }
 
-// UpsertCommit records a commit once. A replayed push is a no-op, which is
+// UpsertCommitTx records a commit once. A replayed push is a no-op, which is
 // what keeps an issue timeline from growing duplicates after an outage.
-func (s *Store) UpsertCommit(ctx context.Context, in UpsertCommitInput) error {
-	return upsertCommit(ctx, s.pool, in)
-}
-
 func UpsertCommitTx(ctx context.Context, tx pgx.Tx, in UpsertCommitInput) error {
-	return upsertCommit(ctx, tx, in)
-}
-
-func upsertCommit(ctx context.Context, db querier, in UpsertCommitInput) error {
-	_, err := db.Exec(ctx, `
+	_, err := tx.Exec(ctx, `
 		INSERT INTO commit_ref (sha, workspace_id, repo_id, issue_id, branch,
 			message, author_login, html_url, committed_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)

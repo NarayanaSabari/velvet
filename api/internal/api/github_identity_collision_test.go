@@ -130,10 +130,10 @@ func TestInviteAcceptanceNeverDependsOnGitHubFallbackAvailability(t *testing.T) 
 	repo := testutil.LinkRepo(t, f, 555, "acme", "widgets")
 	pr := insertPR(t, f, f.WorkspaceID, repo.ID, 1, "shared")
 	require.Equal(t, f.User.ID, *pr.AuthorID)
-	require.NoError(t, f.Store.UpsertCommit(ctx, store.UpsertCommitInput{
+	testutil.UpsertCommit(t, f, store.UpsertCommitInput{
 		SHA: "1111111111111111111111111111111111111111", WorkspaceID: f.WorkspaceID,
 		RepoID: repo.ID, Branch: "main", Message: "Shared work",
-		AuthorLogin: "shared", CommittedAt: time.Now().UTC()}))
+		AuthorLogin: "shared", CommittedAt: time.Now().UTC()})
 	require.Zero(t, kindsIn(recap(t, f, ""))["commit"])
 	f.Token = ownerToken
 	require.Equal(t, 1, kindsIn(recap(t, f, ""))["commit"])
