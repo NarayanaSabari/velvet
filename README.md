@@ -70,6 +70,28 @@ claude mcp add --transport http --scope user velvet https://velvet.example.com/a
   --header "Authorization: Bearer $VELVET_TOKEN"
 ```
 
+### Agent plugins
+
+The [`plugins/velvet`](plugins/velvet) plugin packages the hosted MCP server with skills that teach an agent when and how to log work, manage tickets, plan sprints, attach images, and write a recap.
+It works in Claude Code and Codex, and this repository is the marketplace for both.
+
+Claude Code prompts for the Velvet URL, organisation slug, and API token when the plugin is enabled, and keeps the token in the system keychain:
+
+```
+/plugin install velvet --marketplace NarayanaSabari/velvet
+```
+
+Codex installs the skills from the marketplace and reads the token from an environment variable:
+
+```bash
+codex plugin marketplace add NarayanaSabari/velvet
+codex plugin add velvet@velvet
+codex mcp add velvet --url https://velvet.example.com/api/v1/w/lab/mcp --bearer-token-env-var VELVET_TOKEN
+```
+
+The plugin's `setup` skill walks through the same steps and verifies the connection with `velvet_where_am_i`.
+`api/internal/api/plugin_skills_test.go` fails when a skill names a tool the hosted server does not expose, or when a tool has no skill.
+
 A new account is walked through this after sign-in at `/onboarding`: an organisation named after the person, a key shown once, and a ready-to-paste native HTTP setup for Claude Code, Codex, Cursor, VS Code, or another remote-MCP client.
 The Other setup never downloads or executes a third-party bridge with the key.
 Velvet supports remote HTTP MCP clients only, and the [`velvet` CLI](cli/README.md) covers the same work log from a terminal.

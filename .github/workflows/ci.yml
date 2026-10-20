@@ -90,6 +90,28 @@ jobs:
       - uses: actions/checkout@v7
       - name: Test CLI uploads
         run: python3 cli/test_upload_image.py
+      - name: Validate agent plugin
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re, sys
+          root = pathlib.Path("plugins/velvet")
+          for path in [root / "plugin.json", root / ".claude-plugin/plugin.json",
+                       pathlib.Path(".claude-plugin/marketplace.json"), pathlib.Path(".agents/plugins/marketplace.json")]:
+              json.loads(path.read_text())
+          bad = []
+          for skill in sorted(root.glob("skills/*/SKILL.md")):
+              text = skill.read_text()
+              match = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+              fields = dict(line.split(":", 1) for line in match.group(1).splitlines()) if match else {}
+              name, desc = fields.get("name", "").strip(), fields.get("description", "").strip()
+              if name != skill.parent.name or not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", name):
+                  bad.append(f"{skill}: name must match its folder in hyphen-case")
+              if not desc or len(desc) > 1024 or "<" in desc or ">" in desc:
+                  bad.append(f"{skill}: description must be 1-1024 characters without angle brackets")
+          if bad:
+              sys.exit("\n".join(bad))
+          print("plugin manifests and skills are valid")
+          PY
 
   e2e:
     name: End to end

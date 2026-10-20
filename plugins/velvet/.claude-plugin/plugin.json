@@ -1,0 +1,44 @@
+{
+  "name": "velvet",
+  "displayName": "Velvet",
+  "version": "1.0.0",
+  "description": "Keep a Velvet work log from your coding agent: log progress, file and update tickets, plan sprints, attach evidence and images, and recap your week.",
+  "author": {
+    "name": "Sabari Narayana",
+    "url": "https://github.com/NarayanaSabari"
+  },
+  "homepage": "https://velvet.sabarinarayana.com",
+  "repository": "https://github.com/NarayanaSabari/velvet",
+  "keywords": ["worklog", "tickets", "sprints", "mcp"],
+  "userConfig": {
+    "velvet_url": {
+      "type": "string",
+      "title": "Velvet URL",
+      "description": "Your Velvet server, without a trailing slash or /api/v1.",
+      "default": "https://velvet.sabarinarayana.com",
+      "required": true
+    },
+    "organisation": {
+      "type": "string",
+      "title": "Organisation",
+      "description": "The organisation slug from your Velvet URL, such as lab in /w/lab.",
+      "required": true
+    },
+    "api_token": {
+      "type": "string",
+      "title": "API token",
+      "description": "A personal API token from Profile > Agent config in Velvet. It starts with velvet_.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "mcpServers": {
+    "velvet": {
+      "type": "http",
+      "url": "${user_config.velvet_url}/api/v1/w/${user_config.organisation}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${user_config.api_token}"
+      }
+    }
+  }
+}
