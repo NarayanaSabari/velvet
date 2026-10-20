@@ -164,6 +164,12 @@ Let important issue titles wrap when needed, and truncate only secondary text wh
 
 `web/src/features/issues/IssueList.tsx` and the issue groups in `web/src/features/sprints/SprintBoard.tsx` are the reference row treatments.
 
+The sprint page is the one place issues may appear as cards: its Issues section offers a List | Board switch, the board choice is kept in `?view=board`, and `web/src/features/sprints/SprintKanban.tsx` owns the board.
+The board has five columns in workflow order (Backlog, Todo, In progress, In review, Done), folds Cancelled under Done, and shows only the latest three Done cards until Show all is chosen.
+Dragging a card and choosing from its status menu both change status, so the keyboard path is never weaker than the pointer path, and viewers see the board without either control.
+A move applies at once, reports itself with Undo, and reverts with a plain message if the server refuses it.
+Below the `sm` breakpoint the switch is hidden and the grouped list is shown, because five columns do not fit a phone.
+
 A list must have a useful accessible name, a predictable tab stop, stable row identity, and a direct keyboard and pointer activation path.
 
 ### Issue detail pages
