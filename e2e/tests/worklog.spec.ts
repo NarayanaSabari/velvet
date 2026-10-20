@@ -150,6 +150,31 @@ test('a comment written in the UI becomes the work log and reaches the feed', as
   await expect(page.getByText(/commented on\s*$/)).toHaveCount(0)
 })
 
+test('a draft typed while a comment is still saving is not wiped', async ({ signedIn: page }) => {
+  await page.goto('/w/lab/issues/ENG-1')
+
+  // Hold the request open, the way a slow connection does, so there is time
+  // to keep typing before the first comment lands.
+  let release!: () => void
+  const held = new Promise<void>((resolve) => (release = resolve))
+  await page.route('**/api/v1/w/lab/issues/ENG-1/comments', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue()
+    await held
+    await route.continue()
+  })
+
+  const first = `First update at ${Date.now()}.`
+  const next = 'A second thought typed while the first was saving.'
+  const composer = page.getByPlaceholder('Write an update…')
+  await composer.fill(first)
+  await page.getByRole('button', { name: 'Comment' }).click()
+  await composer.fill(next)
+  release()
+
+  await expect(page.getByText(first)).toBeVisible()
+  await expect(composer).toHaveValue(next)
+})
+
 test('timestamps render as relative time, not raw database strings', async ({
   signedIn: page,
   request,
