@@ -34,7 +34,7 @@ func main() {
 
 func run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: ticket <serve|worker|migrate>")
+		return fmt.Errorf("usage: ticket <serve|worker|migrate|eval-suggestions>")
 	}
 	cfg, err := config.Load()
 	if err != nil {
@@ -101,6 +101,11 @@ func run(ctx context.Context, args []string) error {
 		}
 		slog.Info("worker starting")
 		return worker.New(store.New(pool), client).WithSuggester(suggester).Run(ctx)
+	case "eval-suggestions":
+		// Read-only: replays branch-linked PRs through Jev and prints accuracy
+		// by threshold, so the suggestion threshold rests on real data.
+		suggester := typesafe.New(cfg.TypeSafeAPIKey, cfg.TypeSafeAPIURL, cfg.TypeSafeModel)
+		return worker.EvaluateSuggestions(ctx, store.New(pool), suggester, 100, os.Stdout)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}

@@ -182,6 +182,23 @@ The record should reflect what the person decided, not what a branch name implie
 Because webhooks are missed in practice, an hourly job re-fetches PRs updated since each repo's last successful sync and a nightly pass covers all open PRs.
 A system whose correctness depends on never missing a webhook is quietly wrong within a month.
 
+### Suggested issue links
+
+With a TypeSafe API key, the worker asks Jev, TypeSafe's decision model, which open issue each unlinked PR and each project work-log note belongs to.
+A confident answer appears on **Unlinked PRs** as a suggestion with **Link to** or **File under** and **Dismiss**.
+Nothing is linked or filed until a person chooses, and accepting a suggestion never changes an issue's status.
+An accepted PR link is recorded with the `suggested` source, and a filed note keeps its author, time, and replies.
+
+The worker sends the PR title, description, branch, repository, author, and recent commit messages, or the note body and its project, together with up to 40 open issues and their titles, descriptions, projects, milestones, assignees, and labels.
+It asks again only when the work changes, a suggested issue closes, or a recent "no match" might be answered by a newer issue.
+Suggestions are on for every organisation by default, and an admin can turn them off under **Administration > General**, which hides existing suggestions and stops new requests at once.
+Without `TYPESAFE_API_KEY` nothing is sent, and the switch says that suggestions are not running.
+
+A suggestion is shown only when Jev gives one issue a probability of at least 0.6.
+To check that threshold against your own history, run `ticket eval-suggestions` with the worker's environment.
+It replays up to 100 pull requests already linked by branch name, hides the branch, and prints how many suggestions each threshold would show and how many are right.
+It only reads the database, but it does send those pull requests and open issues to TypeSafe.
+
 ## Layout
 
 ```
@@ -368,6 +385,8 @@ Polling without any delivery is covered separately by the Go worker test `TestRe
 | `PROXY_SUBNET`, `PROXY_CADDY_IP`, `PROXY_API_IP` | no | Private proxy network and fixed addresses, default `172.30.75.0/24`, `172.30.75.2`, `172.30.75.3` |
 | `TRUSTED_PROXY_CIDRS` | outside Compose | Explicit trusted proxy CIDRs; Compose derives the API value from `PROXY_CADDY_IP/32` |
 | `BACKUP_S3_URL` | no | Object-storage destination for dumps |
+| `TYPESAFE_API_KEY` | for suggestions | Worker-only TypeSafe key for Jev suggested issue links; Compose tells the API only whether it is set |
+| `TYPESAFE_MODEL`, `TYPESAFE_API_URL` | no | Model, default `jev-latest`, and an endpoint override for a local test double |
 
 Secrets are supplied through the environment and never committed.
 Use the table above for the feature's required settings; existing environment templates may predate email sign-in and App authorization.

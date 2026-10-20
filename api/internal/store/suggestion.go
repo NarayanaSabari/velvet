@@ -507,6 +507,63 @@ func (s *Store) DismissSuggestion(ctx context.Context, workspaceID, suggestionID
 	})
 }
 
+// SuggestionEvalCase is a pull request a person already filed by branch name,
+// replayed with the branch hidden to measure suggestions.
+type SuggestionEvalCase struct {
+	Subject  SuggestionSubject
+	IssueKey string
+}
+
+// SuggestionEvalCases returns recent pull requests linked to exactly one
+// issue by branch name. The branch is blanked, because it names the answer.
+func (s *Store) SuggestionEvalCases(ctx context.Context, limit int) ([]SuggestionEvalCase, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT 'pull_request', p.id, p.workspace_id, '',
+		       p.title, left(p.body, $2), '', r.owner || '/' || r.name, p.number, p.state::text,
+		       concat_ws(' ', NULLIF(p.author_login, ''), '(' || NULLIF(u.name, '') || ')'),
+		       '', '',
+		       COALESCE(to_char(COALESCE(p.gh_created_at, p.gh_updated_at), 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'), ''),
+		       pr.id, COALESCE(pr.key, ''), COALESCE(pr.name, ''), left(COALESCE(pr.description, ''), $3),
+		       p.author_id, i.key
+		FROM pr_link l
+		JOIN pull_request p ON p.id = l.pull_request_id
+		JOIN issue i ON i.id = l.issue_id
+		JOIN repo r ON r.id = p.repo_id
+		LEFT JOIN project pr ON pr.id = r.project_id
+		LEFT JOIN app_user u ON u.id = p.author_id
+		WHERE l.link_source = 'branch'
+		  AND (SELECT count(*) FROM pr_link o WHERE o.pull_request_id = p.id) = 1
+		ORDER BY p.gh_updated_at DESC NULLS LAST
+		LIMIT $1`, limit, maxWorkBody, maxProjectBody)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SuggestionEvalCase
+	for rows.Next() {
+		var c SuggestionEvalCase
+		sub := &c.Subject
+		var source, noteKind, projectKey, projectName, projectDesc string
+		var projectID *uuid.UUID
+		if err := rows.Scan(&sub.Kind, &sub.SubjectID, &sub.WorkspaceID, &sub.Fingerprint,
+			&sub.Work.Title, &sub.Work.Body, &sub.Work.Branch, &sub.Work.Repository, &sub.Work.Number, &sub.Work.State,
+			&sub.Work.Author, &source, &noteKind, &sub.Work.CreatedAt,
+			&projectID, &projectKey, &projectName, &projectDesc, &sub.AuthorID, &c.IssueKey); err != nil {
+			return nil, err
+		}
+		sub.Work.Kind = "GitHub pull request"
+		if projectID != nil {
+			sub.ProjectID = projectID
+			sub.Work.Project = &SuggestionProject{Key: projectKey, Name: projectName, Description: projectDesc}
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // JevSuggestionsEnabled reports the organisation's setting.
 func (s *Store) JevSuggestionsEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error) {
 	var enabled bool

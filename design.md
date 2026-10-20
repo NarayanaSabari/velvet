@@ -200,6 +200,15 @@ New-issue forms on the Issues page and the Dashboard offer the same two optional
 
 The issue status is an explicit user action, and linked pull requests are evidence rather than a status controller.
 
+### Unlinked PRs and suggested issue links
+
+`web/src/features/evidence/UnlinkedPRs.tsx` lists pull requests that matched no issue in the shared dense row treatment, followed by a "Notes that may belong on an issue" section that appears only when Jev has suggested an issue for a project note.
+A suggestion sits inside its row as a quiet left-ruled line reading "Suggested issue:" with the issue key as a link and its title, so it is named as a suggestion in words rather than by color or a confidence number.
+Its primary action names the destination, "Link to ENG-7" for a pull request or "File under ENG-7" for a note, beside a ghost "Dismiss", and the manual issue-key field stays for when the suggestion is wrong or missing.
+Viewers see suggestions but no linking controls, pending actions say "Linking…" or "Dismissing…", and a suggestion handled elsewhere simply refreshes the list rather than raising an error.
+Accepting never changes an issue's status.
+The organisation switch lives under Administration > General, says in plain words what text is sent to TypeSafe, and says when the server has no key so "on" never implies suggestions are running.
+
 ### Settings pages
 
 Settings should use clear sections, visible labels, and row-based records rather than dashboard-style cards.

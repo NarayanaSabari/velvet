@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -246,6 +247,30 @@ func TestDismissalSurvivesAReaskOnTheSameIssue(t *testing.T) {
 	suggestions, err = f.Store.PullRequestSuggestions(t.Context(), f.WorkspaceID, []uuid.UUID{pr.ID})
 	require.NoError(t, err)
 	require.Empty(t, suggestions, "a person is not shown a suggestion they already turned down")
+}
+
+func TestEvaluationReplaysBranchLinksWithoutWriting(t *testing.T) {
+	f := testutil.NewFixture(t)
+	issue := testutil.CreateIssue(t, f, "Fix auth")
+	pr := testutil.InsertPullRequest(t, f, 15, "Harden login", "open")
+	_, err := f.Pool.Exec(t.Context(), `UPDATE pull_request SET head_ref = 'sabari/eng-1-fix-auth' WHERE id = $1`, pr.ID)
+	require.NoError(t, err)
+	_, err = f.Pool.Exec(t.Context(), `INSERT INTO pr_link (workspace_id, pull_request_id, issue_id, link_source) VALUES ($1, $2, $3, 'branch')`,
+		f.WorkspaceID, pr.ID, issue.ID)
+	require.NoError(t, err)
+	stub, client := newJevStub(t, issue.Key, 0.92)
+
+	var out strings.Builder
+	require.NoError(t, worker.EvaluateSuggestions(t.Context(), f.Store, client, 10, &out))
+	require.Contains(t, out.String(), "Replayed 1 of 1")
+	require.Regexp(t, `0\.60\s+1\s+1\s+100%`, out.String())
+
+	work := stub.requests[0]["state"].(map[string]any)["work"].(map[string]any)
+	require.NotContains(t, work, "branch", "the branch names the answer, so it is hidden")
+
+	var rows int
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM link_suggestion`).Scan(&rows))
+	require.Zero(t, rows, "evaluation never writes")
 }
 
 func TestUnauthorizedKeyIsAnErrorAndRetryableFailuresSaveNothing(t *testing.T) {
