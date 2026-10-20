@@ -114,6 +114,13 @@ export function ActivityRow({ activity }: { activity: Activity }) {
         </span>
       )
       break
+    case 'filed_entry':
+      body = (
+        <span>
+          filed a {str(metadata, 'project_key') ?? 'project'} note under <IssueKey metadata={metadata} />
+        </span>
+      )
+      break
     case 'completed_milestone':
       body = <span>completed milestone {str(metadata, 'name')}</span>
       break

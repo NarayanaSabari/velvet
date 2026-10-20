@@ -13,7 +13,7 @@ export interface AdminPage {
 
 /** The Administration pages, in the order they appear in the section list. */
 export const ADMIN_PAGES: AdminPage[] = [
-  { id: 'general', label: 'General', description: 'The organisation’s name, and the address and ticket prefix fixed when it was created.' },
+  { id: 'general', label: 'General', description: 'The organisation’s name, the address and ticket prefix fixed when it was created, and suggested issue links.' },
   { id: 'members', label: 'Members', description: 'People who can open this organisation, and what they can change.' },
   { id: 'invitations', label: 'Invitations', description: 'Invite someone by email. They join with the chosen role after following the link, which lasts 7 days.' },
   { id: 'repositories', label: 'Repositories', description: 'GitHub supplies pull requests and commits as evidence of work. Velvet only reads from GitHub and never changes a ticket because of it.' },

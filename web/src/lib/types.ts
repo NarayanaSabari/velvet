@@ -223,6 +223,30 @@ export interface PullRequest {
   closed_at?: string | null
   gh_created_at?: string | null
   gh_updated_at?: string | null
+  /** Jev's suggested issue, present only while the suggestion is open. */
+  suggestion?: LinkSuggestion | null
+}
+
+/** Jev's guess at which open issue a piece of unlinked work belongs to. */
+export interface LinkSuggestion {
+  id: string
+  issue_key: string
+  issue_title: string
+  issue_status: IssueStatus
+  probability: number
+}
+
+export interface SuggestedNote {
+  comment: Comment & { source?: 'agent' | 'human'; kind?: string | null }
+  project_key: string
+  project_name: string
+  suggestion: LinkSuggestion
+}
+
+export interface SuggestionSettings {
+  enabled: boolean
+  /** False when the server has no TypeSafe key, so nothing can be suggested. */
+  available: boolean
 }
 
 export interface Repo {

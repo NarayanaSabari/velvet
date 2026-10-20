@@ -60,6 +60,7 @@ function adminFetch() {
   let invites = [{ id: 'i1', workspace_id: 'w1', workspace_name: 'Lab', workspace_slug: 'lab', email: 'pending@example.com', role: 'viewer', expires_at: '2026-09-15T00:00:00Z' }]
   let organisationName = 'Lab'
   let repoProject: string | null = null
+  let suggestionsEnabled = true
   return vi.fn().mockImplementation((input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
     if (url === '/api/v1/me') return response({
@@ -70,6 +71,11 @@ function adminFetch() {
       organisationName = JSON.parse(String(init.body)).name
       return response({ id: 'w1', name: organisationName, slug: 'lab', issue_prefix: 'ENG' })
     }
+    if (url === '/api/v1/w/lab/suggestions/settings' && init?.method === 'PATCH') {
+      suggestionsEnabled = JSON.parse(String(init.body)).enabled
+      return response({ enabled: suggestionsEnabled, available: false })
+    }
+    if (url === '/api/v1/w/lab/suggestions/settings') return response({ enabled: suggestionsEnabled, available: false })
     if (url === '/api/v1/w/lab/invites' && init?.method === 'GET') return response({ invites })
     if (url === '/api/v1/w/lab/invites' && init?.method === 'POST') {
       const invite = { ...invites[0], ...JSON.parse(String(init.body)), id: 'i2' }
@@ -553,6 +559,23 @@ describe('Admin', () => {
     await user.type(name, 'Velvet Otter')
     await user.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByText('Name saved.')).toHaveAttribute('role', 'status')
+  })
+
+  it('turns Jev suggestions off and says when the server has no key', async () => {
+    const fetch = adminFetch()
+    vi.stubGlobal('fetch', fetch)
+    const user = userEvent.setup()
+    renderAdmin()
+
+    const toggle = await screen.findByRole('checkbox', { name: /suggest which issue/i })
+    expect(toggle).toBeChecked()
+    expect(screen.getByText(/sent to TypeSafe/)).toBeInTheDocument()
+    expect(screen.getByText(/no TypeSafe API key/)).toBeInTheDocument()
+
+    await user.click(toggle)
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/v1/w/lab/suggestions/settings',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ enabled: false }) })))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: /suggest which issue/i })).not.toBeChecked())
   })
 
   it.each(['member', 'viewer'])('does not load admin resources for a %s', async (role) => {

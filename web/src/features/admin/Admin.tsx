@@ -7,6 +7,7 @@ import { GitHubPanel } from './GitHubPanel'
 import { InvitePanel } from './InvitePanel'
 import { MembersPanel } from './MembersPanel'
 import { OrganisationPanel } from './OrganisationPanel'
+import { SuggestionsPanel } from './SuggestionsPanel'
 
 /**
  * One Administration page. Each page is its own component with its own URL,
@@ -29,7 +30,12 @@ function AdminPage({ slug, page, workspace }: { slug: string; page: AdminPageId;
 
   switch (page) {
     case 'general':
-      return <OrganisationPanel slug={slug} workspace={workspace} />
+      return (
+        <>
+          <OrganisationPanel slug={slug} workspace={workspace} />
+          <SuggestionsPanel slug={slug} />
+        </>
+      )
     case 'members':
       return <MembersPanel slug={slug} selfId={session.user?.id} members={members} />
     case 'invitations':
