@@ -27,6 +27,42 @@ func TestFindWalksUpToTheRepositoryFile(t *testing.T) {
 	}
 }
 
+func TestProjectKeyMatchesServerRules(t *testing.T) {
+	for _, tc := range []struct {
+		key   string
+		valid bool
+	}{
+		{"a", true},
+		{strings.Repeat("a", 31), true},
+		{strings.Repeat("a", 32), true},
+		{strings.Repeat("a", 40), true},
+		{strings.Repeat("a", 41), false},
+		{"web-app", true},
+		{"web-", false},
+		{"-web", false},
+		{"Web", false},
+		{"", false},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			link := Link{Server: "https://velvet.example.com", Organisation: "lab", Project: tc.key}
+			if err := link.Validate(); (err == nil) != tc.valid {
+				t.Fatalf("Validate() = %v, want valid=%v", err, tc.valid)
+			}
+			if !tc.valid {
+				return
+			}
+			dir := t.TempDir()
+			if _, err := Write(dir, link); err != nil {
+				t.Fatal(err)
+			}
+			got, err := Find(dir)
+			if err != nil || got.Link != link {
+				t.Fatalf("Find() = %+v, %v", got, err)
+			}
+		})
+	}
+}
+
 func TestFindWithoutAFileSaysToInit(t *testing.T) {
 	if _, err := Find(t.TempDir()); err != ErrNotInitialised {
 		t.Fatalf("got %v", err)

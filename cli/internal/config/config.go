@@ -50,7 +50,7 @@ type Repo struct {
 var ErrNotInitialised = errors.New("no velvet.yaml here or in any parent directory; run velvet init")
 
 var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`)
-var keyRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,30}$`)
+var keyRe = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$`)
 
 // Validate rejects a file that could not have been written by velvet init,
 // before any request is built from it.
@@ -179,11 +179,51 @@ func (k Keys) writeFile(entries map[string]string) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".credentials-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+func (k Keys) updateFile(p Link, key string) error {
+	path, err := k.filePath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	// Lock a separate inode: replacing credentials.json must not release the lock.
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := lockCredentialsFile(lock); err != nil {
+		return err
+	}
+	entries, err := k.readFile()
+	if err != nil {
+		return err
+	}
+	if key == "" {
+		if _, exists := entries[fileKey(p)]; !exists {
+			return nil
+		}
+		delete(entries, fileKey(p))
+	} else {
+		entries[fileKey(p)] = key
+	}
+	return k.writeFile(entries)
 }
 
 // fileKey hashes the account name so the file does not list which
@@ -200,12 +240,7 @@ func (k Keys) Save(p Link, key string) (string, error) {
 			return "the system keychain", nil
 		}
 	}
-	entries, err := k.readFile()
-	if err != nil {
-		return "", err
-	}
-	entries[fileKey(p)] = key
-	if err := k.writeFile(entries); err != nil {
+	if err := k.updateFile(p, key); err != nil {
 		return "", err
 	}
 	path, _ := k.filePath()
@@ -240,13 +275,5 @@ func (k Keys) Delete(p Link) error {
 	if k.useKeychain() {
 		_ = keyring.Delete(keyringService, account(p))
 	}
-	entries, err := k.readFile()
-	if err != nil {
-		return err
-	}
-	if _, ok := entries[fileKey(p)]; !ok {
-		return nil
-	}
-	delete(entries, fileKey(p))
-	return k.writeFile(entries)
+	return k.updateFile(p, "")
 }
