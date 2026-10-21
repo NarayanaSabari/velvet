@@ -216,6 +216,9 @@ export function ApiTokens() {
               <li key={token.id} className="flex flex-wrap items-center gap-3 border-t border-grey-200 px-3 py-3 first:border-t-0">
                 <div className="min-w-0 flex-1">
                   <p className="break-all">{token.name}</p>
+                  <p className="break-words text-xs text-grey-700">
+                    {token.kind === 'setup' ? 'Machine setup key' : token.project_key ? <>{token.parent_id ? 'Derived project key' : 'Project key'} · {token.workspace_slug} / {token.project_key}</> : 'Personal token'}
+                  </p>
                   <dl className="flex flex-wrap gap-x-4 text-xs text-grey-500">
                     <div>
                       <dt className="sr-only">Created</dt>
@@ -241,7 +244,9 @@ export function ApiTokens() {
                 </Button>
                 {confirmingId === token.id ? (
                   <div className="basis-full border border-grey-200 bg-grey-100 p-2" role="group" aria-label={`Confirm revocation of ${token.name}`}>
-                    <p className="text-sm">Revoke {token.name}? Any clients using it will stop working.</p>
+                    <p className="text-sm">Revoke {token.name}? {token.kind === 'setup'
+                      ? 'This revokes the machine setup key and all project keys derived from it. Every repository using those keys will stop working.'
+                      : 'Any clients using it will stop working.'}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <Button variant="danger" disabled={revoke.isPending} onClick={() => revoke.mutate(token.id)}>
                         {revoke.isPending ? 'Revoking…' : 'Confirm revoke'}

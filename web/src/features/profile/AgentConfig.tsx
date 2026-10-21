@@ -40,7 +40,7 @@ export function AgentConfig({ workspace }: { workspace: Membership }) {
         <LinkedRepositories slug={workspace.workspace_slug} workspaceName={workspace.workspace_name} />
         <RepoSetup workspace={workspace} baseUrl={baseUrl} />
         <p className="text-xs text-grey-500">
-          To disconnect a repository, run velvet logout in it, or revoke its key under API tokens.
+          To disconnect one repository, revoke its project key under API tokens. Running velvet logout signs out this whole machine and revokes all project keys derived from its setup key.
         </p>
       </div>
     </section>

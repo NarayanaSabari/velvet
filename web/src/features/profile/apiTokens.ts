@@ -1,6 +1,8 @@
 import { api } from '../../lib/api'
 
 export interface ApiToken {
+  kind?: 'personal' | 'project' | 'setup'
+  parent_id?: string | null
   id: string
   name: string
   created_at: string

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Profile } from './Profile'
+import type { ApiToken as Token } from './apiTokens'
 import type { ProfilePageId } from './profilePages'
 
 function response(body: unknown, status = 200) {
@@ -26,15 +27,6 @@ const setupState = {
   state: { has_organisation: true, has_token: false, agent_connected: false },
   suggestion: { name: 'Sabari', slug: 'sabari', issue_prefix: 'SA' },
   base_url: 'https://velvet.example.com',
-}
-
-type Token = {
-  id: string
-  name: string
-  created_at: string
-  last_used_at: string | null
-  workspace_slug?: string | null
-  project_key?: string | null
 }
 
 type FakeProject = { id: string; key: string; name: string; status: 'active' }
@@ -74,7 +66,7 @@ function tokenFetch(initialTokens: Token[], options: { role?: string; createFail
     }
     if (url.startsWith('/api/v1/me/tokens/') && init?.method === 'DELETE') {
       const id = url.split('/').pop()
-      tokens = tokens.filter((token) => token.id !== id)
+      tokens = tokens.filter((token) => token.id !== id && token.parent_id !== id)
       return response(null, 204)
     }
     throw new Error(`unexpected request: ${init?.method ?? 'GET'} ${url}`)
@@ -168,6 +160,33 @@ describe('Profile API tokens', () => {
     expect(await screen.findByText('Waiting for velvet init…')).toBeInTheDocument()
   })
 
+  it('identifies setup and derived keys and warns before revoking the whole machine', async () => {
+    const created_at = '2026-09-14T10:00:00Z'
+    const fetch = tokenFetch([
+      { id: 'setup-1', name: 'Laptop setup', kind: 'setup', created_at, last_used_at: null },
+      { id: 'project-1', name: 'Billing repository', kind: 'project', parent_id: 'setup-1', workspace_slug: 'lab', project_key: 'billing', created_at, last_used_at: null },
+    ])
+    vi.stubGlobal('fetch', fetch)
+    const user = userEvent.setup()
+    renderProfile('tokens')
+
+    expect(await screen.findByText('Machine setup key')).toBeInTheDocument()
+    expect(screen.getByText('Derived project key · lab / billing')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Revoke Laptop setup' }))
+    const warning = screen.getByRole('group', { name: 'Confirm revocation of Laptop setup' })
+    expect(warning).toHaveTextContent('all project keys derived from it')
+    expect(warning).toHaveTextContent('Every repository using those keys will stop working')
+    expect(fetch).not.toHaveBeenCalledWith('/api/v1/me/tokens/setup-1', expect.objectContaining({ method: 'DELETE' }))
+    await user.click(within(warning).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('group', { name: 'Confirm revocation of Laptop setup' })).not.toBeInTheDocument()
+    expect(screen.getByText('Billing repository')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Revoke Laptop setup' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm revoke' }))
+    await screen.findByText('No API tokens yet')
+    expect(fetch).toHaveBeenCalledWith('/api/v1/me/tokens/setup-1', expect.objectContaining({ method: 'DELETE' }))
+  })
+
   it('explains the empty state and keeps creation as the action', async () => {
     vi.stubGlobal('fetch', tokenFetch([]))
 
@@ -198,6 +217,7 @@ describe('Profile agent config', () => {
     expect(section).toHaveAttribute('id', 'agent-config')
     expect(await within(section).findByTestId('cli-install')).toHaveTextContent('https://velvet.example.com/install.sh')
     expect(within(section).getByTestId('cli-init')).toHaveTextContent('velvet init --server https://velvet.example.com')
+    expect(within(section).getByText(/To disconnect one repository, revoke its project key/)).toHaveTextContent('Running velvet logout signs out this whole machine and revokes all project keys derived from its setup key')
     expect(within(section).getByText(/Projects: velvet, billing\./)).toBeInTheDocument()
     expect(within(section).getByTestId('agent-connection')).toHaveTextContent('Waiting for velvet init…')
 
