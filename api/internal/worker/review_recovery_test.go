@@ -13,6 +13,33 @@ import (
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/testutil"
 )
 
+func TestMissingReviewParentFetchFailureIsRetryable(t *testing.T) {
+	f := testutil.NewFixture(t)
+	testutil.LinkRepo(t, f, 555, "acme", "widgets")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/app/installations/99/access_tokens" {
+			json.NewEncoder(w).Encode(map[string]any{"token": "test-token", "expires_at": time.Now().Add(time.Hour)})
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprint(w, `{"message":"private-provider-detail"}`)
+	}))
+	defer srv.Close()
+	_, err := f.Store.RecordDelivery(t.Context(), "early-review", "pull_request_review", []byte(`{"installation":{"id":99},"repository":{"id":555},"pull_request":{"number":42},"review":{"id":123}}`))
+	require.NoError(t, err)
+	did, err := testutil.NewWorker(t, f, srv).ProcessOnce(t.Context())
+	require.True(t, did)
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "private-provider-detail")
+	var processed, dead bool
+	var attempts int
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT processed_at IS NOT NULL FROM github_event WHERE delivery_id='early-review'`).Scan(&processed))
+	require.False(t, processed)
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT attempts, dead FROM job WHERE kind='process_delivery'`).Scan(&attempts, &dead))
+	require.Equal(t, 1, attempts)
+	require.False(t, dead)
+}
+
 func TestReviewRecovery(t *testing.T) {
 	for _, mode := range []string{"review before PR", "missed review webhook", "review fetch failure"} {
 		t.Run(mode, func(t *testing.T) {
@@ -43,6 +70,9 @@ func TestReviewRecovery(t *testing.T) {
 			wk := testutil.NewWorker(t, f, srv)
 			if mode == "review before PR" {
 				deliver(t, f, wk, "pull_request_review", "pull_request_review.submitted.json", "early-review")
+				var count int
+				require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM pr_review`).Scan(&count))
+				require.Equal(t, 1, count, "review delivery must recover its parent without waiting for reconciliation")
 			}
 			err := wk.Reconcile(t.Context())
 			if mode == "review fetch failure" {
