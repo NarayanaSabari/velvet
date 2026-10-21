@@ -35,17 +35,29 @@ func (w *Worker) handleReview(ctx context.Context, payload []byte) error {
 		return err
 	}
 
-	prID, err := w.store.PullRequestIDByNumber(ctx, repo.ID, ev.PullRequest.Number)
+	return w.syncReview(ctx, repo, ev.PullRequest.Number, ev.Review)
+}
+
+func (w *Worker) syncReview(ctx context.Context, repo store.Repo, number int, review github.Review) error {
+	prID, err := w.store.PullRequestIDByNumber(ctx, repo.ID, number)
 	if errors.Is(err, store.ErrNotFound) {
-		// The PR event may simply not have arrived yet. Skipping rather than
-		// failing lets reconciliation pick this up instead of burning retries.
-		return nil
+		if w.gh == nil {
+			return errors.New("GitHub App is required to fetch a review's missing pull request")
+		}
+		pr, fetchErr := w.gh.GetPullRequest(ctx, repo.InstallationID, repo.Owner, repo.Name, number)
+		if fetchErr != nil {
+			return errors.New("review pull request sync failed")
+		}
+		if err := w.syncPullRequest(ctx, repo, pr); err != nil {
+			return err
+		}
+		prID, err = w.store.PullRequestIDByNumber(ctx, repo.ID, number)
 	}
 	if err != nil {
 		return err
 	}
 
-	submitted := ev.Review.SubmittedAt
+	submitted := review.SubmittedAt
 	if submitted.IsZero() {
 		submitted = time.Now()
 	}
@@ -53,9 +65,9 @@ func (w *Worker) handleReview(ctx context.Context, payload []byte) error {
 		return store.UpsertReviewTx(ctx, tx, store.UpsertReviewInput{
 			WorkspaceID:   repo.WorkspaceID,
 			PullRequestID: prID,
-			GitHubID:      ev.Review.ID,
-			ReviewerLogin: ev.Review.ReviewerLogin,
-			State:         ev.Review.State,
+			GitHubID:      review.ID,
+			ReviewerLogin: review.ReviewerLogin,
+			State:         review.State,
 			SubmittedAt:   submitted,
 		})
 	})

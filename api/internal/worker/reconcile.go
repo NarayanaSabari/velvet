@@ -57,9 +57,11 @@ func (w *Worker) reconcileRepo(ctx context.Context, repo store.Repo) error {
 		return err
 	}
 	repo = current
-	since := time.Now().Add(-backfillWindow)
+	started := time.Now().UTC()
+	since := started.Add(-backfillWindow)
 	if repo.SyncedAt != nil {
-		since = *repo.SyncedAt
+		// GitHub rounds timestamps to seconds, so overlap the boundary.
+		since = repo.SyncedAt.Add(-time.Second)
 	}
 
 	prs, err := w.gh.ListPullRequests(ctx, repo.InstallationID, repo.Owner, repo.Name, since)
@@ -71,12 +73,27 @@ func (w *Worker) reconcileRepo(ctx context.Context, repo store.Repo) error {
 		if err := w.syncPullRequest(ctx, repo, pr); err != nil {
 			return err
 		}
+		active, err := w.store.ActiveRepo(ctx, repo.GitHubID, repo.InstallationID)
+		if errors.Is(err, store.ErrNotFound) || (err == nil && active.SyncGeneration != repo.SyncGeneration) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		reviews, err := w.gh.ListReviews(ctx, repo.InstallationID, repo.Owner, repo.Name, pr.Number)
+		if err != nil {
+			return errors.New("pull request review sync failed")
+		}
+		for _, review := range reviews {
+			if err := w.syncReview(ctx, repo, pr.Number, review); err != nil {
+				return err
+			}
+		}
 	}
 
-	// Stamped only after the repo finishes. Stamping after a failed fetch
-	// would move the window past a gap that was never actually read.
+	// Commit the start time only on success, keeping updates during the fetch eligible.
 	return w.store.WithActiveRepo(ctx, repo, func(tx pgx.Tx) error {
-		_, err := tx.Exec(ctx, `UPDATE repo SET synced_at=now() WHERE id=$1`, repo.ID)
+		_, err := tx.Exec(ctx, `UPDATE repo SET synced_at=$2 WHERE id=$1`, repo.ID, started)
 		return err
 	})
 }

@@ -76,6 +76,8 @@ func TestInstallationReconcileContinuesAfterFailure(t *testing.T) {
 					w.Write([]byte(`{"message":"private-provider-token"}`))
 				case "/repos/other/repo/pulls":
 					fmt.Fprintf(w, `[{"number":77,"title":"Recovered","state":"open","created_at":"2026-09-01T10:00:00Z","updated_at":%q}]`, time.Now().UTC().Format(time.RFC3339))
+				case "/repos/other/repo/pulls/77/reviews":
+					fmt.Fprint(w, `[]`)
 				default:
 					t.Errorf("unexpected path %s", r.URL.Path)
 				}
@@ -118,6 +120,34 @@ func TestReconcileRecoversAMissedWebhook(t *testing.T) {
 	require.NoError(t, f.Pool.QueryRow(t.Context(),
 		`SELECT synced_at FROM repo WHERE github_id = 555`).Scan(&syncedAt))
 	require.NotNil(t, syncedAt)
+}
+
+func TestReconcileCutoffPrecedesFetchAndOverlapsProviderPrecision(t *testing.T) {
+	f := testutil.NewFixture(t)
+	repo := testutil.LinkRepo(t, f, 555, "acme", "widgets")
+	previous := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second).Add(750 * time.Millisecond)
+	_, err := f.Pool.Exec(t.Context(), `UPDATE repo SET synced_at=$1 WHERE id=$2`, previous, repo.ID)
+	require.NoError(t, err)
+	fetched := make(chan time.Time, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/app/installations/99/access_tokens":
+			json.NewEncoder(w).Encode(map[string]any{"token": "test-token", "expires_at": time.Now().Add(time.Hour)})
+		case "/repos/acme/widgets/pulls":
+			fetched <- time.Now().UTC()
+			fmt.Fprintf(w, `[{"number":77,"title":"Same second update","state":"open","updated_at":%q}]`, previous.Truncate(time.Second).Format(time.RFC3339))
+		default:
+			json.NewEncoder(w).Encode([]any{})
+		}
+	}))
+	defer srv.Close()
+	require.NoError(t, testutil.NewWorker(t, f, srv).Reconcile(t.Context()))
+	var cutoff time.Time
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT synced_at FROM repo WHERE id=$1`, repo.ID).Scan(&cutoff))
+	require.False(t, cutoff.After(<-fetched), "updates during a fetch must remain in the next sync window")
+	var count int
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM pull_request WHERE repo_id=$1 AND number=77`, repo.ID).Scan(&count))
+	require.Equal(t, 1, count, "provider timestamps rounded to seconds must not fall through the cutoff")
 }
 
 func TestReconcileIsIdempotent(t *testing.T) {
