@@ -7,9 +7,9 @@ import (
 )
 
 // Onboarding gets a new person from sign-in to an agent that writes to their
-// work log: an organisation named after them, one API token, and a hosted MCP
-// URL. These routes support that flow without changing the general
-// organisation and token APIs it builds on.
+// work log: an organisation named after them, then a repository linked to one
+// of its projects with `velvet init`. These routes support that flow without
+// changing the general organisation and token APIs it builds on.
 func (s *Server) registerOnboardingRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/v1/me/onboarding", s.RequireAuth(http.HandlerFunc(s.handleOnboarding)))
 	mux.Handle("POST /api/v1/me/onboarding/organisation", s.RequireAuth(http.HandlerFunc(s.handleOnboardingOrganisation)))
@@ -36,8 +36,9 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]any{
 		"state":      state,
 		"suggestion": suggestion,
-		// The MCP URL is built from the public origin rather than the request,
-		// so it matches what an agent outside this network will reach.
+		// The install and link commands are built from the public origin rather
+		// than the request, so they match what a terminal outside this network
+		// will reach.
 		"base_url": strings.TrimRight(s.cfg.BaseURL, "/"),
 	})
 }

@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -19,7 +18,6 @@ const ImageWorkspaceLimit = 1000
 
 var ErrImageQuota = errors.New("organisation image quota exceeded")
 var ErrImageCount = errors.New("image attachment limit reached: 100 per issue or milestone, 1000 per organisation")
-var ErrUploadCredential = errors.New("invalid or expired upload credential")
 
 type ImageAttachment struct {
 	ID           uuid.UUID `json:"id"`
@@ -42,14 +40,6 @@ type ImageInput struct {
 	TargetType, Filename, Caption, Source string
 	APITokenID                            *uuid.UUID
 	Image                                 imageupload.Image
-}
-
-type ImageGrant struct {
-	ID          uuid.UUID `json:"-"`
-	UploadURL   string    `json:"upload_url"`
-	UploadToken string    `json:"upload_token"`
-	ExpiresAt   time.Time `json:"expires_at"`
-	MaxBytes    int       `json:"max_bytes"`
 }
 
 const imageCols = `i.id,i.filename,i.caption,i.content_type,i.byte_size,i.width,i.height,i.created_at,i.uploader_id,COALESCE(NULLIF(u.name,''),u.email,''),i.source`
@@ -89,7 +79,7 @@ func imageWriter(ctx context.Context, tx pgx.Tx, in ImageInput) error {
 	if in.APITokenID != nil {
 		var id uuid.UUID
 		if err := tx.QueryRow(ctx, `SELECT id FROM api_token WHERE id=$1 AND user_id=$2 FOR SHARE`, in.APITokenID, in.ActorID).Scan(&id); err != nil {
-			return ErrUploadCredential
+			return ErrForbidden
 		}
 	}
 	return checkCommentTarget(ctx, tx, in.WorkspaceID, in.TargetType, in.TargetID)
@@ -197,105 +187,6 @@ func (s *Store) DeleteImage(ctx context.Context, workspaceID, id, actorID uuid.U
 		}
 		return RecordActivity(ctx, tx, ActivityInput{WorkspaceID: workspaceID, ActorID: actorID, Verb: "deleted_image", TargetType: targetType, TargetID: target, Metadata: map[string]any{"image_id": id.String()}})
 	})
-}
-
-func (s *Store) PrepareImageUpload(ctx context.Context, in ImageInput) (ImageGrant, error) {
-	var out ImageGrant
-	if in.APITokenID == nil {
-		return out, ErrForbidden
-	}
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return out, err
-	}
-	out.UploadToken = "velvet_upload_" + hex.EncodeToString(raw)
-	out.MaxBytes = imageupload.MaxBytes
-	err := s.InTx(ctx, func(tx pgx.Tx) error {
-		if err := lockImageWorkspace(ctx, tx, in.WorkspaceID); err != nil {
-			return err
-		}
-		if err := imageWriter(ctx, tx, in); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM image_upload_grant WHERE expires_at<=now()`); err != nil {
-			return err
-		}
-		var userCount, total int
-		if err := tx.QueryRow(ctx, `SELECT count(*) FILTER(WHERE uploader_id=$2),count(*) FROM image_upload_grant WHERE workspace_id=$1`, in.WorkspaceID, in.ActorID).Scan(&userCount, &total); err != nil {
-			return err
-		}
-		if userCount >= 20 || total >= 100 {
-			return ErrRateLimited
-		}
-		issueID, milestoneID := imageTargetIDs(in)
-		return tx.QueryRow(ctx, `INSERT INTO image_upload_grant(workspace_id,issue_id,milestone_id,uploader_id,api_token_id,token_hash,filename,caption) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,expires_at`, in.WorkspaceID, issueID, milestoneID, in.ActorID, in.APITokenID, HashToken(out.UploadToken), in.Filename, in.Caption).Scan(&out.ID, &out.ExpiresAt)
-	})
-	return out, err
-}
-
-// Lookup rejects expired, consumed, revoked, demoted and cross-workspace grants
-// before the HTTP handler spends resources decoding an image. Consume checks
-// again under locks because these values may change while the body is read.
-func lookupImageGrant(ctx context.Context, q interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-}, slug string, id uuid.UUID, token string, lock bool) (ImageInput, error) {
-	var in ImageInput
-	var issue, milestone *uuid.UUID
-	query := `SELECT g.workspace_id,g.uploader_id,g.issue_id,g.milestone_id,g.api_token_id,g.filename,g.caption FROM image_upload_grant g JOIN workspace w ON w.id=g.workspace_id JOIN api_token t ON t.id=g.api_token_id AND t.user_id=g.uploader_id JOIN membership m ON m.workspace_id=g.workspace_id AND m.user_id=g.uploader_id WHERE w.slug=$1 AND g.id=$2 AND g.token_hash=$3 AND g.expires_at>clock_timestamp() AND m.role IN ('admin','member')`
-	if lock {
-		query += ` FOR UPDATE OF g`
-	}
-	err := q.QueryRow(ctx, query, slug, id, HashToken(token)).Scan(&in.WorkspaceID, &in.ActorID, &issue, &milestone, &in.APITokenID, &in.Filename, &in.Caption)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return in, ErrUploadCredential
-		}
-		return in, err
-	}
-	in.Source = "agent"
-	in.TargetType = "issue"
-	if issue != nil {
-		in.TargetID = *issue
-	} else {
-		in.TargetType = "milestone"
-		in.TargetID = *milestone
-	}
-	return in, nil
-}
-func (s *Store) LookupImageUpload(ctx context.Context, slug string, id uuid.UUID, token string) (ImageInput, error) {
-	return lookupImageGrant(ctx, s.pool, slug, id, token, false)
-}
-func (s *Store) ConsumeImageUpload(ctx context.Context, slug string, id uuid.UUID, token string, img imageupload.Image) (ImageAttachment, error) {
-	var out ImageAttachment
-	initial, err := s.LookupImageUpload(ctx, slug, id, token)
-	if err != nil {
-		return out, err
-	}
-	err = s.InTx(ctx, func(tx pgx.Tx) error {
-		if err := lockImageWorkspace(ctx, tx, initial.WorkspaceID); err != nil {
-			return err
-		}
-		// Token revocation locks the token before cascading to its grants.
-		// Take the same lock order, never hold a grant while waiting on a token.
-		if err := imageWriter(ctx, tx, initial); err != nil {
-			if errors.Is(err, ErrNotFound) || errors.Is(err, ErrForbidden) {
-				return ErrUploadCredential
-			}
-			return err
-		}
-		in, err := lookupImageGrant(ctx, tx, slug, id, token, true)
-		if err != nil {
-			return err
-		}
-		in.Image = img
-		out, err = insertImage(ctx, tx, in)
-		if err != nil {
-			return err
-		}
-		_, err = tx.Exec(ctx, `DELETE FROM image_upload_grant WHERE id=$1`, id)
-		return err
-	})
-	return out, err
 }
 
 // ImageProjectID reports which project an image's ticket or milestone belongs

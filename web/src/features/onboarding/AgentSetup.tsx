@@ -1,15 +1,15 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Button } from '../../ui/Button'
+import { RelativeTime } from '../../ui/RelativeTime'
 import { apiTokensQuery, type ApiToken } from '../profile/apiTokens'
-import { agentSnippets } from './agentSnippets'
 import { onboardingQuery } from './onboardingQuery'
 
 /**
- * The pieces shared by first-run onboarding and Profile > Agent config: a key
- * made for one agent setup, copyable values, per-agent setup tabs, and a live
- * status that confirms when that key first reaches Velvet.
+ * The pieces shared by first-run onboarding and Profile > Agent config:
+ * copyable values, tabbed instruction files, and the live list of
+ * repositories linked to an organisation with `velvet init`.
  */
 
 interface CopyTab {
@@ -72,17 +72,6 @@ function CopyTabs({ tabs, label, copyLabel, testId }: {
   )
 }
 
-export function AgentTabs({ baseUrl, slug, token }: { baseUrl: string; slug: string; token: string }) {
-  return (
-    <CopyTabs
-      tabs={agentSnippets(baseUrl, slug, token)}
-      label="Choose your agent"
-      copyLabel={(tab) => `${tab.label} setup`}
-      testId="agent-snippet"
-    />
-  )
-}
-
 export function RepoFileTabs({ files }: { files: { id: string; label: string; where: string; content: string }[] }) {
   return (
     <CopyTabs
@@ -94,30 +83,26 @@ export function RepoFileTabs({ files }: { files: { id: string; label: string; wh
   )
 }
 
-function usedAt(data: { tokens: ApiToken[] } | undefined, tokenId: string) {
-  return data?.tokens.find((token) => token.id === tokenId)?.last_used_at ?? null
+/** The keys `velvet init` made for one organisation, newest first. */
+function linkedKeys(tokens: ApiToken[] | undefined, slug: string): ApiToken[] {
+  return (tokens ?? [])
+    .filter((token) => token.workspace_slug === slug && token.project_key)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
 }
 
 /**
- * Watches one key until an agent first uses it, so the person sees the setup
- * worked without coming back to check. Watching the key rather than the
- * account means a second agent is not reported as connected by the first.
+ * The repositories linked to this organisation, kept live while the person
+ * runs `velvet init` in a terminal, so approving there shows up here without
+ * a reload. Polling stops once one has been used.
  */
-export function AgentConnection({
-  tokenId,
-  workspaceName,
-  connectedAction,
-}: {
-  tokenId: string
-  workspaceName: string
-  connectedAction?: ReactNode
-}) {
+export function LinkedRepositories({ slug, workspaceName }: { slug: string; workspaceName: string }) {
   const client = useQueryClient()
   const tokens = useQuery({
     ...apiTokensQuery,
-    refetchInterval: (query) => (usedAt(query.state.data, tokenId) ? false : 3000),
+    refetchInterval: (query) => (linkedKeys(query.state.data?.tokens, slug).some((t) => t.last_used_at) ? false : 3000),
   })
-  const connected = Boolean(usedAt(tokens.data, tokenId))
+  const linked = linkedKeys(tokens.data?.tokens, slug)
+  const connected = linked.some((token) => token.last_used_at)
 
   useEffect(() => {
     // The dashboard prompt reads the account-wide state, so refresh it once.
@@ -125,36 +110,41 @@ export function AgentConnection({
   }, [client, connected])
 
   return (
-    <>
-      <div
-        role="status"
-        aria-live="polite"
-        data-testid="agent-connection"
-        data-connected={connected ? 'true' : 'false'}
-        className={`flex items-start gap-3 rounded-[var(--radius-surface)] border p-4 text-sm ${connected ? 'border-done' : 'border-grey-200'}`}
-      >
-        <span
-          aria-hidden="true"
-          className={`mt-1.5 inline-block size-2 shrink-0 rounded-full ${connected ? 'bg-done' : 'animate-pulse bg-grey-500 motion-reduce:animate-none'}`}
-        />
-        {connected ? (
-          <div>
-            <p className="font-medium">Your agent is connected.</p>
-            <p className="mt-1 text-grey-700 [overflow-wrap:anywhere]">
-              Ask it to log what it just did, and the entry appears in {workspaceName}.
-            </p>
-          </div>
-        ) : (
-          <div>
-            <p className="font-medium">Waiting for your agent…</p>
-            <p className="mt-1 text-grey-700">
-              After pasting the setup, start your agent and ask it: “Which Velvet organisation are you connected to?”
-            </p>
-          </div>
-        )}
-      </div>
-      {connected ? connectedAction : null}
-    </>
+    <div
+      role="status"
+      aria-live="polite"
+      data-testid="agent-connection"
+      data-connected={connected ? 'true' : 'false'}
+      className={`flex items-start gap-3 rounded-[var(--radius-surface)] border p-4 text-sm ${connected ? 'border-done' : 'border-grey-200'}`}
+    >
+      <span
+        aria-hidden="true"
+        className={`mt-1.5 inline-block size-2 shrink-0 rounded-full ${connected ? 'bg-done' : linked.length ? 'bg-grey-500' : 'animate-pulse bg-grey-500 motion-reduce:animate-none'}`}
+      />
+      {linked.length === 0 ? (
+        <div>
+          <p className="font-medium">Waiting for velvet init…</p>
+          <p className="mt-1 text-grey-700">Run the link command in a repository and approve it in the browser tab it opens.</p>
+        </div>
+      ) : (
+        <div className="min-w-0">
+          <p className="font-medium">{connected ? 'Your agent is connected.' : 'Repository linked.'}</p>
+          <p className="mt-1 text-grey-700 [overflow-wrap:anywhere]">
+            {connected
+              ? `Ask it to log what it just did, and the entry appears in ${workspaceName}.`
+              : 'Run velvet whoami there to check it works.'}
+          </p>
+          <ul className="mt-2 space-y-1 text-xs text-grey-500" aria-label="Linked repositories">
+            {linked.map((token) => (
+              <li key={token.id} className="[overflow-wrap:anywhere]">
+                <span className="font-mono text-grey-700">{token.project_key}</span> · {token.name} ·{' '}
+                {token.last_used_at ? <>last used <RelativeTime iso={token.last_used_at} /></> : 'not used yet'}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
 

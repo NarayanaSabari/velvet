@@ -3,21 +3,18 @@ package api_test
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"image"
 	"image/jpeg"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/imageupload"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/testutil"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,82 +47,6 @@ func TestImageDeleteRechecksRoleAfterConcurrentDemotion(t *testing.T) {
 	require.Zero(t, n)
 }
 
-func TestImageConcurrentGrantConsumeExactlyOnce(t *testing.T) {
-	f := testutil.NewFixture(t)
-	issue := testutil.CreateIssue(t, f, "Consume race")
-	grant := imagePrepare(t, f, "/api/v1/w/lab/issues/"+issue.Key+"/images", f.AgentToken("race"))
-	img, err := imageupload.Sanitize(imagePNG(t))
-	require.NoError(t, err)
-	start := make(chan struct{})
-	results := make(chan error, 8)
-	for i := 0; i < 8; i++ {
-		go func() {
-			<-start
-			_, err := f.Store.ConsumeImageUpload(t.Context(), "lab", mustGrantID(t, grant.UploadURL), grant.UploadToken, img)
-			results <- err
-		}()
-	}
-	close(start)
-	successes := 0
-	for i := 0; i < 8; i++ {
-		err := <-results
-		if err == nil {
-			successes++
-		} else {
-			require.ErrorIs(t, err, store.ErrUploadCredential)
-		}
-	}
-	require.Equal(t, 1, successes)
-	var n int
-	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM image_attachment`).Scan(&n))
-	require.Equal(t, 1, n)
-	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM activity WHERE verb='attached_image'`).Scan(&n))
-	require.Equal(t, 1, n)
-}
-
-func mustGrantID(t *testing.T, url string) uuid.UUID {
-	t.Helper()
-	id, err := uuid.Parse(url[strings.LastIndex(url, "/")+1:])
-	require.NoError(t, err)
-	return id
-}
-
-func TestImageGrantOrganisationCapAndTenMinuteExpiry(t *testing.T) {
-	f := testutil.NewFixture(t)
-	issue := testutil.CreateIssue(t, f, "Organisation cap")
-	var first store.ImageInput
-	for user := 0; user < 6; user++ {
-		actor, err := f.Store.UpsertUserByEmail(t.Context(), fmt.Sprintf("upload-%d@example.com", user))
-		require.NoError(t, err)
-		_, err = f.Pool.Exec(t.Context(), `INSERT INTO membership(workspace_id,user_id,role) VALUES($1,$2,'member')`, f.WorkspaceID, actor.ID)
-		require.NoError(t, err)
-		token, err := f.Store.CreateAPIToken(t.Context(), actor.ID, "cap")
-		require.NoError(t, err)
-		var tokenID uuid.UUID
-		require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT id FROM api_token WHERE token_hash=$1`, store.HashToken(token)).Scan(&tokenID))
-		in := store.ImageInput{WorkspaceID: f.WorkspaceID, ActorID: actor.ID, TargetType: "issue", TargetID: issue.ID, Filename: "a.png", Caption: "proof", Source: "agent", APITokenID: &tokenID}
-		if user == 0 {
-			first = in
-		}
-		if user == 5 {
-			_, err = f.Store.PrepareImageUpload(t.Context(), in)
-			require.ErrorIs(t, err, store.ErrRateLimited)
-			break
-		}
-		for i := 0; i < 20; i++ {
-			before := time.Now()
-			grant, err := f.Store.PrepareImageUpload(t.Context(), in)
-			require.NoError(t, err)
-			require.WithinDuration(t, before.Add(10*time.Minute), grant.ExpiresAt, 2*time.Second)
-		}
-	}
-	var n int
-	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM image_upload_grant`).Scan(&n))
-	require.Equal(t, 100, n)
-	_, err := f.Store.PrepareImageUpload(t.Context(), first)
-	require.ErrorIs(t, err, store.ErrRateLimited)
-}
-
 func TestImageRevokedMembershipAndTokenCannotRead(t *testing.T) {
 	f := testutil.NewFixture(t)
 	issue := testutil.CreateIssue(t, f, "Read revocation")
@@ -141,31 +62,6 @@ func TestImageRevokedMembershipAndTokenCannotRead(t *testing.T) {
 	for _, url := range []string{target, out.ContentURL, out.DownloadURL} {
 		require.Equal(t, 404, f.Do(http.MethodGet, url, nil).Code)
 	}
-}
-
-func TestImageMissingAndDuplicatedGrantHeadersRejected(t *testing.T) {
-	f := testutil.NewFixture(t)
-	issue := testutil.CreateIssue(t, f, "Credential shape")
-	g := imagePrepare(t, f, "/api/v1/w/lab/issues/"+issue.Key+"/images", f.AgentToken("headers"))
-	for _, kind := range []string{"missing", "duplicated", "oversized"} {
-		r := imageRequest(t, g.UploadURL, imagePNG(t), nil)
-		switch kind {
-		case "duplicated":
-			r.Header.Add("X-Velvet-Upload-Token", g.UploadToken)
-			r.Header.Add("X-Velvet-Upload-Token", g.UploadToken)
-		case "oversized":
-			r.Header.Set("X-Velvet-Upload-Token", strings.Repeat("x", 257))
-		}
-		rec := imageServe(f, r)
-		// A request with no custom credential is stopped by the browser CSRF
-		// boundary before reaching the credential handler.
-		if kind == "missing" {
-			require.Equal(t, 403, rec.Code)
-		} else {
-			require.Equal(t, 401, rec.Code)
-		}
-	}
-	require.Equal(t, 201, imageConsume(t, f, g).Code)
 }
 
 func TestImageCountCapsSerializeAndDuplicateRetriesRemainFree(t *testing.T) {

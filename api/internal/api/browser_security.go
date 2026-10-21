@@ -20,7 +20,7 @@ func (s *Server) browserMutations(next http.Handler) http.Handler {
 		// An explicit bearer credential is not sent automatically by a browser,
 		// so it is not vulnerable to cookie CSRF. This middleware is browser-only,
 		// so bearer requests skip both its Origin and browser content-type checks.
-		if bearerRequest(r) || imageGrantRequest(r) || cliDeviceRequest(r) {
+		if bearerRequest(r) || cliDeviceRequest(r) {
 			next.ServeHTTP(w, r)
 			return
 		}

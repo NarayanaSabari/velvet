@@ -44,7 +44,7 @@ test('profile sections support legacy links, direct URLs, back and keyboard navi
 
   await page.goto(`${base}?linked=1#agent-config`)
   await expect(page).toHaveURL(`${base}/agent-config?linked=1`)
-  await expect(page.getByTestId('agent-mcp-url')).toBeVisible()
+  await expect(page.getByTestId('repo-setup')).toBeVisible()
   await page.goto(`${base}/unknown`)
   await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible()
 })
@@ -71,27 +71,6 @@ test('leaving token setup never reveals the key again and revocation stays expli
     await page.getByRole('button', { name: `Revoke ${name}`, exact: true }).click()
     await page.getByRole('button', { name: 'Confirm revoke' }).click()
     await expect(page.getByText(name, { exact: true })).toHaveCount(0)
-  } finally {
-    await request.delete(`/api/v1/me/tokens/${token.id}`)
-  }
-})
-
-test('agent keys disappear on back and forward without Done, and remain listed as metadata', async ({ signedIn: page, request }) => {
-  await page.goto(`${base}/agent-config`)
-  const created = page.waitForResponse((response) => response.url().endsWith('/me/tokens') && response.request().method() === 'POST')
-  await page.getByRole('button', { name: /Set up (an|another) agent/ }).click()
-  const token = await (await created).json() as { id: string; name: string }
-  try {
-    await expect(page.getByTestId('agent-token')).toBeVisible()
-    await page.getByRole('navigation', { name: 'Profile sections' }).getByRole('link', { name: 'API tokens', exact: true }).click()
-    await expect(page.getByText(token.name, { exact: true })).toBeVisible()
-    await page.goBack()
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Agent config')
-    await expect(page.getByTestId('agent-token')).toHaveCount(0)
-    await expect(page.getByTestId('agent-snippet')).toHaveCount(0)
-    await page.goForward()
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('API tokens')
-    await expect(page.getByText('Token created', { exact: true })).toHaveCount(0)
   } finally {
     await request.delete(`/api/v1/me/tokens/${token.id}`)
   }
@@ -162,7 +141,7 @@ for (const width of [1280, 390, 1720]) {
         await page.goto(`${base}/${path}`)
         await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
         if (path === 'tokens') await expect(page.getByLabel('Token name')).toBeVisible()
-        if (path === 'agent-config') await expect(page.getByTestId('agent-config-status')).not.toContainText('Checking')
+        if (path === 'agent-config') await expect(page.getByTestId('repo-setup').getByText('Loading projects…')).toHaveCount(0)
         const nav = page.getByRole('navigation', { name: 'Profile sections' })
         for (const [, label] of sections) await expect(nav.getByRole('link', { name: label, exact: true })).toBeInViewport()
         expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)

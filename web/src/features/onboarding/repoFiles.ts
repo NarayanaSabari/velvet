@@ -1,14 +1,9 @@
 /**
- * The per-repository half of an agent's instructions. The hosted MCP endpoint
- * cannot see which checkout an agent is in, so the repository names its own
- * Velvet project in a file every major agent already reads. The block holds
- * no secret, so it is safe to commit and shares one setup with the whole team.
+ * The per-repository setup. `velvet init` links a checkout to one project and
+ * writes velvet.yaml; this block tells agents to use the CLI there. It names
+ * no organisation, project, or key, because velvet.yaml and the server's
+ * scoped key already decide those, so the same block suits every repository.
  */
-
-export interface RepoProject {
-  key: string
-  name: string
-}
 
 export type RepoFileId = 'agents' | 'claude' | 'cursor'
 
@@ -24,6 +19,17 @@ export function projectKeyFrom(name: string): string {
     .replace(/-+$/, '')
 }
 
+/** The one-line installer, served by this Velvet server. */
+export function installCommand(baseUrl: string): string {
+  const origin = baseUrl.replace(/\/+$/, '')
+  return `curl -fsSL ${origin}/install.sh | VELVET_SERVER=${origin} sh`
+}
+
+/** What to run in the repository, the first time on each machine. */
+export function initCommand(baseUrl: string): string {
+  return `velvet init --server ${baseUrl.replace(/\/+$/, '')}`
+}
+
 export interface RepoFile {
   id: RepoFileId
   label: string
@@ -32,36 +38,25 @@ export interface RepoFile {
   content: string
 }
 
-export function repoInstructions({
-  workspaceName,
-  workspaceSlug,
-  issuePrefix,
-  project,
-}: {
-  workspaceName: string
-  workspaceSlug: string
-  issuePrefix: string
-  project: RepoProject
-}): string {
+export function repoInstructions(): string {
   return [
     '## Velvet work log',
     '',
-    `This repository logs work to the Velvet project \`${project.key}\` (${project.name}) in the ${workspaceName} organisation (\`${workspaceSlug}\`), through the \`velvet\` MCP server.`,
+    'This repository logs work to Velvet with the `velvet` CLI. `velvet.yaml` names the project, and the key `velvet init` stored on this machine can reach only that project.',
     '',
-    '- After each meaningful unit of work, record a factual 1-3 sentence entry with `velvet_log_work`.',
-    `- If the current branch names a ticket such as \`${issuePrefix}-42\`, pass the branch to \`velvet_current_ticket\` and log against that ticket.`,
-    `- Otherwise log against the project: \`velvet_log_work\` with \`project: "${project.key}"\`. Never skip logging because no ticket exists.`,
-    `- File new tickets for this repository under \`project: "${project.key}"\`.`,
-    `- If the \`velvet\` server is connected to an organisation other than \`${workspaceSlug}\`, say so instead of logging there.`,
-    '- Attach important relevant user-provided images to an explicit ticket or milestone and explain their relevance in the caption. Use hosted `velvet_prepare_image_upload` followed by a multipart file transfer using its short-lived `X-Velvet-Upload-Token`, without cookies or Authorization, or `velvet upload-image` from a terminal. Hosted MCP cannot see local files.',
-    '- If no actual image file is available, ask for it instead of claiming an upload. Never scan arbitrary paths, fetch arbitrary remote images, send image base64 through model output, attach unrelated sensitive material, or change status because of an upload.',
-    '- Never change a ticket status unless asked, and never invent time spent.',
+    '- After each meaningful unit of work, log a factual 1-3 sentence entry: `velvet log KEY "what changed and why"` when the branch names a ticket (`velvet key-from-branch` prints it), otherwise `velvet log "..."` for the project. Never skip logging because no ticket exists.',
+    '- Put `--kind decision`, `--kind blocker`, or `--kind note` before the message when that fits better than progress, for example `velvet log KEY --kind decision "..."`.',
+    '- Attach a pull request or commit with `velvet attach KEY REFERENCE`.',
+    '- File new tickets with `velvet new "title"`. Read one with `velvet issue KEY`, and list them with `velvet issues`.',
+    '- Attach a user-provided image with `velvet upload-image KEY PATH --caption "why it matters"`. If no image file exists, ask for it instead of claiming an upload.',
+    '- If a command says the repository is not linked or the key is missing, ask the person to run `velvet init`. Never edit `velvet.yaml` to reach another project.',
+    '- Never change a ticket status unless asked (`velvet status KEY STATUS`), and never invent time spent.',
     '',
   ].join('\n')
 }
 
-export function repoFiles(input: Parameters<typeof repoInstructions>[0]): RepoFile[] {
-  const block = repoInstructions(input)
+export function repoFiles(): RepoFile[] {
+  const block = repoInstructions()
   return [
     {
       id: 'agents',

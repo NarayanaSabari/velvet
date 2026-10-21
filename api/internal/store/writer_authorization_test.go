@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/imageupload"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/testutil"
 )
@@ -105,8 +104,8 @@ func TestUserWritersRejectRevokedAndNilActors(t *testing.T) {
 			return e
 		}},
 		{"image/delete", func(a uuid.UUID) error { return f.Store.DeleteImage(ctx, ws, uuid.New(), a) }},
-		{"image/prepare", func(a uuid.UUID) error {
-			_, e := f.Store.PrepareImageUpload(ctx, store.ImageInput{WorkspaceID: ws, ActorID: a, TargetType: "issue", TargetID: issue.ID, APITokenID: &repoID})
+		{"image/create-with-key", func(a uuid.UUID) error {
+			_, e := f.Store.CreateImage(ctx, store.ImageInput{WorkspaceID: ws, ActorID: a, TargetType: "issue", TargetID: issue.ID, APITokenID: &repoID})
 			return e
 		}},
 		{"evidence/unlink", func(a uuid.UUID) error { return f.Store.Unlink(ctx, ws, issue.ID, pr.ID, a) }},
@@ -235,35 +234,4 @@ func TestWriterLockSerializesAdminRevocation(t *testing.T) {
 	}
 	require.NoError(t, tx.Commit(ctx))
 	require.NoError(t, <-done)
-}
-
-func TestImageConsumeRejectsRevokedWriter(t *testing.T) {
-	for _, revoke := range []string{"demotion", "removal"} {
-		t.Run(revoke, func(t *testing.T) {
-			f := testutil.NewFixture(t)
-			ctx := t.Context()
-			issue := testutil.CreateIssue(t, f, "Image")
-			actor, err := f.Store.UpsertUserByEmail(ctx, "image-writer@example.com")
-			require.NoError(t, err)
-			var membershipID uuid.UUID
-			require.NoError(t, f.Pool.QueryRow(ctx, `INSERT INTO membership(workspace_id,user_id,role) VALUES($1,$2,'member') RETURNING id`, f.WorkspaceID, actor.ID).Scan(&membershipID))
-			_, err = f.Store.CreateAPIToken(ctx, actor.ID, "upload")
-			require.NoError(t, err)
-			var tokenID uuid.UUID
-			require.NoError(t, f.Pool.QueryRow(ctx, `SELECT id FROM api_token WHERE user_id=$1`, actor.ID).Scan(&tokenID))
-			grant, err := f.Store.PrepareImageUpload(ctx, store.ImageInput{WorkspaceID: f.WorkspaceID, ActorID: actor.ID, APITokenID: &tokenID, TargetType: "issue", TargetID: issue.ID, Filename: "image.png", Caption: "Proof"})
-			require.NoError(t, err)
-			if revoke == "demotion" {
-				_, err = f.Store.UpdateWorkspaceMembershipRole(ctx, f.WorkspaceID, membershipID, f.User.ID, "viewer")
-			} else {
-				err = f.Store.RemoveWorkspaceMembership(ctx, f.WorkspaceID, membershipID, f.User.ID)
-			}
-			require.NoError(t, err)
-			_, err = f.Store.ConsumeImageUpload(ctx, "lab", grant.ID, grant.UploadToken, imageupload.Image{})
-			require.ErrorIs(t, err, store.ErrUploadCredential)
-			var count int
-			require.NoError(t, f.Pool.QueryRow(ctx, `SELECT count(*) FROM image_attachment WHERE workspace_id=$1`, f.WorkspaceID).Scan(&count))
-			require.Zero(t, count)
-		})
-	}
 }
