@@ -14,6 +14,22 @@ func (s *Server) registerAPITokenRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/v1/me/tokens", s.RequireAuth(http.HandlerFunc(s.handleListAPITokens)))
 	mux.Handle("POST /api/v1/me/tokens", s.RequireAuth(http.HandlerFunc(s.handleCreateAPIToken)))
 	mux.Handle("DELETE /api/v1/me/tokens/{id}", s.RequireAuth(http.HandlerFunc(s.handleDeleteAPIToken)))
+	// The key that authenticated the request revokes itself. This is how
+	// `velvet logout` cleans up without a browser session.
+	mux.Handle("DELETE /api/v1/me/token", s.RequireAuth(http.HandlerFunc(s.handleRevokeOwnToken)))
+}
+
+func (s *Server) handleRevokeOwnToken(w http.ResponseWriter, r *http.Request) {
+	id := currentAPIToken(r.Context())
+	if id == nil {
+		WriteError(w, http.StatusBadRequest, "invalid_request", "only an API key can revoke itself")
+		return
+	}
+	if err := s.store.RevokeAPITokenByID(r.Context(), *id); err != nil {
+		WriteError(w, http.StatusInternalServerError, "internal", "could not revoke the key")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func requireCookieAuthentication(w http.ResponseWriter, r *http.Request) bool {

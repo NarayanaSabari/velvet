@@ -2,7 +2,6 @@ package api_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"image"
 	"image/png"
 	"mime/multipart"
@@ -11,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/auth"
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/imageupload"
@@ -62,23 +60,6 @@ func imageUpload(t *testing.T, f *testutil.Fixture, url, caption string) store.I
 	f.DecodeInto(rec, &out)
 	return out
 }
-func imagePrepare(t *testing.T, f *testutil.Fixture, target, token string) store.ImageGrant {
-	t.Helper()
-	rec := f.DoAsAgent(http.MethodPost, target+"/uploads", token, map[string]string{"filename": "agent.png", "caption": "proof"})
-	require.Equal(t, 201, rec.Code, rec.Body.String())
-	var g store.ImageGrant
-	f.DecodeInto(rec, &g)
-	require.True(t, g.ExpiresAt.After(time.Now()))
-	require.Equal(t, imageupload.MaxBytes, g.MaxBytes)
-	return g
-}
-func imageConsume(t *testing.T, f *testutil.Fixture, g store.ImageGrant) *httptest.ResponseRecorder {
-	t.Helper()
-	r := imageRequest(t, g.UploadURL, imagePNG(t), nil)
-	r.Header.Set("X-Velvet-Upload-Token", g.UploadToken)
-	return imageServe(f, r)
-}
-
 func TestImageRESTLifecycleAndPermissions(t *testing.T) {
 	f := testutil.NewFixture(t)
 	issue := testutil.CreateIssue(t, f, "Images")
@@ -170,99 +151,6 @@ func TestImageInputLimitsAndBrowserCSRF(t *testing.T) {
 	require.NotNil(t, tokenID)
 }
 
-func TestImageGrantSingleUseRevocationExpiryAndCleanup(t *testing.T) {
-	for _, kind := range []string{"consume", "revoked", "expired", "demoted", "removed", "wrong-token", "cross-org", "cookies", "Authorization"} {
-		t.Run(kind, func(t *testing.T) {
-			f := testutil.NewFixture(t)
-			issue := testutil.CreateIssue(t, f, "Grant")
-			target := "/api/v1/w/lab/issues/" + issue.Key + "/images"
-			token := f.AgentToken("grant-agent")
-			g := imagePrepare(t, f, target, token)
-			var hash string
-			require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT token_hash FROM image_upload_grant`).Scan(&hash))
-			require.Equal(t, store.HashToken(g.UploadToken), hash)
-			require.NotEqual(t, g.UploadToken, hash)
-			switch kind {
-			case "revoked":
-				_, err := f.Pool.Exec(t.Context(), `DELETE FROM api_token WHERE token_hash=$1`, store.HashToken(token))
-				require.NoError(t, err)
-			case "expired":
-				_, err := f.Pool.Exec(t.Context(), `UPDATE image_upload_grant SET expires_at=now()-interval '1 second'`)
-				require.NoError(t, err)
-			case "demoted":
-				_, err := f.Pool.Exec(t.Context(), `UPDATE membership SET role='viewer' WHERE workspace_id=$1 AND user_id=$2`, f.WorkspaceID, f.User.ID)
-				require.NoError(t, err)
-			case "removed":
-				_, err := f.Pool.Exec(t.Context(), `DELETE FROM membership WHERE workspace_id=$1 AND user_id=$2`, f.WorkspaceID, f.User.ID)
-				require.NoError(t, err)
-			case "wrong-token":
-				g.UploadToken = "incorrect"
-			case "cross-org":
-				g.UploadURL = strings.Replace(g.UploadURL, "/w/lab/", "/w/foreign/", 1)
-			}
-			r := imageRequest(t, g.UploadURL, imagePNG(t), nil)
-			r.Header.Set("X-Velvet-Upload-Token", g.UploadToken)
-			if kind == "cookies" {
-				r.AddCookie(&http.Cookie{Name: auth.CookieName, Value: f.Token})
-			}
-			if kind == "Authorization" {
-				r.Header.Set("Authorization", "Bearer "+token)
-			}
-			rec := imageServe(f, r)
-			if kind != "consume" {
-				require.Equal(t, 401, rec.Code, rec.Body.String())
-				return
-			}
-			require.Equal(t, 201, rec.Code, rec.Body.String())
-			var out store.ImageAttachment
-			f.DecodeInto(rec, &out)
-			require.Equal(t, "agent", out.Source)
-			require.Equal(t, "agent.png", out.Filename)
-			require.Equal(t, "proof", out.Caption)
-			require.Equal(t, 401, imageConsume(t, f, g).Code)
-			var n int
-			require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM image_upload_grant`).Scan(&n))
-			require.Zero(t, n)
-			var source, tokenName string
-			require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT i.source,t.name FROM image_attachment i JOIN api_token t ON t.id=i.api_token_id`).Scan(&source, &tokenName))
-			require.Equal(t, "agent", source)
-			require.Equal(t, "grant-agent", tokenName)
-			next := imagePrepare(t, f, target, token)
-			second := imageConsume(t, f, next)
-			require.Equal(t, 201, second.Code)
-			var retry store.ImageAttachment
-			f.DecodeInto(second, &retry)
-			require.Equal(t, out.ID, retry.ID)
-			require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM activity WHERE verb='attached_image'`).Scan(&n))
-			require.Equal(t, 1, n)
-		})
-	}
-}
-
-func TestImageGrantBoundedAndInvalidBodyDoesNotConsume(t *testing.T) {
-	f := testutil.NewFixture(t)
-	issue := testutil.CreateIssue(t, f, "Grant bounds")
-	target := "/api/v1/w/lab/issues/" + issue.Key + "/images"
-	token := f.AgentToken("bounds")
-	g := imagePrepare(t, f, target, token)
-	r := imageRequest(t, g.UploadURL, []byte("not an image"), nil)
-	r.Header.Set("X-Velvet-Upload-Token", g.UploadToken)
-	require.Equal(t, 400, imageServe(f, r).Code)
-	require.Equal(t, 201, imageConsume(t, f, g).Code)
-	for i := 0; i < 20; i++ {
-		imagePrepare(t, f, target, token)
-	}
-	rec := f.DoAsAgent(http.MethodPost, target+"/uploads", token, map[string]string{"filename": "a.png", "caption": "x"})
-	require.Equal(t, 429, rec.Code)
-	_, err := f.Pool.Exec(t.Context(), `UPDATE image_upload_grant SET expires_at=now()-interval '1 second'`)
-	require.NoError(t, err)
-	imagePrepare(t, f, target, token)
-	var n int
-	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM image_upload_grant`).Scan(&n))
-	require.Equal(t, 1, n)
-	require.Equal(t, 403, f.Do(http.MethodPost, target+"/uploads", map[string]string{"filename": "a.png", "caption": "browser"}).Code)
-}
-
 func TestImageMilestoneCrossWorkspaceAndCascade(t *testing.T) {
 	f := testutil.NewFixture(t)
 	sprint := newSprint(t, f)
@@ -282,13 +170,11 @@ func TestImageMilestoneCrossWorkspaceAndCascade(t *testing.T) {
 	require.Equal(t, 404, imageServe(f, r).Code)
 	require.Equal(t, 404, f.Do(http.MethodGet, strings.Replace(out.ContentURL, "/lab/", "/foreign/", 1), nil).Code)
 	require.Equal(t, 404, f.Do(http.MethodDelete, "/api/v1/w/foreign/images/"+out.ID.String(), nil).Code)
-	g := imagePrepare(t, f, target, f.AgentToken("cascade"))
-	require.NotEmpty(t, g.UploadToken)
 	_, err = f.Pool.Exec(t.Context(), `DELETE FROM milestone WHERE id=$1`, m.ID)
 	require.NoError(t, err)
 	require.Equal(t, 404, f.Do(http.MethodGet, out.ContentURL, nil).Code)
 	var n int
-	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM image_upload_grant`).Scan(&n))
+	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM image_attachment WHERE id=$1`, out.ID).Scan(&n))
 	require.Zero(t, n)
 }
 
@@ -327,46 +213,6 @@ func TestImageConcurrentDuplicateRetries(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM image_attachment`).Scan(&n))
 	require.Zero(t, n)
-}
-
-func TestImageHostedMCPPreparesAndListsOnlyLinks(t *testing.T) {
-	f := testutil.NewFixture(t)
-	issue := testutil.CreateIssue(t, f, "Hosted images")
-	token := f.AgentToken("hosted-image")
-	session := connectMCP(t, f, "lab", token)
-	text, isErr := callTool(t, session, "velvet_prepare_image_upload", map[string]any{"key": issue.Key, "filename": "hosted.png", "caption": "agent proof"})
-	require.False(t, isErr, text)
-	var grant store.ImageGrant
-	require.NoError(t, json.Unmarshal([]byte(text), &grant))
-	require.True(t, strings.HasPrefix(grant.UploadURL, "http://localhost:8080/api/v1/"))
-	grant.UploadURL = strings.TrimPrefix(grant.UploadURL, "http://localhost:8080")
-	require.Equal(t, 201, imageConsume(t, f, grant).Code)
-	text, isErr = callTool(t, session, "velvet_list_images", map[string]any{"key": issue.Key})
-	require.False(t, isErr, text)
-	var listed struct {
-		Images []store.ImageAttachment `json:"images"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(text), &listed))
-	require.Len(t, listed.Images, 1)
-	require.Equal(t, "agent proof", listed.Images[0].Caption)
-	require.NotContains(t, text, "base64")
-	require.NotContains(t, text, "data:")
-	require.Contains(t, text, "http://localhost:8080/api/v1/w/lab/images/")
-	_, isErr = callTool(t, session, "velvet_prepare_image_upload", map[string]any{"key": issue.Key, "filename": "/local/file.png", "caption": "local path"})
-	require.True(t, isErr)
-	_, isErr = callTool(t, session, "velvet_list_images", map[string]any{"key": issue.Key, "milestone_id": uuid.NewString()})
-	require.True(t, isErr)
-	for _, args := range []map[string]any{
-		{"filename": "a.png", "caption": "missing target"},
-		{"key": issue.Key, "milestone_id": uuid.NewString(), "filename": "a.png", "caption": "two targets"},
-		{"milestone_id": "not-a-uuid", "filename": "a.png", "caption": "invalid target"},
-		{"key": issue.Key, "filename": `C:\local\a.png`, "caption": "path"},
-		{"key": issue.Key, "filename": "https://example.com/a.png", "caption": "url"},
-		{"key": issue.Key, "filename": "a.png", "caption": "binary", "image_base64": "iVBORw0KGgo="},
-	} {
-		text, isErr = callTool(t, session, "velvet_prepare_image_upload", args)
-		require.True(t, isErr, text)
-	}
 }
 
 func TestImageLongUnicodeCaptionIsValidAndDeduplicated(t *testing.T) {
@@ -424,23 +270,25 @@ func TestImageQuotaSerializesConcurrentUploadsAndDeletionReclaimsBytes(t *testin
 	require.NoError(t, err)
 }
 
-func TestImageActivityFailureRollsBackBytesAndGrantConsumption(t *testing.T) {
+func TestImageActivityFailureRollsBackBytes(t *testing.T) {
 	f := testutil.NewFixture(t)
 	issue := testutil.CreateIssue(t, f, "Atomic images")
 	target := "/api/v1/w/lab/issues/" + issue.Key + "/images"
-	grant := imagePrepare(t, f, target, f.AgentToken("atomic"))
+	upload := func() int {
+		r := imageRequest(t, target, imagePNG(t), ptrImage("proof"))
+		imageCookie(f, r)
+		return imageServe(f, r).Code
+	}
 	_, err := f.Pool.Exec(t.Context(), `CREATE FUNCTION reject_image_activity() RETURNS trigger AS $$ BEGIN IF NEW.verb='attached_image' THEN RAISE EXCEPTION 'test audit failure'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql;
 	 CREATE TRIGGER reject_image_activity BEFORE INSERT ON activity FOR EACH ROW EXECUTE FUNCTION reject_image_activity()`)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusInternalServerError, imageConsume(t, f, grant).Code)
+	require.Equal(t, http.StatusInternalServerError, upload())
 	var n int
 	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM image_attachment`).Scan(&n))
 	require.Zero(t, n)
-	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM image_upload_grant`).Scan(&n))
-	require.Equal(t, 1, n)
 	_, err = f.Pool.Exec(t.Context(), `DROP TRIGGER reject_image_activity ON activity`)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusCreated, imageConsume(t, f, grant).Code)
+	require.Equal(t, http.StatusCreated, upload())
 	var status string
 	require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT status::text FROM issue WHERE id=$1`, issue.ID).Scan(&status))
 	require.Equal(t, "backlog", status)

@@ -80,6 +80,20 @@ func (s *Server) worklogEntries(w http.ResponseWriter, r *http.Request) ([]store
 	}
 
 	user, _ := CurrentUser(r.Context())
+	// A project-scoped key recaps only its own project, whatever it asked for.
+	if project, scoped := scopedProject(r); scoped {
+		slug, key, err := s.store.ScopeNames(r.Context(), *tokenScope(r).WorkspaceID, project)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "internal", "could not read the key's project")
+			return nil, false
+		}
+		if (filter.Workspace != "" && filter.Workspace != slug) ||
+			(filter.Project != "" && store.NormalizeProjectKey(filter.Project) != key) {
+			forbidScope(w, "this key can only recap its own project")
+			return nil, false
+		}
+		filter.Workspace, filter.Project = slug, key
+	}
 	entries, err := s.store.Worklog(r.Context(), user.ID, filter)
 	if err != nil {
 		if errors.Is(err, store.ErrInvalidCursor) {

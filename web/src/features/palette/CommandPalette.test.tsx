@@ -102,7 +102,7 @@ describe('CommandPalette', () => {
     const user = userEvent.setup()
     const { navigate } = renderPalette({ initialOpen: true })
 
-    await user.type(screen.getByTestId(COMMAND_PALETTE_TEST_IDS.input), 'mcp')
+    await user.type(screen.getByTestId(COMMAND_PALETTE_TEST_IDS.input), 'velvet init')
     expect(screen.getByRole('option', { name: /Agent config/ })).toBeInTheDocument()
     await user.keyboard('{Enter}')
     expect(navigate).toHaveBeenCalledWith('/w/lab/settings/profile/agent-config')

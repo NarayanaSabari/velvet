@@ -232,7 +232,8 @@ describe('Profile pages', () => {
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
   })
 
-  it.each(['tokens', 'agent-config'])('does not restore a pending %s key after leaving', async (page) => {
+  it('does not restore a pending token after leaving', async () => {
+    const page = 'tokens'
     const originalFetch = globalThis.fetch
     let resolveCreation!: (value: Response) => void
     let created = false
@@ -245,12 +246,8 @@ describe('Profile pages', () => {
     vi.stubGlobal('fetch', fetchMock)
     const router = show(`/w/first/settings/profile/${page}`)
     const user = userEvent.setup()
-    if (page === 'tokens') {
-      await user.type(await screen.findByLabelText('Token name'), 'Late key')
-      await user.click(screen.getByRole('button', { name: 'Create token' }))
-    } else {
-      await user.click(await screen.findByRole('button', { name: 'Set up an agent' }))
-    }
+    await user.type(await screen.findByLabelText('Token name'), 'Late key')
+    await user.click(screen.getByRole('button', { name: 'Create token' }))
     await user.click(within(screen.getByRole('navigation', { name: 'Profile sections' })).getByRole('link', { name: 'General' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'General' })).toBeInTheDocument()
     await act(async () => {
@@ -258,11 +255,9 @@ describe('Profile pages', () => {
       resolveCreation({ ok: true, status: 201, json: async () => token } as Response)
     })
     act(() => router.history.back())
-    expect(await screen.findByRole('heading', { level: 1, name: page === 'tokens' ? 'API tokens' : 'Agent config' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'API tokens' })).toBeInTheDocument()
     expect(screen.queryByText('velvet_late_secret')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('agent-snippet')).not.toBeInTheDocument()
     expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
-    if (page === 'agent-config') await user.click(within(screen.getByRole('navigation', { name: 'Profile sections' })).getByRole('link', { name: 'API tokens' }))
     expect(await screen.findByText('Late key')).toBeInTheDocument()
   })
 })

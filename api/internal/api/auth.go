@@ -139,6 +139,27 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not read membership")
 		return
 	}
+	// A project-scoped key learns only the one organisation and project it
+	// was minted for; the rest of the person's memberships stay private.
+	if scope := tokenScope(r); scope.Scoped() {
+		var own []store.Membership
+		for _, m := range memberships {
+			if m.WorkspaceID == *scope.WorkspaceID {
+				own = append(own, m)
+			}
+		}
+		slug, key, err := s.store.ScopeNames(r.Context(), *scope.WorkspaceID, *scope.ProjectID)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "internal", "could not read the key's project")
+			return
+		}
+		WriteJSON(w, http.StatusOK, map[string]any{
+			"user":        user,
+			"memberships": own,
+			"scope":       map[string]string{"workspace_slug": slug, "project_key": key},
+		})
+		return
+	}
 	var last *store.Membership
 	if session, ok := sessionTokenFromRequest(r); ok {
 		last, err = s.store.LastWorkspace(r.Context(), session)
@@ -159,9 +180,16 @@ func (s *Server) secureCookies() bool {
 }
 
 func (s *Server) RequireAuth(next http.Handler) http.Handler {
+	return s.requireAuth(next, true)
+}
+
+// requireAuth authenticates the caller. When checkScope is set, a scoped key
+// is held to its allowlist here; RequireWorkspace defers that check until it
+// has resolved the organisation, so the project checks can run.
+func (s *Server) requireAuth(next http.Handler, checkScope bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if token, ok := bearerTokenFromRequest(r); ok {
-			user, tokenID, err := s.store.LookupAPIToken(r.Context(), token)
+			user, tokenID, scope, err := s.store.LookupAPIToken(r.Context(), token)
 			if err != nil {
 				if errors.Is(err, store.ErrNotFound) {
 					WriteError(w, http.StatusUnauthorized, "unauthenticated", "sign-in required")
@@ -173,7 +201,12 @@ func (s *Server) RequireAuth(next http.Handler) http.Handler {
 			ctx := context.WithValue(r.Context(), userKey, user)
 			ctx = context.WithValue(ctx, authMethodKey, authMethodBearer)
 			ctx = context.WithValue(ctx, apiTokenKey, tokenID)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			ctx = context.WithValue(ctx, scopeKey, scope)
+			r = r.WithContext(ctx)
+			if checkScope && !s.enforceTokenScope(w, r) {
+				return
+			}
+			next.ServeHTTP(w, r)
 			return
 		}
 		c, err := r.Cookie(auth.CookieName)
@@ -199,11 +232,15 @@ func (s *Server) RequireAuth(next http.Handler) http.Handler {
 // RequireWorkspace resolves {slug} into a membership and rejects anyone who is
 // not a member. Every workspace-scoped route sits behind this.
 func (s *Server) RequireWorkspace(next http.Handler) http.Handler {
-	return s.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return s.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, _ := CurrentUser(r.Context())
 		m, err := s.store.MembershipForSlug(r.Context(), user.ID, r.PathValue("slug"))
 		if err != nil {
 			WriteError(w, http.StatusNotFound, "not_found", "no such workspace")
+			return
+		}
+		r = r.WithContext(context.WithValue(r.Context(), workspaceKey, m))
+		if !s.enforceTokenScope(w, r) {
 			return
 		}
 		remember := func() {}
@@ -217,11 +254,11 @@ func (s *Server) RequireWorkspace(next http.Handler) http.Handler {
 			}
 		}
 		response := &workspaceResponseWriter{ResponseWriter: w, remember: remember}
-		next.ServeHTTP(response, r.WithContext(context.WithValue(r.Context(), workspaceKey, m)))
+		next.ServeHTTP(response, r)
 		if !response.wroteHeader {
 			response.WriteHeader(http.StatusOK)
 		}
-	}))
+	}), false)
 }
 
 // Remember at the first successful response, including an SSE connection's

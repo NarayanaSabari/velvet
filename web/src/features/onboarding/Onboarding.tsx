@@ -6,19 +6,16 @@ import { api, ApiError } from '../../lib/api'
 import type { Invitation, Membership } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
-import { buttonClassName } from '../../ui/buttonStyles'
 import { PublicAuthPage } from '../auth/PublicAuthPage'
 import { SignIn } from '../auth/SignIn'
 import { SignOutButton } from '../auth/SignOutButton'
 import { navigateTo } from '../auth/sessionNavigation'
 import { useSession } from '../auth/useSession'
-import { apiTokensQuery, createAgentToken, type CreatedApiToken } from '../profile/apiTokens'
-import { AgentConnection, AgentTabs, CopyField } from './AgentSetup'
-import { mcpUrl } from './agentSnippets'
+import { LinkedRepositories } from './AgentSetup'
 import { onboardingQuery, type OnboardingPayload } from './onboardingQuery'
-import { RepoInstructions } from './RepoInstructions'
+import { RepoSetup } from './RepoSetup'
 
-const STEPS = ['Organisation', 'API key', 'Connect agent'] as const
+const STEPS = ['Organisation', 'Connect agent'] as const
 const inputClass = 'mt-1 block min-h-12 w-full rounded-[var(--radius-control)] border border-grey-300 bg-paper px-3 py-2'
 
 /**
@@ -34,7 +31,6 @@ export function Onboarding({ navigate = navigateTo }: { navigate?: (to: string) 
   // The organisation the agent will write to: the one just created, or the
   // person's first when they return after creating it.
   const [created, setCreated] = useState<Membership | null>(null)
-  const [token, setToken] = useState<CreatedApiToken | null>(null)
   const workspace = created ?? session.memberships[0] ?? null
 
   const layout = (children: ReactNode) => (
@@ -53,19 +49,19 @@ export function Onboarding({ navigate = navigateTo }: { navigate?: (to: string) 
     </div>)
   }
 
-  const { state, suggestion, base_url: baseUrl } = onboarding.data
-  const step = !workspace ? 0 : !token ? 1 : 2
+  const { suggestion, base_url: baseUrl } = onboarding.data
+  const step = !workspace ? 0 : 1
 
   return layout(<>
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
         <p className="text-sm text-grey-700 [overflow-wrap:anywhere]">Signed in as {userLabel(session.user)}</p>
-        <p className="mt-1 text-sm text-grey-500">Three steps to let your coding agent keep your work log.</p>
+        <p className="mt-1 text-sm text-grey-500">Two steps to let your coding agent keep your work log.</p>
       </div>
       <SignOutButton publicStyle />
     </header>
 
-    <ol aria-label="Setup progress" className="grid grid-cols-3 gap-2" data-testid="onboarding-steps">
+    <ol aria-label="Setup progress" className="grid grid-cols-2 gap-2" data-testid="onboarding-steps">
       {STEPS.map((label, index) => (
         <li
           key={label}
@@ -90,26 +86,14 @@ export function Onboarding({ navigate = navigateTo }: { navigate?: (to: string) 
       />
     ) : null}
 
-    {step === 1 && workspace ? (
-      <TokenStep
-        workspace={workspace}
-        hasToken={state.has_token}
-        onCreated={setToken}
-      />
-    ) : null}
-
-    {step === 2 && workspace && token ? (
-      <ConnectStep baseUrl={baseUrl} workspace={workspace} token={token} />
-    ) : null}
+    {step === 1 && workspace ? <ConnectStep baseUrl={baseUrl} workspace={workspace} /> : null}
 
     {workspace ? (
       <div className="border-t border-grey-200 pt-4 text-sm">
         <NavLink to={`/w/${workspace.workspace_slug}`} className="underline underline-offset-4">
-          {step === 2 ? 'Go to your dashboard' : 'Skip for now and go to your dashboard'}
+          Go to your dashboard
         </NavLink>
-        {step < 2 ? (
-          <p className="mt-2 text-xs text-grey-500">You can connect an agent later from Profile, under Agent config.</p>
-        ) : null}
+        <p className="mt-2 text-xs text-grey-500">You can connect more repositories later from Profile, under Agent config.</p>
       </div>
     ) : null}
   </>)
@@ -243,78 +227,20 @@ function OrganisationStep({
   )
 }
 
-function TokenStep({
-  workspace,
-  hasToken,
-  onCreated,
-}: {
-  workspace: Membership
-  hasToken: boolean
-  onCreated: (token: CreatedApiToken) => void
-}) {
-  const headingId = useId()
-  const client = useQueryClient()
-  const create = useMutation({
-    mutationFn: createAgentToken,
-    onSuccess: async (token) => {
-      onCreated(token)
-      await client.invalidateQueries({ queryKey: apiTokensQuery.queryKey })
-    },
-  })
-
-  return (
-    <section aria-labelledby={headingId} className="space-y-4">
-      <div>
-        <h2 id={headingId} className="text-base font-medium">Create an API key for your agent</h2>
-        <p className="mt-1 text-sm text-grey-700 [overflow-wrap:anywhere]">
-          <span className="font-medium text-ink">{workspace.workspace_name}</span> is ready. Your agent signs in to
-          Velvet with a personal API key. It can do what you can, and nothing else.
-        </p>
-        {hasToken ? (
-          <p className="mt-2 text-sm text-grey-500">
-            You already have a key, but it is only shown when it is created, so make a new one for this setup.
-          </p>
-        ) : null}
-      </div>
-      <Button className="min-h-12 px-4" variant="primary" disabled={create.isPending} onClick={() => create.mutate()}>
-        {create.isPending ? 'Creating key…' : 'Create API key'}
-      </Button>
-      {create.error ? <p role="alert" className="text-sm text-blocked">{create.error.message}</p> : null}
-    </section>
-  )
-}
-
-function ConnectStep({ baseUrl, workspace, token }: { baseUrl: string; workspace: Membership; token: CreatedApiToken }) {
+function ConnectStep({ baseUrl, workspace }: { baseUrl: string; workspace: Membership }) {
   const headingId = useId()
 
   return (
     <section aria-labelledby={headingId} className="space-y-5">
       <div>
         <h2 id={headingId} className="text-base font-medium">Connect your coding agent</h2>
-        <p className="mt-1 text-sm text-grey-700">
-          Copy your key now. It will not be shown again, but you can always create another in Profile, under Agent config.
+        <p className="mt-1 text-sm text-grey-700 [overflow-wrap:anywhere]">
+          <span className="font-medium text-ink">{workspace.workspace_name}</span> is ready. Link a repository and your
+          agent logs work from it with the velvet command. The key stays on your machine and is never shown here.
         </p>
       </div>
-
-      <CopyField label="Your API key" value={token.token} testId="agent-token" />
-      <CopyField label="MCP server URL" value={mcpUrl(baseUrl, workspace.workspace_slug)} testId="agent-mcp-url" />
-      <AgentTabs baseUrl={baseUrl} slug={workspace.workspace_slug} token={token.token} />
-      <AgentConnection
-        tokenId={token.id}
-        workspaceName={workspace.workspace_name}
-        connectedAction={
-          <>
-            {/* Once connected, the last piece is telling the agent which
-                project a repository is, so its work lands in the right place. */}
-            <div className="border-t border-grey-200 pt-5">
-              <RepoInstructions workspace={workspace} />
-            </div>
-            <NavLink to={`/w/${workspace.workspace_slug}`} className={buttonClassName('primary', 'inline-flex min-h-12 items-center px-4 no-underline')}>
-              Go to your dashboard
-            </NavLink>
-          </>
-        }
-      />
+      <RepoSetup workspace={workspace} baseUrl={baseUrl} />
+      <LinkedRepositories slug={workspace.workspace_slug} workspaceName={workspace.workspace_name} />
     </section>
   )
 }

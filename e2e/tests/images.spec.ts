@@ -1,10 +1,9 @@
-import { test, expect, type APIRequestContext, type Page, type PlaywrightWorkerArgs } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { createHash, randomBytes } from 'node:crypto'
-import { execFile } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { promisify } from 'node:util'
 import { sql } from './fixtures'
+import { linkedRepo } from './velvet-cli'
 
 const suffix = randomBytes(4).toString('hex')
 const slug = `images-${suffix}`
@@ -24,13 +23,6 @@ interface ImageAttachment {
   download_url: string
 }
 
-interface UploadGrant {
-  upload_url: string
-  upload_token: string
-  expires_at: string
-  max_bytes: number
-}
-
 // This spec never touches production or other specs' mutable Lab data.
 test.beforeAll(() => {
   sql(`
@@ -48,8 +40,9 @@ test.beforeAll(() => {
       SELECT workspace_id, id, 'Image acceptance', '2026-10-01', '2026-10-31' FROM project WHERE workspace_id = (SELECT id FROM workspace WHERE slug = '${slug}');
     INSERT INTO milestone (workspace_id, sprint_id, name, position)
       SELECT workspace_id, id, 'Sign-in requirements', 'a' FROM sprint WHERE workspace_id = (SELECT id FROM workspace WHERE slug = '${slug}');
-    INSERT INTO issue (workspace_id, key, number, title, position, created_by)
-      SELECT w.id, 'IMG-1', 1, 'Keep the sign-in error visible', 'a', u.id FROM workspace w, app_user u WHERE w.slug = '${slug}' AND u.email = '${email}';
+    INSERT INTO issue (workspace_id, key, number, title, position, created_by, project_id)
+      SELECT w.id, 'IMG-1', 1, 'Keep the sign-in error visible', 'a', u.id, p.id FROM workspace w JOIN project p ON p.workspace_id = w.id, app_user u
+      WHERE w.slug = '${slug}' AND p.key = 'portal' AND u.email = '${email}';
   `)
   milestoneID = sql(`SELECT id FROM milestone WHERE workspace_id = (SELECT id FROM workspace WHERE slug = '${slug}')`)
 })
@@ -68,27 +61,21 @@ async function sharedScreenshot(page: Page, label: string): Promise<Buffer> {
   return page.screenshot()
 }
 
-async function agentToken(page: Page, baseURL: string): Promise<string> {
-  const response = await page.request.post('/api/v1/me/tokens', {
-    headers: { Origin: baseURL }, data: { name: `Image acceptance ${randomBytes(3).toString('hex')}` },
-  })
-  expect(response.status()).toBe(201)
-  return (await response.json()).token as string
+/** What an agent does with a user-provided file: velvet upload-image from a
+ *  repository linked to the portal project. */
+async function cliUpload(baseURL: string, target: string[], name: string, bytes: Buffer, relevance: string) {
+  await mkdir(resolve('test-results'), { recursive: true })
+  const path = resolve('test-results', name)
+  await writeFile(path, bytes)
+  return linkedRepo(baseURL, email, slug, 'portal').run(['upload-image', ...target, path, '--caption', relevance])
 }
 
-async function prepareHostedUpload(agent: APIRequestContext, args: { key?: string; milestone_id?: string; filename: string; caption: string }): Promise<UploadGrant> {
-  const initialized = await agent.post(`/api/v1/w/${slug}/mcp`, {
-    data: { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'image-e2e-agent', version: '1' } } },
-  })
-  expect(initialized.status()).toBe(200)
-  const response = await agent.post(`/api/v1/w/${slug}/mcp`, {
-    data: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'velvet_prepare_image_upload', arguments: args } },
-  })
-  expect(response.status()).toBe(200)
-  const { result, error } = await response.json()
-  expect(error).toBeUndefined()
-  expect(result.isError).not.toBe(true)
-  return (result.structuredContent ?? JSON.parse(result.content.find((entry: { type: string }) => entry.type === 'text').text)) as UploadGrant
+/** The image an upload created, read back through the browser session. */
+async function listed(page: Page, url: string, relevance: string): Promise<ImageAttachment> {
+  const images = (await (await page.request.get(url)).json()).images as ImageAttachment[]
+  const image = images.find((candidate) => candidate.caption === relevance)!
+  expect(image).toBeDefined()
+  return image
 }
 
 async function assertImageLoaded(page: Page, captionText: string) {
@@ -97,48 +84,21 @@ async function assertImageLoaded(page: Page, captionText: string) {
   await expect.poll(() => image.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0)).toBe(true)
 }
 
-// What a hosted-MCP agent does with a local file: ask the server for a
-// single-use grant, then send the bytes itself without any credentials.
-async function uploadThroughHosted(playwright: PlaywrightWorkerArgs['playwright'], baseURL: string, token: string,
-  target: { key?: string; milestone_id?: string }, file: { name: string; mimeType: string; buffer: Buffer }, relevance: string) {
-  const agent = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { Authorization: `Bearer ${token}`, Accept: 'application/json, text/event-stream' } })
-  const transfer = await playwright.request.newContext({ baseURL })
-  try {
-    const grant = await prepareHostedUpload(agent, { ...target, filename: file.name, caption: relevance })
-    const response = await transfer.post(grant.upload_url, { headers: { 'X-Velvet-Upload-Token': grant.upload_token }, multipart: { file } })
-    return { status: response.status(), body: await response.text() }
-  } finally {
-    await transfer.dispose()
-    await agent.dispose()
-  }
-}
-
-test('hosted agent preserves a shared image on its ticket and portal removal is explicit', async ({ page, playwright, baseURL }) => {
+test('an agent preserves a shared image on its ticket and portal removal is explicit', async ({ page, playwright, baseURL }) => {
   const bytes = await sharedScreenshot(page, 'Ticket reference: the error disappears after submitting.')
-  const token = await agentToken(page, baseURL!)
-  const agent = await playwright.request.newContext({ baseURL, extraHTTPHeaders: { Authorization: `Bearer ${token}`, Accept: 'application/json, text/event-stream' } })
-  const transfer = await playwright.request.newContext({ baseURL })
+  const anonymous = await playwright.request.newContext({ baseURL })
   try {
-    const grant = await prepareHostedUpload(agent, { key: 'IMG-1', filename: 'user-sign-in-reference.png', caption })
-    expect(grant.max_bytes).toBe(10 * 1024 * 1024)
-    expect(Date.parse(grant.expires_at)).toBeGreaterThan(Date.now())
-    const uploaded = await transfer.post(grant.upload_url, {
-      headers: { 'X-Velvet-Upload-Token': grant.upload_token },
-      multipart: { file: { name: 'user-sign-in-reference.png', mimeType: 'image/png', buffer: bytes } },
-    })
-    expect(uploaded.status()).toBe(201)
-    const image = await uploaded.json() as ImageAttachment
-    expect(image.caption).toBe(caption)
+    const uploaded = await cliUpload(baseURL!, ['IMG-1'], 'user-sign-in-reference.png', bytes, caption)
+    expect(uploaded.code, uploaded.err).toBe(0)
+    expect(uploaded.out).toContain('Status unchanged')
+    const image = await listed(page, `/api/v1/w/${slug}/issues/IMG-1/images`, caption)
     expect(image.source).toBe('agent')
-    expect((await transfer.get(image.content_url)).status()).toBe(401)
-    const reused = await transfer.post(grant.upload_url, {
-      headers: { 'X-Velvet-Upload-Token': grant.upload_token },
-      multipart: { file: { name: 'user-sign-in-reference.png', mimeType: 'image/png', buffer: bytes } },
-    })
-    expect(reused.status()).toBeGreaterThanOrEqual(400)
-    const listed = await agent.get(`/api/v1/w/${slug}/issues/IMG-1/images`)
-    expect((await listed.json()).images.filter((candidate: ImageAttachment) => candidate.id === image.id)).toHaveLength(1)
-    const issue = await agent.get(`/api/v1/w/${slug}/issues/IMG-1`)
+    expect((await anonymous.get(image.content_url)).status()).toBe(401)
+    // The same bytes and caption again are deduplicated, not stored twice.
+    expect((await cliUpload(baseURL!, ['IMG-1'], 'user-sign-in-reference.png', bytes, caption)).code).toBe(0)
+    const images = (await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1/images`)).json()).images as ImageAttachment[]
+    expect(images.filter((candidate) => candidate.caption === caption)).toHaveLength(1)
+    const issue = await page.request.get(`/api/v1/w/${slug}/issues/IMG-1`)
     expect((await issue.json()).status).toBe('backlog')
 
     await page.setViewportSize({ width: 1280, height: 900 })
@@ -194,26 +154,16 @@ test('hosted agent preserves a shared image on its ticket and portal removal is 
     await expect(row).toHaveCount(0)
     expect((await page.request.get(image.content_url)).status()).toBe(404)
   } finally {
-    await transfer.dispose()
-    await agent.dispose()
+    await anonymous.dispose()
   }
 })
 
 test('CLI uploads to a milestone, with readable responsive previews and read-only viewers', async ({ page, playwright, baseURL }) => {
   const bytes = await sharedScreenshot(page, 'Milestone reference: accepted sign-in design.')
-  const token = await agentToken(page, baseURL!)
-  const filename = resolve('test-results', `${'long-user-reference-'.repeat(8)}${suffix}.png`)
-  await mkdir(resolve('test-results'), { recursive: true })
-  await writeFile(filename, bytes)
-  const cli = resolve('..', 'cli', 'velvet')
-  const result = await promisify(execFile)(cli, ['upload-image', '--milestone', milestoneID, filename, '--caption', caption], {
-    env: { ...process.env, VELVET_URL: baseURL!, VELVET_WORKSPACE: slug, VELVET_TOKEN: token },
-  })
-  expect(result.stdout).toContain(milestoneID)
-  const listed = await page.request.get(`/api/v1/w/${slug}/milestones/${milestoneID}/images`)
-  const images = (await listed.json()).images as ImageAttachment[]
-  const image = images.find((candidate) => candidate.caption === caption)!
-  expect(image).toBeDefined()
+  const result = await cliUpload(baseURL!, ['--milestone', milestoneID], `${'long-user-reference-'.repeat(8)}${suffix}.png`, bytes, caption)
+  expect(result.code, result.err).toBe(0)
+  const image = await listed(page, `/api/v1/w/${slug}/milestones/${milestoneID}/images`, caption)
+  expect(result.out).toContain(image.id)
   expect(image.source).toBe('agent')
 
   for (const width of [1280, 390, 1720]) {
@@ -241,31 +191,30 @@ test('CLI uploads to a milestone, with readable responsive previews and read-onl
   }
 })
 
-test('hosted MCP uploads reach a milestone and non-images are rejected before storage', async ({ page, playwright, baseURL }) => {
-  const bytes = await sharedScreenshot(page, 'Hosted agent milestone reference.')
-  const token = await agentToken(page, baseURL!)
-  const milestoneCaption = 'User-approved hosted image for the milestone.'
-  const uploaded = await uploadThroughHosted(playwright, baseURL!, token, { milestone_id: milestoneID },
-    { name: `hosted-reference-${suffix}.png`, mimeType: 'image/png', buffer: bytes }, milestoneCaption)
-  expect(uploaded.status).toBe(201)
-  expect(uploaded.body).not.toContain(bytes.toString('base64'))
-  await page.goto(`/w/${slug}/milestones/${milestoneID}`)
-  await assertImageLoaded(page, milestoneCaption)
-  await page.reload()
-  await assertImageLoaded(page, milestoneCaption)
-
+test('non-images are rejected before storage, and a scoped key cannot reach another project', async ({ page, baseURL }) => {
   const before = (await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1/images`)).json()).images.length
-  const rejected = await uploadThroughHosted(playwright, baseURL!, token, { key: 'IMG-1' },
-    { name: `not-an-image-${suffix}.png`, mimeType: 'image/png', buffer: Buffer.from('SYNTHETIC_NON_IMAGE_CONTENT_NOT_A_REAL_SECRET') }, 'Not an image.')
-  expect(rejected.status).toBeGreaterThanOrEqual(400)
-  expect(rejected.status).toBeLessThan(500)
+  const rejected = await cliUpload(baseURL!, ['IMG-1'], `not-an-image-${suffix}.png`,
+    Buffer.from('SYNTHETIC_NON_IMAGE_CONTENT_NOT_A_REAL_SECRET'), 'Not an image.')
+  expect(rejected.code).toBe(6)
+  expect(rejected.err).toContain('valid PNG, JPEG or WebP')
   expect((await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1/images`)).json()).images).toHaveLength(before)
   expect((await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1`)).json()).status).toBe('backlog')
+
+  // A ticket in another project is out of this repository's reach.
+  sql(`
+    INSERT INTO project (workspace_id, key, name) SELECT id, 'other', 'Other' FROM workspace WHERE slug = '${slug}';
+    INSERT INTO issue (workspace_id, key, number, title, position, created_by, project_id)
+      SELECT w.id, 'IMG-2', 2, 'Elsewhere', 'b', u.id, p.id FROM workspace w JOIN project p ON p.workspace_id = w.id, app_user u
+      WHERE w.slug = '${slug}' AND p.key = 'other' AND u.email = '${email}';
+  `)
+  const bytes = await sharedScreenshot(page, 'Should not land.')
+  const blocked = await cliUpload(baseURL!, ['IMG-2'], `elsewhere-${suffix}.png`, bytes, 'Should not land.')
+  expect(blocked.code).not.toBe(0)
+  expect(sql(`SELECT count(*) FROM image_attachment i JOIN issue t ON t.id = i.issue_id WHERE t.key = 'IMG-2'`)).toBe('0')
 })
 
-test('JPEG and WebP agent references can be viewed, downloaded and explicitly removed on mobile', async ({ page, playwright, baseURL }) => {
+test('JPEG and WebP agent references can be viewed, downloaded and explicitly removed on mobile', async ({ page, baseURL }) => {
   const reference = await sharedScreenshot(page, 'User reference: preserve the visible sign-in error.')
-  const token = await agentToken(page, baseURL!)
   await mkdir(resolve('test-results'), { recursive: true })
   for (const format of ['jpeg', 'webp'] as const) {
     // Use the browser's real encoder on the same user-reference bitmap rather
@@ -282,13 +231,10 @@ test('JPEG and WebP agent references can be viewed, downloaded and explicitly re
       return Array.from(new Uint8Array(await blob.arrayBuffer()))
     }, { bytes: Array.from(reference), format })
     const filename = `user-reference-${suffix}.${format}`
-    const path = resolve('test-results', filename)
     const relevance = `The user shared this ${format.toUpperCase()} reference to show the required sign-in error.`
-    await writeFile(path, Buffer.from(encoded))
-    const uploaded = await promisify(execFile)(resolve('..', 'cli', 'velvet'), ['upload-image', 'IMG-1', path, '--caption', relevance], {
-      env: { ...process.env, VELVET_URL: baseURL!, VELVET_WORKSPACE: slug, VELVET_TOKEN: token },
-    })
-    expect(uploaded.stdout).toContain('Status unchanged')
+    const uploaded = await cliUpload(baseURL!, ['IMG-1'], filename, Buffer.from(encoded), relevance)
+    expect(uploaded.code, uploaded.err).toBe(0)
+    expect(uploaded.out).toContain('Status unchanged')
     const listed = await page.request.get(`/api/v1/w/${slug}/issues/IMG-1/images`)
     const image = ((await listed.json()).images as ImageAttachment[]).find((candidate) => candidate.caption === relevance)!
     expect(image).toBeDefined()
@@ -337,10 +283,9 @@ test('JPEG and WebP agent references can be viewed, downloaded and explicitly re
     await row.getByRole('button', { name: 'Delete image', exact: true }).click()
     await expect(row).toHaveCount(0)
     expect((await page.request.get(image.content_url)).status()).toBe(404)
-    const approvedCaption = `User-approved ${format.toUpperCase()} hosted MCP reference.`
-    const approved = await uploadThroughHosted(playwright, baseURL!, token, { key: 'IMG-1' },
-      { name: filename, mimeType: `image/${format}`, buffer: Buffer.from(encoded) }, approvedCaption)
-    expect(approved.status).toBe(201)
+    const approvedCaption = `User-approved ${format.toUpperCase()} reference, uploaded again after removal.`
+    const approved = await cliUpload(baseURL!, ['IMG-1'], filename, Buffer.from(encoded), approvedCaption)
+    expect(approved.code, approved.err).toBe(0)
     await page.reload()
     await assertImageLoaded(page, approvedCaption)
     expect((await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1`)).json()).status).toBe('backlog')

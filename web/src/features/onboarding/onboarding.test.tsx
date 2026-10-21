@@ -4,11 +4,9 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { agentSnippets, mcpUrl } from './agentSnippets'
 import { ConnectAgentCard } from './ConnectAgentCard'
 import { Onboarding } from './Onboarding'
 
-const TOKEN = 'velvet_0123456789abcdef'
 const person = { id: 'u1', email: 'priya@example.com', name: 'Priya Raman', github_id: null, github_login: null, avatar_url: '' }
 const org = { id: 'm1', workspace_id: 'w1', workspace_slug: 'priya-raman', workspace_name: 'Priya Raman', issue_prefix: 'PR', role: 'admin' }
 
@@ -23,19 +21,20 @@ function show(children: ReactNode) {
 }
 
 /** A small fake server: the session starts empty and gains an organisation
- *  once it is created, and the created key becomes used once `connect()` is
- *  called, as the API's token list reports after an agent's first call. */
-function fakeServer() {
-  let memberships: typeof org[] = []
-  let tokens: { id: string; name: string; created_at: string; last_used_at: string | null }[] = []
+ *  once it is created. `link()` is what `velvet init` does from a terminal,
+ *  adding a key scoped to a project, and `connect()` is that key's first use. */
+function fakeServer(start: { memberships?: typeof org[]; projects?: object[] } = {}) {
+  let memberships: typeof org[] = start.memberships ?? []
+  let projects = start.projects ?? [{ id: 'p1', key: 'priya-site', name: 'Priya site', status: 'active' }]
+  let linked = false
   let connected = false
   const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
-    if (url === '/api/v1/me') return response({ user: person, memberships, last_workspace: null })
+    if (url === '/api/v1/me') return response({ user: person, memberships, last_workspace: memberships[0] ?? null })
     if (url === '/api/v1/me/invites') return response({ invites: [] })
     if (url === '/api/v1/me/onboarding') {
       return response({
-        state: { has_organisation: memberships.length > 0, has_token: false, agent_connected: connected },
+        state: { has_organisation: memberships.length > 0, has_token: linked, agent_connected: connected },
         suggestion: { name: 'Priya Raman', slug: 'priya-raman', issue_prefix: 'PR' },
         base_url: 'https://velvet.example.com',
       })
@@ -44,20 +43,20 @@ function fakeServer() {
       memberships = [org]
       return response(org, 201)
     }
-    if (url === '/api/v1/me/tokens' && method === 'POST') {
-      const name = (JSON.parse(String(init?.body)) as { name: string }).name
-      tokens = [...tokens, { id: 't1', name, created_at: '2026-09-25T07:00:00Z', last_used_at: null }]
-      return response({ id: 't1', name, token: TOKEN }, 201)
-    }
     if (url === '/api/v1/me/tokens') {
-      return response({ tokens: tokens.map((token) => ({ ...token, last_used_at: connected ? '2026-09-25T07:01:00Z' : null })) })
+      return response({ tokens: linked ? [{
+        id: 't1', name: 'velvet CLI on laptop', created_at: '2026-09-25T07:00:00Z',
+        last_used_at: connected ? '2026-09-25T07:01:00Z' : null, workspace_slug: 'priya-raman', project_key: 'priya-site',
+      }] : [] })
     }
-    if (url === '/api/v1/w/priya-raman/projects') {
-      return response({ projects: [{ id: 'p1', key: 'priya-site', name: 'Priya site', status: 'active' }] })
+    if (url === '/api/v1/w/priya-raman/projects' && method === 'POST') {
+      projects = [{ id: 'p1', key: 'priya-site', name: 'Priya Site', status: 'active' }]
+      return response(projects[0], 201)
     }
+    if (url === '/api/v1/w/priya-raman/projects') return response({ projects })
     return response({ error: { code: 'not_found', message: `unexpected ${method} ${url}` } }, 404)
   })
-  return { fetchMock, connect: () => { connected = true } }
+  return { fetchMock, link: () => { linked = true }, connect: () => { connected = true } }
 }
 
 beforeEach(() => {
@@ -65,42 +64,8 @@ beforeEach(() => {
   window.localStorage.clear()
 })
 
-describe('agent snippets', () => {
-  it('points every agent at the organisation MCP URL with the token', () => {
-    const snippets = agentSnippets('https://velvet.example.com/', 'priya-raman', TOKEN)
-    expect(mcpUrl('https://velvet.example.com/', 'priya-raman')).toBe('https://velvet.example.com/api/v1/w/priya-raman/mcp')
-    expect(snippets.map((s) => s.id)).toEqual(['claude', 'codex', 'cursor', 'vscode', 'other'])
-    for (const snippet of snippets) {
-      expect(snippet.code).toContain('https://velvet.example.com/api/v1/w/priya-raman/mcp')
-      expect(snippet.code).toContain(TOKEN)
-    }
-  })
-
-  it('produces commands and JSON the tools accept', () => {
-    const byId = Object.fromEntries(agentSnippets('https://v.example', 'lab', TOKEN).map((s) => [s.id, s]))
-    expect(byId.claude!.code).toBe(
-      `claude mcp add --transport http --scope user velvet https://v.example/api/v1/w/lab/mcp \\\n  --header "Authorization: Bearer ${TOKEN}"`,
-    )
-    expect(byId.codex!.code).toContain('codex mcp add velvet --url https://v.example/api/v1/w/lab/mcp --bearer-token-env-var VELVET_TOKEN')
-    expect(JSON.parse(byId.cursor!.code)).toEqual({
-      mcpServers: { velvet: { url: 'https://v.example/api/v1/w/lab/mcp', headers: { Authorization: `Bearer ${TOKEN}` } } },
-    })
-    expect(JSON.parse(byId.vscode!.code).servers.velvet.type).toBe('http')
-    const other = JSON.parse(byId.other!.code).mcpServers.velvet
-    expect(other).toEqual({ url: 'https://v.example/api/v1/w/lab/mcp', headers: { Authorization: `Bearer ${TOKEN}` } })
-    expect(other.command).toBeUndefined()
-    expect(other.args).toBeUndefined()
-    expect(byId.other!.code).not.toMatch(/mcp-remote|npx|--header/)
-    expect(byId.other!.where).toContain('native remote HTTP')
-    expect(byId.other!.after).toContain('remote HTTP MCP clients only')
-    expect(byId.other!.after).not.toContain('mcp/README')
-    expect(byId.other!.after).toContain('secret manager')
-    expect(byId.other!.after).not.toContain(TOKEN)
-  })
-})
-
 describe('Onboarding', () => {
-  it('walks a new person from a default organisation to a connected agent', async () => {
+  it('walks a new person from a default organisation to a linked repository', async () => {
     const server = fakeServer()
     vi.stubGlobal('fetch', server.fetchMock)
     const user = userEvent.setup()
@@ -115,32 +80,44 @@ describe('Onboarding', () => {
     expect(server.fetchMock).toHaveBeenCalledWith('/api/v1/me/onboarding/organisation',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({}) }))
 
-    // Step 2: one key for the agent.
-    await user.click(await screen.findByRole('button', { name: 'Create API key' }))
+    // Step 2: install the CLI and link a repository. No key is ever shown.
+    expect(await screen.findByTestId('cli-install')).toHaveTextContent('curl -fsSL https://velvet.example.com/install.sh | VELVET_SERVER=https://velvet.example.com sh')
+    expect(screen.getByTestId('cli-init')).toHaveTextContent('velvet init --server https://velvet.example.com')
+    expect(screen.getByText('2. Connect agent').closest('li')).toHaveAttribute('aria-current', 'step')
+    expect(screen.getByTestId('repo-instructions')).toHaveTextContent('velvet log KEY')
+    expect(screen.queryByText(/velvet_[0-9a-f]/)).not.toBeInTheDocument()
+    expect(server.fetchMock).not.toHaveBeenCalledWith('/api/v1/me/tokens', expect.objectContaining({ method: 'POST' }))
+    expect(screen.getByTestId('agent-connection')).toHaveTextContent('Waiting for velvet init')
 
-    // Step 3: the key and config are shown, and the screen waits for the agent.
-    expect(await screen.findByTestId('agent-token')).toHaveTextContent(TOKEN)
-    expect(screen.getByTestId('agent-mcp-url')).toHaveTextContent('https://velvet.example.com/api/v1/w/priya-raman/mcp')
-    expect(screen.getByRole('tab', { name: 'Claude Code' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByTestId('agent-snippet')).toHaveTextContent('claude mcp add --transport http')
-    expect(screen.getByTestId('agent-connection')).toHaveAttribute('data-connected', 'false')
-    // The repository step waits until the agent works, to keep one thing at a time.
-    expect(screen.queryByTestId('repo-instructions-section')).not.toBeInTheDocument()
-    expect(server.fetchMock).toHaveBeenCalledWith('/api/v1/me/tokens',
-      expect.objectContaining({ method: 'POST', body: expect.stringMatching(/"name":"Coding agent \d{4}-\d{2}-\d{2} \d{2}:\d{2}"/) }))
-
-    // Arrow keys move between agents, as a tab list should.
-    screen.getByRole('tab', { name: 'Claude Code' }).focus()
+    // Arrow keys move between instruction files, as a tab list should.
+    screen.getByRole('tab', { name: 'AGENTS.md' }).focus()
     await user.keyboard('{ArrowRight}')
-    expect(screen.getByRole('tab', { name: 'Codex' })).toHaveFocus()
-    expect(screen.getByTestId('agent-snippet')).toHaveTextContent('codex mcp add velvet')
+    expect(screen.getByRole('tab', { name: 'CLAUDE.md' })).toHaveFocus()
 
+    // velvet init in a terminal makes a scoped key; the page notices it.
+    server.link()
+    await waitFor(() => expect(screen.getByTestId('agent-connection')).toHaveTextContent('Repository linked.'), { timeout: 5000 })
+    expect(within(screen.getByRole('list', { name: 'Linked repositories' })).getByText('priya-site')).toBeInTheDocument()
     server.connect()
     await waitFor(() => expect(screen.getByTestId('agent-connection')).toHaveAttribute('data-connected', 'true'), { timeout: 5000 })
     expect(screen.getByText('Your agent is connected.')).toBeInTheDocument()
-    expect(await screen.findByTestId('repo-instructions')).toHaveTextContent('project: "priya-site"')
-    expect(screen.getAllByRole('link', { name: 'Go to your dashboard' })[0]).toHaveAttribute('href', '/w/priya-raman')
-  }, 10000)
+    expect(screen.getByRole('link', { name: 'Go to your dashboard' })).toHaveAttribute('href', '/w/priya-raman')
+  }, 15000)
+
+  it('asks for a project first when the organisation has none', async () => {
+    const server = fakeServer({ projects: [] })
+    vi.stubGlobal('fetch', server.fetchMock)
+    const user = userEvent.setup()
+    show(<Onboarding />)
+    await user.click(await screen.findByRole('button', { name: 'Create organisation' }))
+
+    expect(await screen.findByText('Create a project first')).toBeInTheDocument()
+    expect(screen.queryByTestId('cli-init')).not.toBeInTheDocument()
+    await user.type(screen.getByLabelText('Project name'), 'Priya Site')
+    expect(screen.getByLabelText('Project key')).toHaveValue('priya-site')
+    await user.click(screen.getByRole('button', { name: 'Create project' }))
+    expect(await screen.findByTestId('cli-init')).toBeInTheDocument()
+  })
 
   it('lets the person change the defaults before creating', async () => {
     const server = fakeServer()
@@ -194,17 +171,14 @@ describe('Onboarding', () => {
     expect(screen.getByRole('button', { name: 'Create organisation' })).toBeEnabled()
   })
 
-  it('resumes at the key step for someone who already has an organisation', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
-      if (url === '/api/v1/me') return response({ user: person, memberships: [org], last_workspace: org })
-      return response({ state: { has_organisation: true, has_token: true, agent_connected: false }, suggestion: { name: 'Priya Raman', slug: 'priya-raman-2', issue_prefix: 'PR' }, base_url: 'https://v.example' })
-    }))
+  it('resumes at the connect step for someone who already has an organisation', async () => {
+    const server = fakeServer({ memberships: [org] })
+    vi.stubGlobal('fetch', server.fetchMock)
     show(<Onboarding />)
 
-    expect(await screen.findByRole('button', { name: 'Create API key' })).toBeInTheDocument()
-    expect(screen.getByText(/only shown when it is created/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Skip for now and go to your dashboard' })).toHaveAttribute('href', '/w/priya-raman')
-    expect(screen.getByText('You can connect an agent later from Profile, under Agent config.')).toBeInTheDocument()
+    expect(await screen.findByTestId('cli-init')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Go to your dashboard' })).toHaveAttribute('href', '/w/priya-raman')
+    expect(screen.getByText('You can connect more repositories later from Profile, under Agent config.')).toBeInTheDocument()
   })
 })
 

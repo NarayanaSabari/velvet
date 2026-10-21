@@ -350,3 +350,37 @@ func (s *Store) reposition(ctx context.Context, tx pgx.Tx, workspaceID, sprintID
 	}
 	return fracdex.Between(lo, hi)
 }
+
+// MilestoneProjectID reports which project a milestone belongs to, through
+// its sprint, so a project-scoped key can be held to its own milestones.
+func (s *Store) MilestoneProjectID(ctx context.Context, workspaceID, milestoneID uuid.UUID) (uuid.UUID, error) {
+	var project uuid.UUID
+	err := s.pool.QueryRow(ctx, `
+		SELECT s.project_id FROM milestone m JOIN sprint s ON s.id = m.sprint_id
+		WHERE m.workspace_id = $1 AND m.id = $2`, workspaceID, milestoneID).Scan(&project)
+	return project, mapErr(err)
+}
+
+// ListProjectMilestones is ListMilestones narrowed to one project's sprints.
+func (s *Store) ListProjectMilestones(ctx context.Context, workspaceID, projectID uuid.UUID) ([]Milestone, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+milestoneCols+`
+		FROM milestone
+		WHERE workspace_id = $1
+		  AND sprint_id IN (SELECT id FROM sprint WHERE workspace_id = $1 AND project_id = $2)
+		ORDER BY created_at DESC, position`, workspaceID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []Milestone{}
+	for rows.Next() {
+		milestone, err := scanMilestone(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, milestone)
+	}
+	return out, rows.Err()
+}

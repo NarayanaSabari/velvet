@@ -25,7 +25,13 @@ func (s *Server) registerMilestoneRoutes(mux *http.ServeMux) {
 
 func (s *Server) handleListAllMilestones(w http.ResponseWriter, r *http.Request) {
 	ws, _ := CurrentWorkspace(r.Context())
-	milestones, err := s.store.ListMilestones(r.Context(), ws.WorkspaceID)
+	var milestones []store.Milestone
+	var err error
+	if project, scoped := scopedProject(r); scoped {
+		milestones, err = s.store.ListProjectMilestones(r.Context(), ws.WorkspaceID, project)
+	} else {
+		milestones, err = s.store.ListMilestones(r.Context(), ws.WorkspaceID)
+	}
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not list milestones")
 		return
@@ -68,6 +74,12 @@ func (s *Server) handleCreateMilestone(w http.ResponseWriter, r *http.Request) {
 	ownerID, ok := parseOptionalUUID(w, body.OwnerID, "owner_id")
 	if !ok {
 		return
+	}
+	if ownerID != nil {
+		if _, scoped := scopedProject(r); scoped {
+			forbidScope(w, "choosing a milestone owner is done in Velvet, not with a project key")
+			return
+		}
 	}
 
 	ws, _ := CurrentWorkspace(r.Context())

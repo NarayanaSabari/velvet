@@ -59,6 +59,10 @@ IMAGE_TAG="$tag" compose pull --quiet migrate api worker web
 echo "starting $tag"
 IMAGE_TAG="$tag" compose up -d --no-build --remove-orphans
 
+# The Caddyfile is a bind mount, so `up` does not restart Caddy when only the
+# file changed. Reloading is graceful and a no-op when nothing changed.
+compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+
 for i in $(seq 1 30); do
   if curl -fsS -m 10 "$base_url/api/v1/health" >/dev/null 2>&1; then
     echo "healthy: $base_url"

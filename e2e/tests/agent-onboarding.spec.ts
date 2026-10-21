@@ -1,28 +1,50 @@
-import { test, expect } from '@playwright/test'
-import type { APIRequestContext } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
+import { spawn, spawnSync } from 'node:child_process'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { sql } from './fixtures'
 import { signup, unique } from './onboarding-helpers'
+import { velvetBinary } from './velvet-cli'
 
-/** Plays a coding agent: speaks MCP over HTTP to the hosted endpoint with the
- *  exact key and URL the page showed. */
-function mcpAgent(request: APIRequestContext, url: string, token: string) {
-  return async (id: number, method: string, params: object) => {
-    const response = await request.post(url, {
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
-      data: { jsonrpc: '2.0', id, method, params },
-    })
-    expect(response.status(), await response.text()).toBe(200)
-    return response.json()
+/**
+ * Runs `velvet init` with the exact command the page showed, approves it in
+ * the same browser, and returns a runner for further commands in that repo.
+ */
+async function linkWithPageCommand(page: Page, initCommand: string, slug: string, project: string) {
+  const repo = mkdtempSync(join(tmpdir(), 'velvet-onboarding-'))
+  const env = { ...process.env, VELVET_NO_KEYCHAIN: '1', VELVET_TOKEN: '', HOME: repo, XDG_CONFIG_HOME: join(repo, '.config') }
+  const args = initCommand.split(' ').slice(1)
+  expect(initCommand.split(' ')[0]).toBe('velvet')
+  const init = spawn(velvetBinary(), [...args, '--no-browser'], { cwd: repo, env })
+  let out = ''
+  init.stdout.on('data', (d) => { out += d })
+  init.stderr.on('data', (d) => { out += d })
+  const exited = new Promise<number | null>((done) => init.on('exit', done))
+  await expect.poll(() => /http\S+\/cli\/approve\?code=\S+/.exec(out)?.[0], { timeout: 15000 }).toBeTruthy()
+
+  const approval = await page.context().newPage()
+  await approval.goto(/http\S+\/cli\/approve\?code=\S+/.exec(out)![0])
+  await approval.getByLabel('Organisation').selectOption(slug)
+  await approval.getByLabel('Project').selectOption(project)
+  await approval.getByRole('button', { name: 'Connect' }).click()
+  await expect(approval.getByText('Connected.')).toBeVisible()
+  await approval.close()
+  expect(await exited, out).toBe(0)
+  expect(readFileSync(join(repo, 'velvet.yaml'), 'utf8')).toContain(`project: ${project}`)
+
+  return (cmd: string[]) => {
+    const r = spawnSync(velvetBinary(), cmd, { cwd: repo, env, encoding: 'utf8' })
+    return { code: r.status, out: r.stdout, err: r.stderr }
   }
 }
 
 /**
  * The first-run path a real person takes: sign up, accept an organisation
- * named after them, create a key, paste it into their agent, and see the
- * agent arrive. The agent is played by a real MCP client speaking the
- * protocol over HTTP to the hosted endpoint, with the key the page showed.
+ * named after them, create its first project, then link a repository with
+ * the real CLI using the exact command the page showed, and see it arrive.
  */
-test('a new person connects a coding agent through onboarding', async ({ page, baseURL }) => {
+test('a new person links a repository through onboarding', async ({ page, baseURL }) => {
   test.setTimeout(120000)
   const suffix = unique()
   const email = `nila.${suffix}@example.test`
@@ -37,53 +59,36 @@ test('a new person connects a coding agent through onboarding', async ({ page, b
   expect(slug).toBe(`nila-${suffix}`)
   await page.getByRole('button', { name: 'Create organisation' }).click()
 
-  // Step 2: one key for the agent.
-  await page.getByRole('button', { name: 'Create API key' }).click()
-
-  // Step 3: the key, URL, and per-agent config, waiting for the agent.
-  const token = (await page.getByTestId('agent-token').textContent())!.trim()
-  expect(token).toMatch(/^velvet_[0-9a-f]+$/)
-  const url = (await page.getByTestId('agent-mcp-url').textContent())!.trim()
-  expect(url).toBe(`${baseURL}/api/v1/w/${slug}/mcp`)
-  await expect(page.getByTestId('agent-snippet')).toContainText(`claude mcp add --transport http --scope user velvet ${url}`)
-  await page.getByRole('tab', { name: 'Cursor' }).click()
-  expect(JSON.parse((await page.getByTestId('agent-snippet').textContent())!)).toEqual({
-    mcpServers: { velvet: { url, headers: { Authorization: `Bearer ${token}` } } },
-  })
-  await page.getByRole('tab', { name: 'Other', exact: true }).click()
-  const other = JSON.parse((await page.getByTestId('agent-snippet').textContent())!).mcpServers.velvet
-  expect(other.command, 'Other setup must not launch an auto-downloaded bridge').toBeUndefined()
-  expect(other.args).toBeUndefined()
-  expect(other.url).toBe(url)
-  expect(other.headers.Authorization === `Bearer ${token}`).toBe(true)
-  await expect(page.getByRole('tabpanel')).toContainText('remote HTTP MCP clients only')
+  // Step 2: a project first, then the install and link commands.
+  const setup = page.getByTestId('repo-setup')
+  await expect(setup.getByText('Create a project first')).toBeVisible()
+  await setup.getByLabel('Project name').fill('Nila Site')
+  await expect(setup.getByLabel('Project key')).toHaveValue('nila-site')
+  await setup.getByRole('button', { name: 'Create project' }).click()
+  await expect(setup.getByTestId('cli-install')).toHaveText(`curl -fsSL ${baseURL}/install.sh | VELVET_SERVER=${baseURL} sh`)
+  const initCommand = (await setup.getByTestId('cli-init').textContent())!.trim()
+  expect(initCommand).toBe(`velvet init --server ${baseURL}`)
+  await expect(page.getByText(/velvet_[0-9a-f]{8,}/)).toHaveCount(0)
   const connection = page.getByTestId('agent-connection')
   await expect(connection).toHaveAttribute('data-connected', 'false')
-  await expect(connection).toContainText('Waiting for your agent')
+  await expect(connection).toContainText('Waiting for velvet init')
 
-  // The agent connects with exactly what the page showed.
-  const call = mcpAgent(page.request, other.url, other.headers.Authorization.slice('Bearer '.length))
-  const init = await call(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'e2e-agent', version: '1' } })
-  expect(init.result.serverInfo.name).toBe('velvet')
-  const tools = await call(2, 'tools/list', {})
-  expect(tools.result.tools.map((t: { name: string }) => t.name)).toContain('velvet_log_work')
-  const where = await call(3, 'tools/call', { name: 'velvet_where_am_i', arguments: {} })
-  expect(where.result.isError ?? false).toBe(false)
-  expect(where.result.content[0].text).toContain(`(${slug})`)
-  expect(where.result.content[0].text).toContain('Role: admin')
-
-  // The page notices the agent without a reload.
+  // The person runs it; the page notices the repository without a reload.
+  const velvet = await linkWithPageCommand(page, initCommand, slug, 'nila-site')
+  await expect(connection).toContainText('Repository linked.', { timeout: 15000 })
+  const who = velvet(['whoami'])
+  expect(who.code, who.err).toBe(0)
+  expect(who.out).toContain('Project: nila-site')
   await expect(connection).toHaveAttribute('data-connected', 'true', { timeout: 15000 })
   await expect(connection).toContainText('Your agent is connected.')
 
   // The agent writes real work, which lands in the new organisation.
-  const created = await call(4, 'tools/call', { name: 'velvet_create_ticket', arguments: { title: 'Connect my agent to Velvet' } })
-  expect(created.result.isError ?? false).toBe(false)
-  const key = /Created ([A-Z]+-\d+)/.exec(created.result.content[0].text)![1]!
-  const logged = await call(5, 'tools/call', { name: 'velvet_log_work', arguments: { key, body: 'Connected through onboarding.' } })
-  expect(logged.result.isError ?? false).toBe(false)
+  const created = velvet(['new', 'Connect my agent to Velvet'])
+  expect(created.code, created.err).toBe(0)
+  const key = /[A-Z]+-\d+/.exec(created.out)![0]
+  expect(velvet(['log', key, 'Connected through onboarding.']).code).toBe(0)
 
-  await page.getByRole('link', { name: 'Go to your dashboard' }).first().click()
+  await page.getByRole('link', { name: 'Go to your dashboard' }).click()
   await expect(page).toHaveURL(new RegExp(`/w/${slug}$`))
   await expect(page.getByTestId('connect-agent-card')).toHaveCount(0)
   await page.goto(`/w/${slug}/issues/${key}`)
@@ -91,14 +96,14 @@ test('a new person connects a coding agent through onboarding', async ({ page, b
   expect(sql(`SELECT c.source FROM comment c JOIN issue i ON i.id = c.target_id JOIN workspace w ON w.id = i.workspace_id WHERE w.slug = '${slug}' AND i.key = '${key}' AND c.body = 'Connected through onboarding.'`)).toBe('agent')
 })
 
-test('a person who skips the agent connects one later from Profile > Agent config', async ({ page, baseURL }) => {
+test('a person who skips the agent links a repository later from Profile > Agent config', async ({ page, baseURL }) => {
   test.setTimeout(120000)
   const suffix = unique()
   const slug = `skip-${suffix}`
   await signup(page, `skip.${suffix}@example.test`)
   await page.getByRole('button', { name: 'Create organisation' }).click()
-  await expect(page.getByText('You can connect an agent later from Profile, under Agent config.')).toBeVisible()
-  await page.getByRole('link', { name: 'Skip for now and go to your dashboard' }).click()
+  await expect(page.getByText('You can connect more repositories later from Profile, under Agent config.')).toBeVisible()
+  await page.getByRole('link', { name: 'Go to your dashboard' }).click()
   await expect(page).toHaveURL(new RegExp(`/w/${slug}$`))
 
   // Returning to the root goes straight to the organisation, not onboarding.
@@ -112,72 +117,34 @@ test('a person who skips the agent connects one later from Profile > Agent confi
   await expect(page).toHaveURL(new RegExp(`/w/${slug}/settings/profile/agent-config$`))
   const section = page.locator('section#agent-config')
   await expect(section.getByRole('heading', { name: 'Agent config' })).toBeInViewport()
-  await expect(section.getByTestId('agent-config-status')).toContainText('No agent connected yet.')
+  await expect(section.getByTestId('agent-connection')).toContainText('Waiting for velvet init')
 
-  // Setting up creates a fresh key and the same per-agent setup as onboarding.
-  await section.getByRole('button', { name: 'Set up an agent' }).click()
-  const token = (await section.getByTestId('agent-token').textContent())!.trim()
-  expect(token).toMatch(/^velvet_[0-9a-f]+$/)
-  const url = (await section.getByTestId('agent-mcp-url').textContent())!.trim()
-  expect(url).toBe(`${baseURL}/api/v1/w/${slug}/mcp`)
-  await expect(section.getByTestId('agent-snippet')).toContainText(`Bearer ${token}`)
-  // Tokens are on their own page, not mounted alongside the one-time setup.
+  // Create the first project in place, then take the commands and the block.
+  const setup = section.getByTestId('repo-setup')
+  await setup.getByLabel('Project name').fill('Skip Site')
+  await setup.getByRole('button', { name: 'Create project' }).click()
+  const initCommand = (await setup.getByTestId('cli-init').textContent())!.trim()
+  const block = (await setup.getByTestId('repo-instructions').textContent())!
+  expect(block).toContain('## Velvet work log')
+  expect(block).toContain('velvet log KEY')
+  expect(block).not.toMatch(/velvet_[0-9a-f]{8,}|Bearer|mcp/i)
+  // Tokens are on their own page, not mounted alongside the setup.
   await expect(page.getByLabel('Token name')).toHaveCount(0)
-  await section.getByRole('tab', { name: 'Other', exact: true }).click()
-  const other = JSON.parse((await section.getByTestId('agent-snippet').textContent())!).mcpServers.velvet
-  expect(other.command, 'Profile must use the same safe native HTTP setup').toBeUndefined()
-  expect(other.args).toBeUndefined()
-  expect(other.url).toBe(url)
-  expect(other.headers.Authorization === `Bearer ${token}`).toBe(true)
   for (const [width, height, colorScheme] of [[1280, 900, 'light'], [390, 844, 'dark']] as const) {
     await page.setViewportSize({ width, height })
     await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
-    await expect(section.getByRole('tab', { name: 'Other', exact: true })).toBeVisible()
-    await expect(section.getByTestId('agent-snippet')).toBeVisible()
+    await expect(setup.getByTestId('cli-init')).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-    await page.screenshot({ path: `test-results/agent-other-${width}-${colorScheme}.png`, fullPage: true,
-      mask: [section.getByTestId('agent-token'), section.getByTestId('agent-snippet')] })
+    await page.screenshot({ path: `test-results/agent-config-${width}-${colorScheme}.png`, fullPage: true })
   }
-  const connection = section.getByTestId('agent-connection')
-  await expect(connection).toHaveAttribute('data-connected', 'false')
+  await page.setViewportSize({ width: 1280, height: 900 })
 
-  // A real agent call with that key flips the section to connected.
-  const call = mcpAgent(page.request, other.url, other.headers.Authorization.slice('Bearer '.length))
-  const init = await call(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'e2e-agent', version: '1' } })
-  // What the agent is told on connect names this organisation, and there are
-  // no projects yet, so it is told to ask rather than invent one.
-  expect(init.result.instructions).toContain(`(${slug})`)
-  expect(init.result.instructions).toContain('has no projects yet')
-  const where = await call(2, 'tools/call', { name: 'velvet_where_am_i', arguments: {} })
-  expect(where.result.content[0].text).toContain(`(${slug})`)
-  await expect(connection).toHaveAttribute('data-connected', 'true', { timeout: 15000 })
-  await expect(section.getByTestId('agent-config-status')).toContainText('Connected.')
-  await section.getByRole('button', { name: 'Done' }).click()
-  await expect(section.getByTestId('agent-token')).toHaveCount(0)
-  await expect(section.getByRole('button', { name: 'Set up another agent' })).toBeVisible()
-
-  // Tell the agent which project a repository is: create the first project in
-  // place, then take the generated block for the repository's AGENTS.md.
-  const repo = section.getByTestId('repo-instructions-section')
-  await expect(repo.getByText('No projects yet')).toBeVisible()
-  await repo.getByRole('button', { name: 'Create a project' }).click()
-  await repo.getByLabel('Project name').fill('Skip Site')
-  await expect(repo.getByLabel('Project key')).toHaveValue('skip-site')
-  await repo.getByRole('button', { name: 'Create project' }).click()
-  await expect(repo.getByLabel('Project for this repository')).toHaveValue('skip-site')
-  const block = (await repo.getByTestId('repo-instructions').textContent())!
-  expect(block).toContain('## Velvet work log')
-  expect(block).toContain(`Velvet project \`skip-site\` (Skip Site) in the Skip ${suffix[0]!.toUpperCase()}${suffix.slice(1)} organisation (\`${slug}\`)`)
-  expect(block).toContain('`velvet_log_work` with `project: "skip-site"`')
-  expect(block).not.toContain(token)
-
-  // An agent following the block logs to the project, and a new connection
-  // is now told about the project too.
-  const logged = await call(3, 'tools/call', { name: 'velvet_log_work', arguments: { project: 'skip-site', body: 'Set up Velvet for this repository.' } })
-  expect(logged.result.isError ?? false).toBe(false)
-  expect(logged.result.content[0].text).toContain('Logged work to project skip-site')
-  const again = await call(4, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'e2e-agent', version: '1' } })
-  expect(again.result.instructions).toContain('skip-site (Skip Site)')
+  const velvet = await linkWithPageCommand(page, initCommand, slug, 'skip-site')
+  const logged = velvet(['log', 'Set up Velvet for this repository.'])
+  expect(logged.code, logged.err).toBe(0)
+  expect(logged.out).toContain('Logged to project skip-site')
+  await expect(section.getByTestId('agent-connection')).toHaveAttribute('data-connected', 'true', { timeout: 15000 })
+  await expect(section.getByRole('list', { name: 'Linked repositories' })).toContainText('skip-site')
   expect(sql(`SELECT c.source FROM comment c JOIN project p ON p.id = c.target_id JOIN workspace w ON w.id = p.workspace_id WHERE w.slug = '${slug}' AND p.key = 'skip-site' AND c.body = 'Set up Velvet for this repository.'`)).toBe('agent')
 
   // With an agent connected, the dashboard prompt is gone.
@@ -191,7 +158,7 @@ test('the dashboard prompt can be dismissed, and Agent config stays in Profile',
   const suffix = unique()
   await signup(page, `later.${suffix}@example.test`)
   await page.getByRole('button', { name: 'Create organisation' }).click()
-  await page.getByRole('link', { name: 'Skip for now and go to your dashboard' }).click()
+  await page.getByRole('link', { name: 'Go to your dashboard' }).click()
   await page.getByTestId('connect-agent-card').getByRole('button', { name: 'Not now' }).click()
   await expect(page.getByTestId('connect-agent-card')).toHaveCount(0)
   await page.reload()
@@ -203,10 +170,10 @@ test('the dashboard prompt can be dismissed, and Agent config stays in Profile',
   await page.keyboard.type('agent config')
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(new RegExp(`/w/later-${suffix}/settings/profile/agent-config$`))
-  await expect(page.getByRole('button', { name: 'Set up an agent' })).toBeVisible()
+  await expect(page.getByTestId('repo-setup')).toBeVisible()
 })
 
-test('onboarding and the hosted MCP stay usable on a phone', async ({ page }) => {
+test('onboarding and Agent config stay usable on a phone', async ({ page }) => {
   test.setTimeout(90000)
   await page.setViewportSize({ width: 390, height: 844 })
   const suffix = unique()
@@ -214,30 +181,19 @@ test('onboarding and the hosted MCP stay usable on a phone', async ({ page }) =>
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(await overflow()).toBeLessThanOrEqual(0)
   await page.getByRole('button', { name: 'Create organisation' }).click()
-  await page.getByRole('button', { name: 'Create API key' }).click()
-  await expect(page.getByTestId('agent-token')).toBeVisible()
-  for (const tab of ['Claude Code', 'Codex', 'Cursor', 'VS Code', 'Other']) {
-    await page.getByRole('tab', { name: tab }).click()
+  const setup = page.getByTestId('repo-setup')
+  await setup.getByLabel('Project name').fill('A phone project with a rather long descriptive name')
+  await setup.getByRole('button', { name: 'Create project' }).click()
+  await expect(setup.getByTestId('cli-install')).toBeVisible()
+  for (const tab of ['AGENTS.md', 'CLAUDE.md', 'Cursor rule']) {
+    await setup.getByRole('tab', { name: tab }).click()
     expect(await overflow(), `${tab} widened the page`).toBeLessThanOrEqual(0)
   }
   await page.screenshot({ path: 'test-results/onboarding-connect-390.png', fullPage: true })
 
   // The same setup in Profile > Agent config fits the phone as well.
   await page.goto(`/w/phone-${suffix}/settings/profile#agent-config`)
-  await page.getByRole('button', { name: 'Set up an agent' }).click()
-  await expect(page.getByTestId('agent-token')).toBeVisible()
-  for (const tab of ['Claude Code', 'Codex', 'Cursor', 'VS Code', 'Other']) {
-    await page.getByRole('tab', { name: tab }).click()
-    expect(await overflow(), `${tab} widened the profile page`).toBeLessThanOrEqual(0)
-  }
-  const repo = page.getByTestId('repo-instructions-section')
-  await repo.getByRole('button', { name: 'Create a project' }).click()
-  await repo.getByLabel('Project name').fill('A phone project with a rather long descriptive name')
-  await repo.getByRole('button', { name: 'Create project' }).click()
-  await expect(repo.getByTestId('repo-instructions')).toBeVisible()
-  for (const tab of ['AGENTS.md', 'CLAUDE.md', 'Cursor rule']) {
-    await repo.getByRole('tab', { name: tab }).click()
-    expect(await overflow(), `${tab} widened the profile page`).toBeLessThanOrEqual(0)
-  }
+  await expect(page.getByTestId('cli-init')).toBeVisible()
+  expect(await overflow(), 'Agent config widened the profile page').toBeLessThanOrEqual(0)
   await page.screenshot({ path: 'test-results/profile-agent-config-390.png', fullPage: true })
 })

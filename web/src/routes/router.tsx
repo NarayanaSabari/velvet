@@ -22,6 +22,7 @@ import { PROFILE_PAGES } from '../features/profile/profilePages'
 import { LandingPage } from '../features/landing/LandingPage'
 import { RootLayout, RootNotFound } from './root'
 import { PublicRecovery, PublicSessionPending, PublicSessionError } from '../features/auth/PublicRecovery'
+import { ApproveCLI } from '../features/auth/ApproveCLI'
 import { Dashboard } from '../features/dashboard/Dashboard'
 import { TeamFeed } from '../features/feed/TeamFeed'
 import { SprintList } from '../features/sprints/SprintList'
@@ -250,6 +251,11 @@ const routes = [
     getParentRoute: () => rootRoute,
     path: '/auth/recovery',
     component: PublicRecovery,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/cli/approve',
+    component: ApproveCLI,
   }),
   createRoute({
     getParentRoute: () => rootRoute,

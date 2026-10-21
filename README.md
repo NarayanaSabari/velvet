@@ -41,52 +41,67 @@ A project entry can be promoted into a ticket later, so low-friction logging doe
 ## Agents log their own work
 
 The failure this exists to prevent is work that never gets written down.
-An agent working on a branch that names no ticket has somewhere to log anyway: the project the repository is mapped to.
+An agent working on a branch that names no ticket has somewhere to log anyway: the repository's project.
 Skipping the log because no ticket exists is never the right answer.
 
 ```bash
-velvet log --kind progress "I fixed the dropped retry in the token refresh path."
+velvet log "Fixed the dropped retry in the token refresh path."
+velvet log ENG-142 --kind decision "Keep retries in the client, not the proxy."
 velvet attach ENG-142 https://github.com/acme/widgets/pull/42
 ```
 
 Evidence is attached by whatever reference is to hand - a pull request URL, `owner/repo#42`, or a commit sha - because a UUID is what the database uses and not what anyone has after finishing a piece of work.
 Nothing is ever created to satisfy a reference: an unsynced pull request is a 404 rather than an invented row.
 
-`VELVET_WORKSPACE` is optional.
-Without it, the organisation and project are resolved from the checkout's git remote, so one agent configuration serves every repository.
-A remote that matches no connected repository, or matches two organisations, is refused rather than guessed at.
-
 ### Connecting an agent
 
-The API hosts an MCP server, so a coding agent needs nothing installed: one URL per organisation and one personal API token.
+Agents write to Velvet with the [`velvet` CLI](cli/README.md), a single Go binary served by the Velvet server itself.
+Any agent that can run a shell command can use it, and there is nothing to configure in the agent.
+
+```bash
+curl -fsSL https://velvet.example.com/install.sh | VELVET_SERVER=https://velvet.example.com sh
+cd my-repo
+velvet init --server https://velvet.example.com
+```
+
+`velvet init` opens the browser, where the person confirms the code shown in the terminal and picks one organisation and one project.
+It writes `velvet.yaml` at the repository root and stores a new key in the system keychain.
+`velvet.yaml` names the server, organisation, and project, holds no secret, and is committed so teammates link the same project with their own key.
+
+The key is bound to that one project on the server.
+Every request is checked against an allowlist of the routes the CLI needs, and each one against the key's project, so the key can read and write that project's tickets, sprints, milestones, images, and work log and nothing else.
+Editing `velvet.yaml` cannot widen this: the CLI finds no key for a different project, and the server refuses the old key outside its own.
+Tickets with no project are out of reach for every repository key, and a repository key cannot change assignees or move a ticket between projects.
+The approver's role and the project are checked again when the key is collected, and no raw key is ever stored on the server.
+
+A new account is walked through this after sign-in at `/onboarding`: an organisation named after the person, its first project, then the install and link commands.
+The screen notices the link and the key's first use without a reload.
+Anyone who skips that step finds the same setup in Profile under Agent config at `/w/{slug}/settings/profile/agent-config`, which also lists the repositories linked to the organisation.
+Profile has separate General, GitHub, Agent config, and API tokens pages, with the same section navigation as Administration.
+Old Profile links still open General, and `#agent-config` bookmarks open Agent config.
+
+Agent config also generates a "Velvet work log" section for `AGENTS.md`, `CLAUDE.md`, or a Cursor rule, which tells agents to use the CLI and how to choose where each entry goes: the ticket in the branch first, then the project.
+It names no project or key, so it is the same for every repository and safe to commit.
+
+`velvet logout` revokes a repository's key and removes it from the machine, and any key can be revoked under API tokens.
+Personal API tokens made there are not limited to a project and suit scripts that work across projects.
+
+### Agent plugins
+
+The [`plugins/velvet`](plugins/velvet) plugin adds skills that teach Claude Code and Codex when and how to use the CLI: logging work, tickets, sprints, images, and recaps.
+This repository is the marketplace for both:
 
 ```
-https://velvet.example.com/api/v1/w/{slug}/mcp
-Authorization: Bearer velvet_...
+/plugin install velvet --marketplace NarayanaSabari/velvet
 ```
 
 ```bash
-claude mcp add --transport http --scope user velvet https://velvet.example.com/api/v1/w/lab/mcp \
-  --header "Authorization: Bearer $VELVET_TOKEN"
+codex plugin marketplace add NarayanaSabari/velvet
+codex plugin add velvet@velvet
 ```
 
-A new account is walked through this after sign-in at `/onboarding`: an organisation named after the person, a key shown once, and a ready-to-paste native HTTP setup for Claude Code, Codex, Cursor, VS Code, or another remote-MCP client.
-The Other setup never downloads or executes a third-party bridge with the key.
-Velvet supports remote HTTP MCP clients only, and the [`velvet` CLI](cli/README.md) covers the same work log from a terminal.
-Keep token-bearing client configuration private and out of version control.
-The screen confirms the connection when the agent first calls Velvet.
-Anyone who skips that step, or wants to connect another agent, finds the same setup in Profile under Agent config at `/w/{slug}/settings/profile/agent-config`, which creates a fresh key per agent.
-Profile has separate General, GitHub, Agent config, and API tokens pages, with the same section navigation as Administration.
-Old Profile links still open General, and `#agent-config` bookmarks open Agent config.
-One-time keys disappear when leaving setup, so copy a new key before navigating away.
-
-When an agent connects, the server's instructions, which agents add to their system prompt, name the organisation, list its active projects, and say how to choose where each entry goes: the ticket in the branch first, then the repository's project, then asking rather than guessing.
-A hosted server cannot see the agent's checkout, so a repository names its own project in a "Velvet work log" section of `AGENTS.md`, `CLAUDE.md`, or a Cursor rule.
-Agent config generates that section for any project, and it contains no key, so it is committed and shared with the team.
-
-The hosted server is stateless and dispatches every tool through the same REST handlers a direct request reaches, so membership, role, validation, and `source=agent` attribution are unchanged.
-It accepts API tokens only; a browser session cookie is refused.
-Because the server cannot see a local checkout, `velvet_current_ticket` takes the branch name as an argument.
+The plugin holds no key and configures nothing; its `setup` skill walks the person through installing the CLI and running `velvet init`.
+`cli/cmd/velvet/main_test.go` fails when a skill names a command the CLI does not have, or when a command has no skill.
 
 ### Preserving important images
 
@@ -98,11 +113,7 @@ velvet upload-image ENG-142 /path/to/reference.png --caption "The user shared th
 velvet upload-image --milestone "$MILESTONE_ID" /path/to/design.webp --caption "Reference for the milestone's accepted layout."
 ```
 
-The CLI accepts an explicit local file path, a caption, and exactly one ticket key or milestone ID.
-The hosted MCP server cannot read files on the agent's machine.
-Its `velvet_prepare_image_upload` tool instead returns an upload endpoint and a short-lived, single-use credential for transferring the file as multipart HTTP, without putting image bytes into the model's context.
-Use the credential in `X-Velvet-Upload-Token`, not in a URL, and never save it in repository files or a work-log entry.
-The upload endpoint refuses browser cookies and rechecks the issuing API token and current membership before storing anything.
+The CLI accepts an explicit local file path, a caption, and exactly one ticket key or milestone ID, and sends the file as multipart HTTP, so image bytes never pass through the model's context.
 
 Only upload relevant images to a clearly identified ticket or milestone, not every image in a conversation.
 If the destination is unclear, or the agent can see an image but cannot access its actual file, ask instead of inventing a target or claiming it was saved.
@@ -414,7 +425,7 @@ Run deployment wiring and guarded entrypoint regressions from the repository roo
 
 `.github/workflows/ci.yml` runs all three suites on every push and pull request.
 The end-to-end job depends on the other two, so a broken unit test fails fast instead of paying to build the whole stack.
-Go vulnerability checks include test imports, and web/MCP dependency audits also run in CI.
+Go vulnerability checks cover the API and the CLI, and web dependency audits also run in CI.
 See the [security remediation ledger](docs/security/2026-10-05-remediation.md) for per-finding fixes, authorization race regressions, and the unimported OpenPGP advisory classification.
 
 The gate was checked against a deliberate regression, not just a green tree: reintroducing the timestamp bug on a branch turned CI red in the Go job with the expected message and skipped end-to-end, then the branch was deleted.

@@ -33,6 +33,8 @@ type Token = {
   name: string
   created_at: string
   last_used_at: string | null
+  workspace_slug?: string | null
+  project_key?: string | null
 }
 
 type FakeProject = { id: string; key: string; name: string; status: 'active' }
@@ -81,7 +83,11 @@ function tokenFetch(initialTokens: Token[], options: { role?: string; createFail
   const useNewestToken = () => {
     tokens = tokens.map((token, index) => index === tokens.length - 1 ? { ...token, last_used_at: new Date().toISOString() } : token)
   }
-  return Object.assign(fetch, { useNewestToken })
+  /** Plays `velvet init` approved for a project in this organisation. */
+  const linkRepository = (project: string) => {
+    tokens = [...tokens, { id: `cli-${project}`, name: 'velvet CLI on laptop', created_at: new Date().toISOString(), last_used_at: null, workspace_slug: 'lab', project_key: project }]
+  }
+  return Object.assign(fetch, { useNewestToken, linkRepository })
 }
 
 function renderProfile(page: ProfilePageId = 'agent-config') {
@@ -159,7 +165,7 @@ describe('Profile API tokens', () => {
     expect(fetch).toHaveBeenCalledWith('/api/v1/me/tokens/token-1', expect.objectContaining({ method: 'DELETE' }))
     // With its only key revoked, the agent page uses the invalidated cache.
     view.openPage('agent-config')
-    expect(await screen.findByText('No agent connected yet.')).toBeInTheDocument()
+    expect(await screen.findByText('Waiting for velvet init…')).toBeInTheDocument()
   })
 
   it('explains the empty state and keeps creation as the action', async () => {
@@ -176,149 +182,68 @@ describe('Profile API tokens', () => {
 })
 
 describe('Profile agent config', () => {
-  it('lets someone who skipped onboarding set up an agent later', async () => {
-    const fetch = tokenFetch([])
-    vi.stubGlobal('fetch', fetch)
-    const user = userEvent.setup()
-
-    const view = renderProfile()
-
-    const section = (await screen.findByRole('heading', { name: 'Agent config', level: 2 })).closest('section')!
-    expect(section).toHaveAttribute('id', 'agent-config')
-    expect(await within(section).findByText('No agent connected yet.')).toBeInTheDocument()
-    expect(await within(section).findByTestId('agent-mcp-url')).toHaveTextContent('https://velvet.example.com/api/v1/w/lab/mcp')
-
-    await user.click(within(section).getByRole('button', { name: 'Set up an agent' }))
-
-    // A fresh key, shown once, in every agent's setup, with focus on it.
-    expect(await within(section).findByTestId('agent-token')).toHaveTextContent('velvet_secret_once')
-    expect(within(section).getByRole('heading', { name: 'New key for your agent' })).toHaveFocus()
-    expect(within(section).getByTestId('agent-snippet')).toHaveTextContent(
-      'claude mcp add --transport http --scope user velvet https://velvet.example.com/api/v1/w/lab/mcp',
-    )
-    expect(within(section).getByTestId('agent-snippet')).toHaveTextContent('Bearer velvet_secret_once')
-    await user.click(within(section).getByRole('tab', { name: 'Cursor' }))
-    expect(JSON.parse(within(section).getByTestId('agent-snippet').textContent!)).toEqual({
-      mcpServers: { velvet: { url: 'https://velvet.example.com/api/v1/w/lab/mcp', headers: { Authorization: 'Bearer velvet_secret_once' } } },
-    })
-    expect(fetch).toHaveBeenCalledWith('/api/v1/me/tokens', expect.objectContaining({
-      method: 'POST',
-      body: expect.stringMatching(/"name":"Coding agent \d{4}-\d{2}-\d{2} \d{2}:\d{2}"/),
-    }))
-    // The agent's first call with that key flips the status without a reload.
-    const connection = within(section).getByTestId('agent-connection')
-    expect(connection).toHaveAttribute('data-connected', 'false')
-    fetch.useNewestToken()
-    await waitFor(() => expect(connection).toHaveAttribute('data-connected', 'true'), { timeout: 5000 })
-    expect(within(section).getByText('Your agent is connected.')).toBeInTheDocument()
-    expect(within(section).getByTestId('agent-config-status')).toHaveTextContent(/Connected\. Coding agent .* was last used/)
-
-    await user.click(within(section).getByRole('button', { name: 'Done' }))
-    expect(within(section).queryByTestId('agent-token')).not.toBeInTheDocument()
-    expect(within(section).getByRole('button', { name: 'Set up another agent' })).toBeInTheDocument()
-    view.openPage('tokens')
-    expect(await screen.findByText(/^Coding agent \d{4}/)).toBeInTheDocument()
-    expect(screen.queryByText('velvet_secret_once')).not.toBeInTheDocument()
-  }, 10000)
-
-  it('shows an already connected agent and offers another', async () => {
-    vi.stubGlobal('fetch', tokenFetch([
-      { id: 'token-1', name: 'Laptop agent', created_at: '2026-09-14T10:00:00Z', last_used_at: '2026-09-15T09:00:00Z' },
-      { id: 'token-2', name: 'Old agent', created_at: '2026-09-10T10:00:00Z', last_used_at: '2026-09-11T09:00:00Z' },
-    ]))
-
-    renderProfile()
-
-    const status = await screen.findByTestId('agent-config-status')
-    await waitFor(() => expect(status).toHaveTextContent('Connected. Laptop agent was last used'))
-    expect(screen.getByRole('button', { name: 'Set up another agent' })).toBeInTheDocument()
-  })
-
-  it('tells a viewer that their agent can only read', async () => {
-    vi.stubGlobal('fetch', tokenFetch([], { role: 'viewer' }))
-
-    renderProfile()
-
-    expect(await screen.findByText(/You are a viewer in Lab, so an agent can read its tickets but cannot log work/)).toBeInTheDocument()
-  })
-
-  it('numbers a second agent key set up in the same minute', async () => {
-    // Pin only the clock, so the existing key's minute matches the new one.
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date('2026-09-25T07:30:15Z'))
-    try {
-      const fetch = tokenFetch([{ id: 'token-1', name: 'Coding agent 2026-09-25 07:30', created_at: '2026-09-25T07:30:00Z', last_used_at: null }])
-      vi.stubGlobal('fetch', fetch)
-      const user = userEvent.setup()
-
-      renderProfile()
-      await user.click(await screen.findByRole('button', { name: 'Set up an agent' }))
-
-      expect(await screen.findByTestId('agent-token')).toHaveTextContent('velvet_secret_once')
-      const names = fetch.mock.calls
-        .filter(([url, init]) => url === '/api/v1/me/tokens' && (init as RequestInit | undefined)?.method === 'POST')
-        .map(([, init]) => (JSON.parse(String((init as RequestInit).body)) as { name: string }).name)
-      expect(names).toEqual(['Coding agent 2026-09-25 07:30', 'Coding agent 2026-09-25 07:30 (2)'])
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('reports a failed key without leaving the section', async () => {
-    vi.stubGlobal('fetch', tokenFetch([], { createFails: true }))
-    const user = userEvent.setup()
-
-    renderProfile()
-    await user.click(await screen.findByRole('button', { name: 'Set up an agent' }))
-
-    expect(await screen.findByText('you have reached the 20-token limit')).toHaveAttribute('role', 'alert')
-    expect(screen.getByRole('button', { name: 'Set up an agent' })).toBeEnabled()
-    expect(screen.queryByTestId('agent-token')).not.toBeInTheDocument()
-  })
-})
-
-describe('Profile repository instructions', () => {
   const projects: FakeProject[] = [
     { id: 'p1', key: 'velvet', name: 'Velvet app', status: 'active' },
     { id: 'p2', key: 'billing', name: 'Billing', status: 'active' },
   ]
 
-  it('generates a committable block naming the chosen project, for each agent file', async () => {
-    vi.stubGlobal('fetch', tokenFetch([], { projects }))
+  it('shows how to install the CLI and link a repository, without ever showing a key', async () => {
+    const fetch = tokenFetch([], { projects })
+    vi.stubGlobal('fetch', fetch)
     const user = userEvent.setup()
 
     renderProfile()
 
-    const section = await screen.findByTestId('repo-instructions-section')
-    const picker = await within(section).findByLabelText('Project for this repository')
-    expect(picker).toHaveValue('velvet')
+    const section = (await screen.findByRole('heading', { name: 'Agent config', level: 2 })).closest('section')!
+    expect(section).toHaveAttribute('id', 'agent-config')
+    expect(await within(section).findByTestId('cli-install')).toHaveTextContent('https://velvet.example.com/install.sh')
+    expect(within(section).getByTestId('cli-init')).toHaveTextContent('velvet init --server https://velvet.example.com')
+    expect(within(section).getByText(/Projects: velvet, billing\./)).toBeInTheDocument()
+    expect(within(section).getByTestId('agent-connection')).toHaveTextContent('Waiting for velvet init…')
+
     const block = within(section).getByTestId('repo-instructions')
     expect(block).toHaveTextContent('## Velvet work log')
-    expect(block).toHaveTextContent('Velvet project `velvet` (Velvet app) in the Lab organisation (`lab`)')
-    expect(block).toHaveTextContent('project: "velvet"')
-    expect(block).toHaveTextContent('LAB-42')
-    expect(block.textContent).not.toMatch(/velvet_[0-9a-f]{6,}|Bearer/)
-
-    await user.selectOptions(picker, 'billing')
-    expect(within(section).getByTestId('repo-instructions')).toHaveTextContent('project: "billing"')
-
+    expect(block).toHaveTextContent('velvet log KEY')
+    expect(block.textContent).not.toMatch(/velvet_[0-9a-f]{6,}|Bearer|mcp/i)
     await user.click(within(section).getByRole('tab', { name: 'Cursor rule' }))
     expect(within(section).getByTestId('repo-instructions').textContent).toMatch(/^---\ndescription: Log work to Velvet\nalwaysApply: true\n---/)
     expect(within(section).getByText(/\.cursor\/rules\/velvet\.mdc/)).toBeInTheDocument()
-    await user.click(within(section).getByRole('tab', { name: 'CLAUDE.md' }))
-    expect(within(section).getByText(/a CLAUDE.md containing @AGENTS.md is enough/)).toBeInTheDocument()
+
+    // Nothing on this page creates a key: velvet init does, on the machine.
+    expect(fetch).not.toHaveBeenCalledWith('/api/v1/me/tokens', expect.objectContaining({ method: 'POST' }))
   })
 
-  it('creates the first project in place and uses it straight away', async () => {
+  it('lists the repositories linked to this organisation, live', async () => {
+    const fetch = tokenFetch([
+      { id: 'personal', name: 'Old personal key', created_at: '2026-09-10T10:00:00Z', last_used_at: '2026-09-11T09:00:00Z' },
+      { id: 'other-org', name: 'velvet CLI on desk', created_at: '2026-09-12T10:00:00Z', last_used_at: '2026-09-12T11:00:00Z', workspace_slug: 'elsewhere', project_key: 'x' },
+    ], { projects })
+    vi.stubGlobal('fetch', fetch)
+
+    renderProfile()
+
+    // Personal keys and keys for other organisations do not count.
+    const connection = await screen.findByTestId('agent-connection')
+    await waitFor(() => expect(connection).toHaveTextContent('Waiting for velvet init…'))
+    fetch.linkRepository('billing')
+    await waitFor(() => expect(connection).toHaveTextContent('Repository linked.'), { timeout: 5000 })
+    expect(within(connection).getByText('billing')).toBeInTheDocument()
+    expect(connection).toHaveAttribute('data-connected', 'false')
+    fetch.useNewestToken()
+    await waitFor(() => expect(connection).toHaveAttribute('data-connected', 'true'), { timeout: 5000 })
+    expect(connection).toHaveTextContent('Your agent is connected.')
+  }, 15000)
+
+  it('creates the first project in place, then shows the link command', async () => {
     const fetch = tokenFetch([])
     vi.stubGlobal('fetch', fetch)
     const user = userEvent.setup()
 
     renderProfile()
 
-    const section = await screen.findByTestId('repo-instructions-section')
-    expect(await within(section).findByText('No projects yet')).toBeInTheDocument()
-    await user.click(within(section).getByRole('button', { name: 'Create a project' }))
+    const section = await screen.findByTestId('repo-setup')
+    expect(await within(section).findByText('Create a project first')).toBeInTheDocument()
+    expect(within(section).queryByTestId('cli-init')).not.toBeInTheDocument()
     await user.type(within(section).getByLabelText('Project name'), 'Mobile App')
     expect(within(section).getByLabelText('Project key')).toHaveValue('mobile-app')
     await user.click(within(section).getByRole('button', { name: 'Create project' }))
@@ -326,17 +251,18 @@ describe('Profile repository instructions', () => {
     expect(fetch).toHaveBeenCalledWith('/api/v1/w/lab/projects', expect.objectContaining({
       method: 'POST', body: JSON.stringify({ name: 'Mobile App', key: 'mobile-app' }),
     }))
-    expect(await within(section).findByTestId('repo-instructions')).toHaveTextContent('project: "mobile-app"')
-    expect(within(section).getByLabelText('Project for this repository')).toHaveValue('mobile-app')
+    expect(await within(section).findByTestId('cli-init')).toBeInTheDocument()
+    expect(within(section).getByText(/Projects: mobile-app\./)).toBeInTheDocument()
   })
 
-  it('does not offer a viewer a project they cannot create', async () => {
-    vi.stubGlobal('fetch', tokenFetch([], { role: 'viewer' }))
+  it('tells a viewer they cannot link a repository that writes', async () => {
+    vi.stubGlobal('fetch', tokenFetch([], { role: 'viewer', projects }))
 
     renderProfile()
 
-    const section = await screen.findByTestId('repo-instructions-section')
-    expect(await within(section).findByText(/Ask an admin or member of Lab to create one/)).toBeInTheDocument()
-    expect(within(section).queryByRole('button', { name: 'Create a project' })).not.toBeInTheDocument()
+    const section = await screen.findByTestId('repo-setup')
+    expect(await within(section).findByText(/You are a viewer in Lab, so you cannot connect a repository that writes/)).toBeInTheDocument()
+    expect(within(section).queryByTestId('cli-init')).not.toBeInTheDocument()
+    expect(within(section).queryByRole('button', { name: 'Create project' })).not.toBeInTheDocument()
   })
 })

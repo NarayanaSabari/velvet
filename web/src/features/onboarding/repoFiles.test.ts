@@ -1,39 +1,34 @@
 import { describe, expect, it } from 'vitest'
 
-import { projectKeyFrom, repoFiles, repoInstructions } from './repoFiles'
-
-const input = {
-  workspaceName: 'Acme',
-  workspaceSlug: 'acme',
-  issuePrefix: 'ACM',
-  project: { key: 'widgets', name: 'Widgets' },
-}
+import { initCommand, installCommand, projectKeyFrom, repoFiles, repoInstructions } from './repoFiles'
 
 describe('repository instructions', () => {
-  it('names the organisation, project, and how to choose where to log', () => {
-    const block = repoInstructions(input)
+  it('tells agents to use the velvet CLI, without naming a project or key', () => {
+    const block = repoInstructions()
     expect(block.startsWith('## Velvet work log\n')).toBe(true)
-    expect(block).toContain('Velvet project `widgets` (Widgets) in the Acme organisation (`acme`)')
-    expect(block).toContain('`velvet_current_ticket`')
-    expect(block).toContain('`velvet_log_work` with `project: "widgets"`')
-    expect(block).toContain('`ACM-42`')
-    expect(block).toContain('connected to an organisation other than `acme`')
+    expect(block).toContain('`velvet log KEY "what changed and why"`')
+    expect(block).toContain('`velvet key-from-branch`')
+    expect(block).toContain('`velvet log "..."` for the project')
+    expect(block).toContain('`velvet log KEY --kind decision "..."`')
+    expect(block).toContain('`velvet attach KEY REFERENCE`')
+    expect(block).toContain('`velvet upload-image KEY PATH --caption')
+    expect(block).toContain('ask the person to run `velvet init`')
+    expect(block).toContain('Never edit `velvet.yaml` to reach another project')
     expect(block).toContain('never invent time spent')
-    expect(block).toContain('explicit ticket or milestone')
-    expect(block).toContain('Hosted MCP cannot see local files')
-    expect(block).toContain('`velvet_prepare_image_upload`')
-    expect(block).not.toContain('velvet_upload_image')
-    expect(block).toContain('ask for it instead of claiming an upload')
-    expect(block).toContain('unrelated sensitive material')
-    expect(block).toContain('change status because of an upload')
+    expect(block).not.toMatch(/mcp|velvet_[a-z]/i)
   })
 
   it('offers the same block for AGENTS.md and CLAUDE.md, and a Cursor rule with front matter', () => {
-    const files = Object.fromEntries(repoFiles(input).map((file) => [file.id, file]))
-    const block = repoInstructions(input)
+    const files = Object.fromEntries(repoFiles().map((file) => [file.id, file]))
+    const block = repoInstructions()
     expect(files.agents!.content).toBe(block)
     expect(files.claude!.content).toBe(block)
     expect(files.cursor!.content).toBe(`---\ndescription: Log work to Velvet\nalwaysApply: true\n---\n\n${block}`)
+  })
+
+  it('builds install and link commands for this server', () => {
+    expect(installCommand('https://v.example/')).toBe('curl -fsSL https://v.example/install.sh | VELVET_SERVER=https://v.example sh')
+    expect(initCommand('https://v.example/')).toBe('velvet init --server https://v.example')
   })
 
   it('suggests project keys that follow the server rules', () => {
