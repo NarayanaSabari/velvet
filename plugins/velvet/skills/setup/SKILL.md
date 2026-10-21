@@ -12,6 +12,7 @@ Each repository is linked to one Velvet project, and its key can reach only that
 
 Run `velvet whoami` in the repository.
 If it prints an organisation and a project, setup is done: tell the user which ones, and stop.
+If it prints only an account, login is complete but this directory still needs `velvet init`.
 
 What a failure means:
 
@@ -31,23 +32,32 @@ For a self-hosted Velvet: `curl -fsSL https://velvet.example.com/install.sh | VE
 It installs to `~/.local/bin`, so that folder must be on `PATH`.
 An installed CLI updates itself from the same server with `velvet update`; `velvet update --check` only reports.
 
-## 3. Link the repository
+## 3. Sign in and link the directory
 
-The user runs this from the repository, because it opens their browser:
+The user signs in once per server and machine:
+
+```bash
+velvet login
+```
+
+Add `--server https://velvet.example.com` for a self-hosted Velvet.
+Login opens the browser. The user signs in if needed, checks the terminal code, and explicitly approves CLI setup access.
+The setup credential is stored in the system keychain, with a private-file fallback when a keychain is unavailable.
+
+Then the user runs this from the directory they want to link:
 
 ```bash
 velvet init
 ```
 
-Add `--server https://velvet.example.com` for a self-hosted Velvet.
-In the browser they confirm the code shown in the terminal and pick the organisation and project.
-
-`velvet init` writes `velvet.yaml` and stores the key in the system keychain.
-Suggest committing `velvet.yaml`: it holds no secret, and teammates run `velvet init` to get their own key.
+Init stays in the terminal. The user selects or creates an organisation and project, then confirms the directory link.
+It writes secret-free `velvet.yaml` in that directory and stores a separate project-scoped key on this machine.
+Suggest committing `velvet.yaml`. Teammates run `velvet login` once and `velvet init` locally to obtain their own key.
 
 Never ask for a key in chat, never print one, and never write one into a file.
-Never edit `velvet.yaml` to point at another project; the key would be refused there anyway.
-To disconnect this repository, the user runs `velvet logout`, which revokes its key and removes it from the machine.
+Never edit `velvet.yaml` to point at another project. Relinking requires the person's explicit approval through `velvet init --relink`.
+`velvet logout` revokes the machine login and all project keys issued through it, not only the current directory's key.
+The shared YAML files remain intact. Do not run logout without the user's request.
 
 ## 4. Verify
 
