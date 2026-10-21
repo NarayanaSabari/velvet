@@ -92,7 +92,7 @@ export function RepoSetup({ workspace, baseUrl }: { workspace: Membership; baseU
   )
 }
 
-function NewProject({ slug, onCancel, onCreated }: {
+export function NewProject({ slug, onCancel, onCreated }: {
   slug: string
   onCancel?: () => void
   onCreated: (project: Project) => void

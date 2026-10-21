@@ -5,6 +5,7 @@ import { api, ApiError } from '../../lib/api'
 import type { Project } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
+import { NewProject } from '../onboarding/RepoSetup'
 import { PublicAuthPage } from './PublicAuthPage'
 import { SignIn } from './SignIn'
 import { SignOutButton } from './SignOutButton'
@@ -39,6 +40,7 @@ export function ApproveCLI() {
   // is selected. Deriving it avoids syncing state in an effect.
   const [chosenSlug, setSlug] = useState('')
   const [chosenProject, setProjectKey] = useState('')
+  const [creating, setCreating] = useState(false)
   const slug = writable.some((m) => m.workspace_slug === chosenSlug) ? chosenSlug : (writable[0]?.workspace_slug ?? '')
 
   const pending = useQuery({
@@ -112,9 +114,9 @@ export function ApproveCLI() {
     return layout(<p role="alert" className="text-blocked">You are a viewer in every organisation, so you cannot connect an agent that writes. Ask an admin for member access.</p>)
   }
 
-  const ready = slug !== '' && projectKey !== '' && !approve.isPending
+  const ready = slug !== '' && projectKey !== '' && !creating && !approve.isPending
   return layout(
-    <form className="space-y-5" onSubmit={(e) => { e.preventDefault(); if (ready) approve.mutate() }}>
+    <div className="space-y-5">
       <div className="rounded-[var(--radius-surface)] border border-grey-200 p-4">
         <p className="text-sm text-grey-500">Confirm this matches your terminal</p>
         <p className="mt-1 font-mono text-lg tracking-widest" data-testid="cli-user-code">{pending.data.user_code}</p>
@@ -124,7 +126,7 @@ export function ApproveCLI() {
       <div className="space-y-1">
         <label htmlFor={orgId} className="block text-sm font-medium">Organisation</label>
         <select id={orgId} className="block min-h-12 w-full rounded-[var(--radius-control)] border border-grey-300 bg-paper px-3" value={slug}
-          onChange={(e) => { setSlug(e.target.value); setProjectKey('') }}>
+          onChange={(e) => { setSlug(e.target.value); setProjectKey(''); setCreating(false) }}>
           {writable.map((m) => <option key={m.workspace_slug} value={m.workspace_slug}>{m.workspace_name}</option>)}
         </select>
       </div>
@@ -132,21 +134,34 @@ export function ApproveCLI() {
       <div className="space-y-1">
         <label htmlFor={projectId} className="block text-sm font-medium">Project</label>
         {projects.isPending ? <p role="status" className="text-grey-500">Loading projects…</p>
-          : active.length === 0 ? <p className="text-grey-700">This organisation has no active projects. Create one in Velvet first.</p>
+          : projects.error ? <p role="alert" className="text-blocked">Could not load projects.</p>
+          : active.length === 0 || creating ? (
+            <div className="space-y-2 rounded-[var(--radius-surface)] border border-grey-200 p-4">
+              <p className="text-sm text-grey-700">{active.length === 0 ? 'This organisation has no active projects. Create one to connect.' : 'New project'}</p>
+              <NewProject
+                slug={slug}
+                onCancel={active.length > 0 ? () => setCreating(false) : undefined}
+                onCreated={(p) => { setProjectKey(p.key); setCreating(false) }}
+              />
+            </div>
+          )
           : (
-            <select id={projectId} className="block min-h-12 w-full rounded-[var(--radius-control)] border border-grey-300 bg-paper px-3" value={projectKey}
-              onChange={(e) => setProjectKey(e.target.value)}>
-              {active.map((p) => <option key={p.key} value={p.key}>{p.name} ({p.key})</option>)}
-            </select>
+            <>
+              <select id={projectId} className="block min-h-12 w-full rounded-[var(--radius-control)] border border-grey-300 bg-paper px-3" value={projectKey}
+                onChange={(e) => setProjectKey(e.target.value)}>
+                {active.map((p) => <option key={p.key} value={p.key}>{p.name} ({p.key})</option>)}
+              </select>
+              <button type="button" className="text-sm underline underline-offset-4" onClick={() => setCreating(true)}>New project</button>
+            </>
           )}
         <p className="text-xs text-grey-500">The CLI, and any agent using it in this repository, can read and write only this project.</p>
       </div>
 
       {approve.error ? <p role="alert" className="text-blocked">{approve.error.message}</p> : null}
-      <div className="flex flex-wrap gap-3">
+      <form className="flex flex-wrap gap-3" aria-label="Connect the CLI" onSubmit={(e) => { e.preventDefault(); if (ready) approve.mutate() }}>
         <Button className="min-h-12" variant="primary" type="submit" disabled={!ready}>{approve.isPending ? 'Connecting…' : 'Connect'}</Button>
         <Button className="min-h-12" type="button" disabled={deny.isPending} onClick={() => deny.mutate()}>Refuse</Button>
-      </div>
-    </form>,
+      </form>
+    </div>,
   )
 }
