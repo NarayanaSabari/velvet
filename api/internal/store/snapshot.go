@@ -84,7 +84,19 @@ func captureSnapshot(ctx context.Context, tx pgx.Tx, workspaceID, sprintID uuid.
 		        END AS identity, count(*) AS n
 		        FROM activity a
 		        LEFT JOIN app_user u ON u.id = a.actor_id
+		        LEFT JOIN comment c ON a.target_type = 'comment' AND c.id = a.target_id AND c.workspace_id = a.workspace_id
+		        LEFT JOIN issue i ON i.id = CASE WHEN a.target_type = 'issue' THEN a.target_id
+		            WHEN c.target_type = 'issue' THEN c.target_id END AND i.workspace_id = a.workspace_id
+		        LEFT JOIN milestone m ON m.id = CASE WHEN a.target_type = 'milestone' THEN a.target_id
+		            WHEN c.target_type = 'milestone' THEN c.target_id END AND m.workspace_id = a.workspace_id
+		        LEFT JOIN sprint sp ON sp.id = CASE WHEN a.target_type = 'sprint' THEN a.target_id
+		            ELSE m.sprint_id END AND sp.workspace_id = a.workspace_id
+		        LEFT JOIN repo r ON a.target_type = 'repo' AND r.id = a.target_id AND r.workspace_id = a.workspace_id
 		            WHERE a.workspace_id = $1
+		              AND COALESCE(i.project_id, sp.project_id, r.project_id,
+		                  CASE WHEN a.target_type = 'project' THEN a.target_id
+		                       WHEN c.target_type = 'project' THEN c.target_id END)
+		                  = (SELECT project_id FROM sprint WHERE id = $2)
 		              AND a.created_at >= (SELECT starts_on FROM sprint WHERE id = $2)
 		              AND a.created_at < (SELECT ends_on FROM sprint WHERE id = $2) + interval '1 day'
 		        GROUP BY identity

@@ -49,6 +49,7 @@ func TestEmailOnlyIdentitySurvivesEveryUserProjection(t *testing.T) {
 		&milestone.Position, &milestone.CreatedAt, &milestone.UpdatedAt))
 	issue := createIssue(t, f, map[string]any{
 		"title": "Email-only work", "assignee_id": emailUserID.String(), "status": "in_progress",
+		"milestone_id": milestone.ID.String(),
 	})
 
 	token, err := f.Store.CreateSession(ctx, emailUserID, time.Hour)

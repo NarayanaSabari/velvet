@@ -174,12 +174,14 @@ const worklogNotes = `
 	       w.slug, w.name, p.key, p.name,
 	       'note', src.source, src.kind,
 	       i.key,
-	       COALESCE(i.title, p.name, ''),
+	       COALESCE(i.title, ms.name, p.name, ''),
 	       src.body, '', ''
 	FROM comment src
-	LEFT JOIN issue i ON src.target_type = 'issue' AND i.id = src.target_id
-	LEFT JOIN project p ON p.id = COALESCE(
-	    CASE WHEN src.target_type = 'project' THEN src.target_id END, i.project_id)` +
+	LEFT JOIN issue i ON src.target_type = 'issue' AND i.id = src.target_id AND i.workspace_id = src.workspace_id
+	LEFT JOIN milestone ms ON src.target_type = 'milestone' AND ms.id = src.target_id AND ms.workspace_id = src.workspace_id
+	LEFT JOIN sprint sp ON sp.id = ms.sprint_id AND sp.workspace_id = src.workspace_id
+	LEFT JOIN project p ON p.workspace_id = src.workspace_id AND p.id = COALESCE(
+	    CASE WHEN src.target_type = 'project' THEN src.target_id END, i.project_id, sp.project_id)` +
 	worklogScope + `
 	  AND src.author_id = $1 AND src.deleted_at IS NULL
 	  AND ($5::text IS NULL OR p.key = $5)
