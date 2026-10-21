@@ -19,7 +19,6 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/cli/internal/client"
 	"github.com/NarayanaSabari/velvet-otter-lab/cli/internal/config"
@@ -55,9 +54,11 @@ func fail(code int, format string, args ...any) error {
 const usage = `Usage: velvet <command> [arguments]
 
 Set up:
-  init [--server URL]                     Link this repository to one Velvet project
-  whoami                                  Show the organisation, project, and person
-  logout                                  Revoke this repository's key on this machine
+  login [--server URL] [--no-browser]      Sign in once through browser consent
+  init [--organisation SLUG] [--project KEY]
+                                          Link this directory in the terminal, without a browser
+  whoami [--server URL] [--account ID]      Show the machine login identity
+  logout [--server URL] [--account ID]      Revoke machine login and its project keys
   update [--check] [--server URL]         Install the latest CLI from the Velvet server
 
 Work log:
@@ -120,11 +121,35 @@ func loadEnv(out, errOut io.Writer) (env, error) {
 		}
 		return env{}, fail(exitConfig, "%s", err)
 	}
-	key, err := config.Keys{}.Load(repo.Link)
+	keys := config.Keys{}
+	if err := keys.CheckBinding(wd, repo.Link); err != nil {
+		return env{}, fail(exitConfig, "%s", err)
+	}
+	bound, err := keys.HasBinding(wd)
+	if err != nil {
+		return env{}, fail(exitConfig, "%s", err)
+	}
+	if !bound {
+		if strings.TrimSpace(os.Getenv("VELVET_TOKEN")) == "" {
+			return env{}, fail(exitConfig, "this directory has no private project binding; run velvet init to confirm this directory")
+		}
+		trusted, err := accountServer("")
+		if err != nil {
+			return env{}, err
+		}
+		if trusted != repo.ServerURL() {
+			return env{}, fail(exitConfig, "unbound CI server differs from trusted VELVET_SERVER; set VELVET_SERVER explicitly or run velvet init")
+		}
+	}
+	key, err := keys.Load(repo.Link)
 	if err != nil {
 		return env{}, fail(exitAuth, "%s", err)
 	}
-	return env{repo: repo, api: client.New(repo.ServerURL(), key, version), out: out, errOut: errOut}, nil
+	api := client.New(repo.ServerURL(), key, version)
+	if _, err := projectIdentity(api, repo.Link); err != nil {
+		return env{}, err
+	}
+	return env{repo: repo, api: api, out: out, errOut: errOut}, nil
 }
 
 // apiError maps a server answer to an exit code and a message an agent can
@@ -150,7 +175,7 @@ func apiError(err error) error {
 
 // repoCommands need velvet.yaml and this repository's key.
 var repoCommands = map[string]bool{
-	"whoami": true, "where": true, "me": true, "logout": true, "log": true, "attach": true, "recap": true,
+	"log": true, "attach": true, "recap": true,
 	"issues": true, "issue": true, "new": true, "status": true, "sprints": true, "milestones": true, "upload-image": true,
 }
 
@@ -166,7 +191,11 @@ func run(args []string, out, errOut io.Writer, in io.Reader) error {
 	cmd, rest := args[0], args[1:]
 	switch cmd {
 	case "init":
-		return cmdInit(rest, out, errOut)
+		return cmdInit(rest, out, errOut, in)
+	case "login":
+		return cmdLogin(rest, out, errOut)
+	case "whoami", "where", "me", "logout":
+		return cmdIdentity(cmd, rest, out, errOut)
 	case "key-from-branch":
 		return cmdKeyFromBranch(out)
 	case "update":
@@ -180,10 +209,6 @@ func run(args []string, out, errOut io.Writer, in io.Reader) error {
 		return err
 	}
 	switch cmd {
-	case "whoami", "where", "me":
-		return e.whoami()
-	case "logout":
-		return e.logout()
 	case "log":
 		return e.log(rest, in)
 	case "attach":
@@ -209,102 +234,6 @@ func run(args []string, out, errOut io.Writer, in io.Reader) error {
 	}
 }
 
-// ---- init ------------------------------------------------------------------
-
-func cmdInit(args []string, out, errOut io.Writer) error {
-	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	fs.SetOutput(errOut)
-	server := fs.String("server", "", "Velvet server URL (default: the existing velvet.yaml, or "+defaultServer+")")
-	noBrowser := fs.Bool("no-browser", false, "print the approval link instead of opening a browser")
-	if err := fs.Parse(args); err != nil {
-		return fail(exitUsage, "%s", err)
-	}
-	wd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	dir := repoRoot(wd)
-
-	base := strings.TrimRight(*server, "/")
-	if base == "" {
-		if existing, err := config.Find(dir); err == nil {
-			base = existing.ServerURL()
-		} else {
-			base = defaultServer
-		}
-	}
-	api := client.New(base, "", version)
-
-	host, _ := os.Hostname()
-	var start struct {
-		DeviceCode      string    `json:"device_code"`
-		UserCode        string    `json:"user_code"`
-		VerificationURI string    `json:"verification_uri_complete"`
-		ExpiresAt       time.Time `json:"expires_at"`
-		Interval        int       `json:"interval"`
-	}
-	if err := api.Do(http.MethodPost, "/cli/sessions", nil, map[string]string{"client_name": "velvet CLI on " + host}, &start); err != nil {
-		return apiError(err)
-	}
-
-	fmt.Fprintf(out, "Approve this repository in your browser:\n\n  %s\n\nConfirm the code shown there is %s, then pick the organisation and project.\n", start.VerificationURI, start.UserCode)
-	if !*noBrowser {
-		openBrowser(start.VerificationURI)
-	}
-	fmt.Fprintln(out, "\nWaiting for approval…")
-
-	interval := time.Duration(max(start.Interval, 1)) * time.Second
-	var grant struct {
-		Token         string `json:"token"`
-		WorkspaceSlug string `json:"workspace_slug"`
-		WorkspaceName string `json:"workspace_name"`
-		ProjectKey    string `json:"project_key"`
-		ProjectName   string `json:"project_name"`
-		Role          string `json:"role"`
-	}
-	for {
-		time.Sleep(interval)
-		err := api.Do(http.MethodPost, "/cli/sessions/token", nil, map[string]string{"device_code": start.DeviceCode}, &grant)
-		if err == nil {
-			break
-		}
-		var ce *client.Error
-		if errors.As(err, &ce) {
-			switch ce.Code {
-			case "authorization_pending":
-				continue
-			case "access_denied":
-				return fail(exitAuth, "the sign-in was refused in the browser")
-			case "expired_token":
-				return fail(exitAuth, "the sign-in expired; run velvet init again")
-			}
-		}
-		return apiError(err)
-	}
-
-	project := config.Link{Server: base, Organisation: grant.WorkspaceSlug, Project: grant.ProjectKey}
-	where, err := config.Keys{}.Save(project, grant.Token)
-	if err != nil {
-		return fail(exitConfig, "could not store the key: %s", err)
-	}
-	path, err := config.Write(dir, project)
-	if err != nil {
-		return fail(exitConfig, "could not write velvet.yaml: %s", err)
-	}
-	fmt.Fprintf(out, "\nLinked to %s (%s) in %s.\nWrote %s. Commit it so teammates link the same project.\nStored this machine's key in %s. It can reach only this project.\n",
-		grant.ProjectName, grant.ProjectKey, grant.WorkspaceName, path, where)
-	return nil
-}
-
-// repoRoot is the git work tree root, or dir when it is not in one.
-func repoRoot(dir string) string {
-	out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output()
-	if err != nil {
-		return dir
-	}
-	return strings.TrimSpace(string(out))
-}
-
 func openBrowser(target string) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
@@ -316,59 +245,6 @@ func openBrowser(target string) {
 		cmd = exec.Command("xdg-open", target)
 	}
 	_ = cmd.Start()
-}
-
-// ---- identity --------------------------------------------------------------
-
-func (e env) whoami() error {
-	var me struct {
-		User struct {
-			Name  string `json:"name"`
-			Email string `json:"email"`
-		} `json:"user"`
-		Memberships []struct {
-			WorkspaceName string `json:"workspace_name"`
-			IssuePrefix   string `json:"issue_prefix"`
-			Role          string `json:"role"`
-		} `json:"memberships"`
-		Scope *struct {
-			WorkspaceSlug string `json:"workspace_slug"`
-			ProjectKey    string `json:"project_key"`
-		} `json:"scope"`
-	}
-	if err := e.api.Do(http.MethodGet, "/me", nil, nil, &me); err != nil {
-		return apiError(err)
-	}
-	who := me.User.Name
-	if who == "" {
-		who = me.User.Email
-	}
-	fmt.Fprintf(e.out, "Signed in as %s\n", who)
-	if me.Scope == nil {
-		fmt.Fprintln(e.out, "Key: personal (not limited to one project)")
-		return nil
-	}
-	if me.Scope.WorkspaceSlug != e.repo.Organisation || me.Scope.ProjectKey != e.repo.Project {
-		return fail(exitScope, "velvet.yaml names %s/%s, but this key is limited to %s/%s; run velvet init",
-			e.repo.Organisation, e.repo.Project, me.Scope.WorkspaceSlug, me.Scope.ProjectKey)
-	}
-	for _, m := range me.Memberships {
-		fmt.Fprintf(e.out, "Organisation: %s (%s), ticket keys %s-N\nRole: %s\n", m.WorkspaceName, me.Scope.WorkspaceSlug, m.IssuePrefix, m.Role)
-	}
-	fmt.Fprintf(e.out, "Project: %s\nKey: limited to this project\n", me.Scope.ProjectKey)
-	return nil
-}
-
-func (e env) logout() error {
-	err := e.api.Do(http.MethodDelete, "/me/token", nil, nil, nil)
-	if err != nil && client.StatusOf(err) != http.StatusUnauthorized {
-		return apiError(err)
-	}
-	if err := (config.Keys{}).Delete(e.repo.Link); err != nil {
-		return fail(exitConfig, "revoked on the server, but could not remove the local key: %s", err)
-	}
-	fmt.Fprintln(e.out, "Revoked this repository's key and removed it from this machine. velvet.yaml is unchanged.")
-	return nil
 }
 
 // ---- work log --------------------------------------------------------------

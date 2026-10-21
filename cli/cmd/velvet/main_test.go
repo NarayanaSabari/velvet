@@ -29,7 +29,7 @@ func TestUsageMatchesDispatch(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("VELVET_TOKEN", "")
 	for cmd := range usageCommands(t) {
-		if cmd == "init" || cmd == "update" {
+		if cmd == "init" || cmd == "login" || cmd == "update" {
 			continue // would reach the network
 		}
 		err := run([]string{cmd}, io.Discard, io.Discard, strings.NewReader(""))

@@ -29,7 +29,7 @@ func New(base, token, version string) *Client {
 	return &Client{
 		Base:      base,
 		Token:     token,
-		HTTP:      &http.Client{Timeout: 30 * time.Second},
+		HTTP:      &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }},
 		UserAgent: "velvet-cli/" + version,
 	}
 }

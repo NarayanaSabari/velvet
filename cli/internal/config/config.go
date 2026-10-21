@@ -6,9 +6,9 @@
 // (macOS Keychain, Windows Credential Manager, Secret Service on Linux), or in
 // a 0600 file when no keychain is available.
 //
-// velvet.yaml is not a security boundary: an agent can edit it. The key the
-// server issued is bound to one organisation and project, so pointing the file
-// elsewhere only makes the server refuse.
+// velvet.yaml is not a security boundary: an agent can edit it. A separate
+// private canonical-directory binding controls cached credential selection.
+// The server independently limits each project credential to its own scope.
 package config
 
 import (
@@ -56,7 +56,7 @@ var keyRe = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$`)
 // before any request is built from it.
 func (p Link) Validate() error {
 	u, err := url.Parse(p.Server)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" {
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" || u.RawPath != "" {
 		return fmt.Errorf("velvet.yaml: server must be an http(s) URL such as https://velvet.example.com")
 	}
 	if !slugRe.MatchString(p.Organisation) {
@@ -114,7 +114,7 @@ organisation: %s
 project: %s
 `, p.ServerURL(), p.Organisation, p.Project)
 	path := filepath.Join(dir, FileName)
-	return path, os.WriteFile(path, []byte(body), 0o644)
+	return path, atomicWrite(path, []byte(body), 0o644)
 }
 
 // account names one key: a person may link several repositories, to
@@ -195,6 +195,17 @@ func (k Keys) writeFile(entries map[string]string) error {
 }
 
 func (k Keys) updateFile(p Link, key string) error {
+	return k.mutateFile(func(entries map[string]string) error {
+		if key == "" {
+			delete(entries, fileKey(p))
+		} else {
+			entries[fileKey(p)] = key
+		}
+		return nil
+	})
+}
+
+func (k Keys) mutateFile(change func(map[string]string) error) error {
 	path, err := k.filePath()
 	if err != nil {
 		return err
@@ -215,19 +226,14 @@ func (k Keys) updateFile(p Link, key string) error {
 	if err != nil {
 		return err
 	}
-	if key == "" {
-		if _, exists := entries[fileKey(p)]; !exists {
-			return nil
-		}
-		delete(entries, fileKey(p))
-	} else {
-		entries[fileKey(p)] = key
+	if err := change(entries); err != nil {
+		return err
 	}
 	return k.writeFile(entries)
 }
 
-// fileKey hashes the account name so the file does not list which
-// organisations and projects the person works on.
+// fileKey hashes entry identifiers. Private binding and cleanup metadata may
+// still include server, organisation, and project names in their values.
 func fileKey(p Link) string {
 	sum := sha256.Sum256([]byte(account(p)))
 	return hex.EncodeToString(sum[:])
@@ -250,11 +256,17 @@ func (k Keys) Save(p Link, key string) (string, error) {
 // ErrNoKey means velvet.yaml exists but this person has not run velvet init.
 var ErrNoKey = errors.New("no key for this repository on this machine; run velvet init")
 
-// Load returns the key for p. VELVET_TOKEN overrides the stores, for CI.
+// Load returns the key for p. VELVET_TOKEN overrides the stores for CI.
+// Callers must verify its token kind and exact project scope through /me.
 func (k Keys) Load(p Link) (string, error) {
 	if token := strings.TrimSpace(os.Getenv("VELVET_TOKEN")); token != "" {
 		return token, nil
 	}
+	return k.LoadStored(p)
+}
+
+// LoadStored ignores environment overrides, for setup and credential reuse.
+func (k Keys) LoadStored(p Link) (string, error) {
 	if k.useKeychain() {
 		if key, err := keyring.Get(keyringService, account(p)); err == nil && key != "" {
 			return key, nil
@@ -272,8 +284,11 @@ func (k Keys) Load(p Link) (string, error) {
 
 // Delete removes the key for p from every store.
 func (k Keys) Delete(p Link) error {
+	var keychainErr error
 	if k.useKeychain() {
-		_ = keyring.Delete(keyringService, account(p))
+		if err := keyring.Delete(keyringService, account(p)); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+			keychainErr = fmt.Errorf("could not remove keychain credential: %w", err)
+		}
 	}
-	return k.updateFile(p, "")
+	return errors.Join(keychainErr, k.updateFile(p, ""))
 }

@@ -22,39 +22,102 @@ Run `velvet update` to install the server's current build after the same checksu
 It updates from `--server`, then `VELVET_SERVER`, then the repository's `velvet.yaml`, then the hosted Velvet.
 To build from source instead, run `go build -o velvet ./cmd/velvet` in this folder.
 
-## Link a repository
+## Sign in, then link a directory
 
 ```bash
+velvet login                     # opens browser consent once
 cd my-repo
-velvet init                       # or: velvet init --server https://velvet.example.com
+velvet init                      # terminal-only organisation/project setup
 ```
 
-`velvet init` opens your browser, where you sign in, confirm the code shown in the terminal, and pick one organisation and one project.
-It then:
+For a self-hosted server, pass `--server https://velvet.example.com` to login and init, or set `VELVET_SERVER`.
+Login never reads or writes `velvet.yaml` and works outside repositories.
+It asks you to confirm the device code in your browser, then stores a machine setup credential for that server and account.
+A valid saved login is reused, so repeated login does not mint orphan machine credentials.
+Use `--no-browser` on **login** to print the consent URL without opening it.
+Setup credentials permit identity and organisation/project setup only. They cannot read or write work data.
 
-- writes `velvet.yaml` at the repository root, naming the server, organisation, and project;
-- stores a new key for this repository in the system keychain (macOS Keychain, Secret Service on Linux, Credential Manager on Windows).
+`velvet init` never opens a browser.
+It lets you choose an organisation where you are an admin or member, or create one, then choose or create a project.
+It shows the server, account, organisation, project, and config destination for confirmation.
+A naming conflict keeps the entered name and asks for another slug or key.
+If no login exists, it tells you to run `velvet login` instead of starting browser consent.
 
-Commit `velvet.yaml`.
-It holds no secret, and teammates run `velvet init` to get their own key for the same project.
+For scripts, select existing resources explicitly:
 
-The key can reach only that project.
-The server enforces this, so editing `velvet.yaml` to name another project does not widen it: the CLI finds no key for the new name, and the old key is refused outside its project.
-Tickets with no project are out of reach for every repository key.
+```bash
+velvet init --server https://velvet.example.com \
+  --organisation lab --project web --non-interactive
+```
 
-Without a keychain (for example on a headless Linux box), keys go in `~/.config/velvet/credentials.json` with mode 0600, under hashed names.
-Set `VELVET_NO_KEYCHAIN=1` to use that file even when a keychain exists.
-In CI, set `VELVET_TOKEN` to a key and it is used instead of either store.
+To create resources, add `--create-organisation "Lab" --issue-prefix LAB` and/or `--create-project "Web"`.
+The `--organisation` slug and `--project` key remain required when using their creation flags.
+`--non-interactive` never prompts. Without complete selections it fails with actionable flag guidance.
+`--account USER_ID` selects another saved account explicitly. A cached project key from another account requires confirmed `--relink` before replacement.
 
-`velvet logout` revokes this repository's key on the server and removes it from this machine.
-You can also revoke any key under Profile > API tokens.
+Init exchanges the setup credential at `POST /api/v1/cli/project-tokens` for a key limited to exactly the selected organisation and project.
+It reuses an existing valid project key rather than rotating it on each run.
+It writes `velvet.yaml` in the **invocation directory**, not the Git root, and stores the project key separately.
+YAML writes use atomic replacement. Persistence failures restore prior local configuration and credentials, and attempt to revoke a newly issued key.
+A failed rollback is reported, never presented as a successful setup.
+Organisations or projects explicitly created before cancellation or a later failure remain on the server.
+
+Commit `velvet.yaml`. It holds no secret, and teammates run login and init with their own account.
+Existing three-field YAML and project credentials remain supported: run `velvet init` once to confirm a legacy or cloned directory.
+A valid legacy project key can be reused without browser login.
+Normal commands never silently adopt a cached key based on unbound YAML.
+
+### Private credentials and bindings
+
+Credentials use the system keychain (macOS Keychain, Secret Service on Linux, Credential Manager on Windows).
+Without a keychain, they use a 0600 `credentials.json` in the OS user-config directory's `velvet` folder.
+On Linux this is normally `~/.config/velvet/credentials.json`.
+Set `VELVET_NO_KEYCHAIN=1` to force the private file store.
+Entry identifiers are hashed. Private directory bindings and cleanup metadata may include server and project names, but never go in repository YAML.
+
+Each confirmed directory has a separate private binding to its canonical filesystem path and project.
+Editing YAML cannot switch to another cached credential, even when that credential exists.
+Symlink aliases share the same binding, and child directories honor the nearest private ancestor binding.
+Changing the project requires explicit confirmation:
+
+```bash
+velvet init --organisation lab --project other --relink
+# Scripts must also pass --yes --non-interactive.
+```
+
+Every normal command checks `/me` for token kind `project` and an exact organisation/project scope before work requests.
+Personal and setup credentials are refused, including through `VELVET_TOKEN`.
+In CI, use a project-scoped `VELVET_TOKEN` and pin `VELVET_SERVER` to the YAML server, especially for unbound checkouts.
+An unbound CI checkout without `VELVET_SERVER` trusts only the hosted default server.
+API redirects are not followed with credentials.
+
+These checks prevent accidental credential selection and YAML tampering, not a malicious process running as the same OS user.
+Such a process may access the setup key directly. Use a separate OS identity or credential broker for that isolation boundary.
+
+### Identity and logout
+
+`velvet whoami` shows the bound project identity inside an initialized directory, and machine login identity outside one.
+Pass `--server URL` and optionally `--account USER_ID` to inspect a saved machine login regardless of the current directory.
+The `where` and `me` aliases retain the same contextual behavior.
+Account commands never select a setup credential from editable repository YAML.
+
+`velvet logout --server URL` works outside repositories.
+It revokes that account's machine setup credential and all descendant project keys on the server, then removes the local login and matching cached descendants.
+Other servers, accounts, YAML files, and directory bindings are preserved.
+If a cached project slot was replaced by another account, logout leaves that replacement alone.
+If server revocation fails, logout reports the failure and keeps the local login so you can retry.
+If local removal fails after confirmed revocation, it reports that distinction.
+Legacy project credentials that were not issued by this machine login are not its descendants. Revoke those separately under Profile > API tokens.
+To switch the active account, log out, then run login again.
 
 ## Commands
 
 ```text
-velvet init [--server URL]              Link this repository to one Velvet project
-velvet whoami                           Show the organisation, project, and person
-velvet logout                           Revoke this repository's key on this machine
+velvet login [--server URL] [--no-browser] Sign in once through browser consent
+velvet init [--server URL] [--organisation SLUG] [--project KEY] [--non-interactive]
+                                        Link this directory in the terminal
+velvet whoami [--server URL] [--account ID] Show project or machine login identity
+velvet logout [--server URL] [--account ID] Revoke machine login and its project keys
 
 velvet log [KEY] [--kind K] BODY        Log work on a ticket, or on the project without KEY
 velvet attach KEY REFERENCE             Attach a PR URL, owner/repo#N, or commit sha
@@ -97,12 +160,12 @@ velvet new "Document key rotation" --desc "Add the operator runbook" --priority 
 
 - `0`: success.
 - `2`: invalid command or arguments.
-- `3`: not signed in, or the key was revoked; run `velvet init`.
+- `3`: not signed in, or the key was revoked. Run `velvet login`, then `velvet init` for project setup.
 - `4`: not found.
 - `5`: network failure.
 - `6`: another API error.
 - `7`: outside this repository's project.
-- `78`: no `velvet.yaml`, or an invalid one.
+- `78`: no `velvet.yaml`, an invalid one, an unconfirmed directory, or a private binding mismatch.
 
 ## Development
 
@@ -110,4 +173,4 @@ velvet new "Document key rotation" --desc "Add the operator runbook" --priority 
 go vet ./... && go test ./...
 ```
 
-`e2e/tests/cli.spec.ts` builds this binary and drives `velvet init`, browser approval, logging, scope refusal, and `install.sh` against the real stack.
+`e2e/tests/cli.spec.ts` builds this binary and drives login browser consent, terminal-only init, project creation, logging, scope refusal, logout cascading, and `install.sh` against the real stack.
