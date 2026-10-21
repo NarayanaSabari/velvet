@@ -1,0 +1,15 @@
+{
+  "name": "velvet",
+  "description": "Velvet work-log plugins for Claude Code.",
+  "owner": {
+    "name": "Sabari Narayana",
+    "url": "https://github.com/NarayanaSabari"
+  },
+  "plugins": [
+    {
+      "name": "velvet",
+      "source": "./plugins/velvet",
+      "description": "Keep a Velvet work log from your coding agent: log progress, file and update tickets, plan sprints, attach evidence and images, and recap your week."
+    }
+  ]
+}

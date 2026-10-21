@@ -147,6 +147,12 @@ func apiError(err error) error {
 	}
 }
 
+// repoCommands need velvet.yaml and this repository's key.
+var repoCommands = map[string]bool{
+	"whoami": true, "where": true, "me": true, "logout": true, "log": true, "attach": true, "recap": true,
+	"issues": true, "issue": true, "new": true, "status": true, "sprints": true, "milestones": true, "upload-image": true,
+}
+
 func run(args []string, out, errOut io.Writer, in io.Reader) error {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		fmt.Fprintf(out, usage, version)
@@ -162,6 +168,9 @@ func run(args []string, out, errOut io.Writer, in io.Reader) error {
 		return cmdInit(rest, out, errOut)
 	case "key-from-branch":
 		return cmdKeyFromBranch(out)
+	}
+	if !repoCommands[cmd] {
+		return fail(exitUsage, "unknown command %q; run velvet --help", cmd)
 	}
 	e, err := loadEnv(out, errOut)
 	if err != nil {

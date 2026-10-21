@@ -1,0 +1,20 @@
+{
+  "name": "velvet",
+  "interface": {
+    "displayName": "Velvet"
+  },
+  "plugins": [
+    {
+      "name": "velvet",
+      "source": {
+        "source": "local",
+        "path": "./plugins/velvet"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

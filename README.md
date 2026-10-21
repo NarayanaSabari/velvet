@@ -86,6 +86,23 @@ It names no project or key, so it is the same for every repository and safe to c
 `velvet logout` revokes a repository's key and removes it from the machine, and any key can be revoked under API tokens.
 Personal API tokens made there are not limited to a project and suit scripts that work across projects.
 
+### Agent plugins
+
+The [`plugins/velvet`](plugins/velvet) plugin adds skills that teach Claude Code and Codex when and how to use the CLI: logging work, tickets, sprints, images, and recaps.
+This repository is the marketplace for both:
+
+```
+/plugin install velvet --marketplace NarayanaSabari/velvet
+```
+
+```bash
+codex plugin marketplace add NarayanaSabari/velvet
+codex plugin add velvet@velvet
+```
+
+The plugin holds no key and configures nothing; its `setup` skill walks the person through installing the CLI and running `velvet init`.
+`cli/cmd/velvet/main_test.go` fails when a skill names a command the CLI does not have, or when a command has no skill.
+
 ### Preserving important images
 
 An agent can attach a user-shared reference, bug screenshot, or result image to an existing ticket or milestone, with a caption explaining why it matters.
