@@ -59,9 +59,14 @@ IMAGE_TAG="$tag" compose pull --quiet migrate api worker web
 echo "starting $tag"
 IMAGE_TAG="$tag" compose up -d --no-build --remove-orphans
 
-# The Caddyfile is a bind mount, so `up` does not restart Caddy when only the
-# file changed. Reloading is graceful and a no-op when nothing changed.
-compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+# The Caddyfile is a single-file bind mount. Checking out a new commit
+# replaces the file rather than editing it, and a running container keeps
+# seeing the old one, so a reload alone re-reads stale routes. When the copy
+# Caddy sees differs from the checkout, restart it to re-bind the new file.
+if ! compose exec -T caddy cat /etc/caddy/Caddyfile | cmp -s - "$here/Caddyfile"; then
+  echo "Caddyfile changed; restarting caddy"
+  compose restart caddy
+fi
 
 for i in $(seq 1 30); do
   if curl -fsS -m 10 "$base_url/api/v1/health" >/dev/null 2>&1; then
