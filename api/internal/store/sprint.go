@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -119,18 +120,24 @@ func (s *Store) ActivateSprint(ctx context.Context, workspaceID, id, actorID uui
 		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `
-			UPDATE sprint SET state = 'completed', completed_at = now()
+		var previous uuid.UUID
+		err := tx.QueryRow(ctx, `
+			SELECT id FROM sprint
 			WHERE workspace_id = $1 AND state = 'active' AND id <> $2
 			  AND project_id = (SELECT project_id FROM sprint WHERE workspace_id = $1 AND id = $2)`,
-			workspaceID, id); err != nil {
+			workspaceID, id).Scan(&previous)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
+		}
+		if err == nil {
+			if _, err := closeSprintTx(ctx, tx, workspaceID, previous, actorID, id); err != nil {
+				return err
+			}
 		}
 		row := tx.QueryRow(ctx, `
 			UPDATE sprint SET state = 'active', completed_at = NULL
 			WHERE workspace_id = $1 AND id = $2
 			RETURNING `+sprintCols, workspaceID, id)
-		var err error
 		if out, err = scanSprint(row); err != nil {
 			return err
 		}
@@ -153,27 +160,32 @@ func (s *Store) CloseSprint(ctx context.Context, workspaceID, id, actorID uuid.U
 		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
 			return err
 		}
-		row := tx.QueryRow(ctx, `
-			UPDATE sprint SET state = 'completed', completed_at = now()
-			WHERE workspace_id = $1 AND id = $2
-			RETURNING `+sprintCols, workspaceID, id)
 		var err error
-		if out, err = scanSprint(row); err != nil {
-			return err
-		}
-		// Capture before rolling forward: the snapshot must describe the
-		// sprint as it was closed, not as it looks after the carry.
-		if err := captureSnapshot(ctx, tx, workspaceID, id); err != nil {
-			return err
-		}
-		if err := rollIncompleteIssuesForward(ctx, tx, workspaceID, id); err != nil {
-			return err
-		}
-		return RecordActivity(ctx, tx, ActivityInput{
-			WorkspaceID: workspaceID, ActorID: actorID,
-			Verb: VerbClosedSprint, TargetType: "sprint", TargetID: id,
-			Metadata: map[string]any{"name": out.Name},
-		})
+		out, err = closeSprintTx(ctx, tx, workspaceID, id, actorID, uuid.Nil)
+		return err
+	})
+	return out, err
+}
+
+func closeSprintTx(ctx context.Context, tx pgx.Tx, workspaceID, id, actorID, nextSprintID uuid.UUID) (Sprint, error) {
+	out, err := scanSprint(tx.QueryRow(ctx, `
+		UPDATE sprint SET state = 'completed', completed_at = now()
+		WHERE workspace_id = $1 AND id = $2
+		RETURNING `+sprintCols, workspaceID, id))
+	if err != nil {
+		return out, err
+	}
+	// Capture before carrying issues, while their old sprint still owns them.
+	if err := captureSnapshot(ctx, tx, workspaceID, id); err != nil {
+		return out, err
+	}
+	if err := rollIncompleteIssuesForward(ctx, tx, workspaceID, id, nextSprintID); err != nil {
+		return out, err
+	}
+	err = RecordActivity(ctx, tx, ActivityInput{
+		WorkspaceID: workspaceID, ActorID: actorID,
+		Verb: VerbClosedSprint, TargetType: "sprint", TargetID: id,
+		Metadata: map[string]any{"name": out.Name},
 	})
 	return out, err
 }

@@ -103,21 +103,22 @@ func captureSnapshot(ctx context.Context, tx pgx.Tx, workspaceID, sprintID uuid.
 // work forward is an act of bookkeeping, and silently completing or cancelling
 // somebody's issue because a month ended would be a lie in the record.
 //
-// When there is no upcoming sprint, the issues stay where they are rather than
-// the close inventing a sprint nobody planned.
-func rollIncompleteIssuesForward(ctx context.Context, tx pgx.Tx, workspaceID, sprintID uuid.UUID) error {
-	var nextSprint uuid.UUID
-	err := tx.QueryRow(ctx, `
-		SELECT next.id FROM sprint next
-		JOIN sprint closing ON closing.id = $2
-		WHERE next.workspace_id = $1 AND next.state = 'upcoming' AND next.id <> $2
-		  AND next.project_id = closing.project_id
-		ORDER BY next.starts_on ASC LIMIT 1`, workspaceID, sprintID).Scan(&nextSprint)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
+// Activation supplies its chosen destination. Manual close chooses the next
+// upcoming sprint, or leaves issues alone when none has been planned.
+func rollIncompleteIssuesForward(ctx context.Context, tx pgx.Tx, workspaceID, sprintID, nextSprint uuid.UUID) error {
+	if nextSprint == uuid.Nil {
+		err := tx.QueryRow(ctx, `
+			SELECT next.id FROM sprint next
+			JOIN sprint closing ON closing.id = $2
+			WHERE next.workspace_id = $1 AND next.state = 'upcoming' AND next.id <> $2
+			  AND next.project_id = closing.project_id
+			ORDER BY next.starts_on ASC LIMIT 1`, workspaceID, sprintID).Scan(&nextSprint)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil
+			}
+			return err
 		}
-		return err
 	}
 
 	rows, err := tx.Query(ctx, `
