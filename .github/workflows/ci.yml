@@ -88,6 +88,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+      - name: Build, vet, and test
+        working-directory: cli
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test -count=1 ./...
+      - name: Check vulnerable dependencies
+        working-directory: cli
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
       - name: Test CLI uploads
         run: python3 cli/test_upload_image.py
 
@@ -105,6 +118,12 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: e2e/package-lock.json
+
+      # cli.spec.ts builds the velvet binary and drives it against the stack.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
 
       - name: Install
         working-directory: e2e

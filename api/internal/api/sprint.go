@@ -70,6 +70,13 @@ func (s *Server) handleListSprints(w http.ResponseWriter, r *http.Request) {
 		}
 		filter.ProjectID = id
 	}
+	if project, scoped := scopedProject(r); scoped {
+		if filter.ProjectID != uuid.Nil && filter.ProjectID != project {
+			forbidScope(w, "this key can only list its own project's sprints")
+			return
+		}
+		filter.ProjectID = project
+	}
 	sprints, err := s.store.ListSprints(r.Context(), ws.WorkspaceID, filter)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not list sprints")
@@ -116,8 +123,17 @@ func (s *Server) handleCreateSprint(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if projectID == nil {
+		if scoped, ok := scopedProject(r); ok {
+			projectID = &scoped
+		}
+	}
+	if projectID == nil {
 		WriteError(w, http.StatusBadRequest, "invalid_request",
 			"a sprint belongs to a project: pass project_id or a project key")
+		return
+	}
+	if scoped, ok := scopedProject(r); ok && *projectID != scoped {
+		forbidScope(w, "this key can only create sprints in its own project")
 		return
 	}
 	sprint, err := s.store.CreateSprint(r.Context(), store.CreateSprintInput{

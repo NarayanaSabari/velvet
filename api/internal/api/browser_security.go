@@ -20,7 +20,7 @@ func (s *Server) browserMutations(next http.Handler) http.Handler {
 		// An explicit bearer credential is not sent automatically by a browser,
 		// so it is not vulnerable to cookie CSRF. This middleware is browser-only,
 		// so bearer requests skip both its Origin and browser content-type checks.
-		if bearerRequest(r) || imageGrantRequest(r) {
+		if bearerRequest(r) || imageGrantRequest(r) || cliDeviceRequest(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -40,6 +40,14 @@ func (s *Server) browserMutations(next http.Handler) http.Handler {
 func bearerRequest(r *http.Request) bool {
 	_, ok := bearerTokenFromRequest(r)
 	return ok
+}
+
+// cliDeviceRequest is the CLI's own half of `velvet init`: starting a session
+// and polling it. Neither call carries or reads a cookie, so neither can be
+// forged across sites; the browser half of the flow keeps the Origin check.
+func cliDeviceRequest(r *http.Request) bool {
+	return r.Method == http.MethodPost &&
+		(r.URL.Path == "/api/v1/cli/sessions" || r.URL.Path == "/api/v1/cli/sessions/token")
 }
 
 // canonicalOrigin follows URL origin semantics for the two HTTP schemes this

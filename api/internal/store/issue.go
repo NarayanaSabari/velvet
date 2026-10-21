@@ -539,3 +539,12 @@ func sameUUIDPtr(a, b *uuid.UUID) bool {
 		return *a == *b
 	}
 }
+
+// IssueProjectID reports an issue's project, nil when it has none.
+func (s *Store) IssueProjectID(ctx context.Context, workspaceID, issueID uuid.UUID) (*uuid.UUID, error) {
+	var project *uuid.UUID
+	err := s.pool.QueryRow(ctx,
+		`SELECT project_id FROM issue WHERE workspace_id = $1 AND id = $2`,
+		workspaceID, issueID).Scan(&project)
+	return project, mapErr(err)
+}

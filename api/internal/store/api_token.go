@@ -24,57 +24,82 @@ type APIToken struct {
 	Name       string     `json:"name"`
 	CreatedAt  time.Time  `json:"created_at"`
 	LastUsedAt *time.Time `json:"last_used_at"`
+	// A key minted by `velvet init` is bound to one organisation and project.
+	// Both are nil for a personal key.
+	WorkspaceSlug *string `json:"workspace_slug"`
+	ProjectKey    *string `json:"project_key"`
 }
+
+// TokenScope is what a key may reach. A zero scope is a personal key.
+type TokenScope struct {
+	WorkspaceID *uuid.UUID
+	ProjectID   *uuid.UUID
+}
+
+func (s TokenScope) Scoped() bool { return s.ProjectID != nil }
 
 // CreateAPIToken creates a personal token and returns its raw value exactly
 // once. Only the SHA-256 hash of the complete velvet_ token is persisted.
 func (s *Store) CreateAPIToken(ctx context.Context, userID uuid.UUID, name string) (string, error) {
+	var token string
+	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		var err error
+		token, _, err = createAPITokenTx(ctx, tx, userID, name, TokenScope{})
+		return err
+	})
+	return token, err
+}
+
+// createAPITokenTx mints a key inside the caller's transaction. Only the
+// SHA-256 hash of the complete velvet_ token is persisted.
+func createAPITokenTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, name string, scope TokenScope) (string, uuid.UUID, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return "", ErrInvalidAPITokenName
+		return "", uuid.Nil, ErrInvalidAPITokenName
 	}
 
 	raw := make([]byte, apiTokenBytes)
 	if _, err := rand.Read(raw); err != nil {
-		return "", err
+		return "", uuid.Nil, err
 	}
 	token := apiTokenPrefix + hex.EncodeToString(raw)
 
-	err := s.InTx(ctx, func(tx pgx.Tx) error {
-		// Serialize the count and insert per user so concurrent issuances cannot
-		// exceed the 20-token limit.
-		if _, err := tx.Exec(ctx,
-			`SELECT pg_advisory_xact_lock(hashtextextended('api-token-user:' || $1::text, 0))`, userID); err != nil {
-			return err
-		}
-
-		var count int
-		if err := tx.QueryRow(ctx, `SELECT count(*) FROM api_token WHERE user_id=$1`, userID).Scan(&count); err != nil {
-			return err
-		}
-		if count >= apiTokenLimit {
-			return ErrAPITokenLimit
-		}
-
-		_, err := tx.Exec(ctx, `
-			INSERT INTO api_token (user_id, name, token_hash)
-			VALUES ($1, $2, $3)`, userID, name, HashToken(token))
-		return mapErr(err)
-	})
-	if err != nil {
-		return "", err
+	// Serialize the count and insert per user so concurrent issuances cannot
+	// exceed the 20-token limit.
+	if _, err := tx.Exec(ctx,
+		`SELECT pg_advisory_xact_lock(hashtextextended('api-token-user:' || $1::text, 0))`, userID); err != nil {
+		return "", uuid.Nil, err
 	}
-	return token, nil
+
+	var count int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM api_token WHERE user_id=$1`, userID).Scan(&count); err != nil {
+		return "", uuid.Nil, err
+	}
+	if count >= apiTokenLimit {
+		return "", uuid.Nil, ErrAPITokenLimit
+	}
+
+	var id uuid.UUID
+	err := tx.QueryRow(ctx, `
+		INSERT INTO api_token (user_id, name, token_hash, workspace_id, project_id)
+		VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		userID, name, HashToken(token), scope.WorkspaceID, scope.ProjectID).Scan(&id)
+	if err != nil {
+		return "", uuid.Nil, mapErr(err)
+	}
+	return token, id, nil
 }
 
 // ListAPITokens returns token metadata only. In particular, token_hash is not
 // selected so it cannot accidentally reach an API response.
 func (s *Store) ListAPITokens(ctx context.Context, userID uuid.UUID) ([]APIToken, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, name, created_at, last_used_at
-		FROM api_token
-		WHERE user_id=$1
-		ORDER BY created_at, id`, userID)
+		SELECT t.id, t.name, t.created_at, t.last_used_at, w.slug, p.key
+		FROM api_token t
+		LEFT JOIN workspace w ON w.id = t.workspace_id
+		LEFT JOIN project p ON p.id = t.project_id
+		WHERE t.user_id=$1
+		ORDER BY t.created_at, t.id`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +108,7 @@ func (s *Store) ListAPITokens(ctx context.Context, userID uuid.UUID) ([]APIToken
 	out := []APIToken{}
 	for rows.Next() {
 		var token APIToken
-		if err := rows.Scan(&token.ID, &token.Name, &token.CreatedAt, &token.LastUsedAt); err != nil {
+		if err := rows.Scan(&token.ID, &token.Name, &token.CreatedAt, &token.LastUsedAt, &token.WorkspaceSlug, &token.ProjectKey); err != nil {
 			return nil, mapErr(err)
 		}
 		out = append(out, token)
@@ -109,23 +134,32 @@ func (s *Store) DeleteAPIToken(ctx context.Context, userID, id uuid.UUID) error 
 // request while keeping the first use visible immediately.
 //
 // The token's own id is returned alongside the user so a work-log entry can
-// record which agent token wrote it.
-func (s *Store) LookupAPIToken(ctx context.Context, rawToken string) (User, uuid.UUID, error) {
+// record which agent token wrote it, and its scope so every request can be
+// held to the organisation and project the key was minted for.
+func (s *Store) LookupAPIToken(ctx context.Context, rawToken string) (User, uuid.UUID, TokenScope, error) {
 	hash := HashToken(rawToken)
 	if _, err := s.pool.Exec(ctx, `
 		UPDATE api_token
 		SET last_used_at=now()
 		WHERE token_hash=$1
 		  AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')`, hash); err != nil {
-		return User{}, uuid.Nil, err
+		return User{}, uuid.Nil, TokenScope{}, err
 	}
 
 	var user User
 	var tokenID uuid.UUID
+	var scope TokenScope
 	err := s.pool.QueryRow(ctx, `
-		SELECT t.id, u.id, COALESCE(u.email, ''), u.github_id, u.github_login, u.name, u.avatar_url
+		SELECT t.id, t.workspace_id, t.project_id, u.id, COALESCE(u.email, ''), u.github_id, u.github_login, u.name, u.avatar_url
 		FROM api_token t JOIN app_user u ON u.id=t.user_id
 		WHERE t.token_hash=$1`, hash).
-		Scan(&tokenID, &user.ID, &user.Email, &user.GitHubID, &user.GitHubLogin, &user.Name, &user.AvatarURL)
-	return user, tokenID, mapErr(err)
+		Scan(&tokenID, &scope.WorkspaceID, &scope.ProjectID, &user.ID, &user.Email, &user.GitHubID, &user.GitHubLogin, &user.Name, &user.AvatarURL)
+	return user, tokenID, scope, mapErr(err)
+}
+
+// RevokeAPITokenByID deletes the key that authenticated a request, which is
+// how `velvet logout` removes its own key without a browser session.
+func (s *Store) RevokeAPITokenByID(ctx context.Context, id uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM api_token WHERE id=$1`, id)
+	return err
 }

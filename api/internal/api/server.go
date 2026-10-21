@@ -72,6 +72,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerReportRoutes(mux)
 	s.registerWorklogRoutes(mux)
 	s.registerOnboardingRoutes(mux)
+	s.registerCLIAuthRoutes(mux)
 
 	// MCP tools call the REST routes in-process through the same browser and
 	// recovery middleware, so an agent gets exactly the checks a direct API

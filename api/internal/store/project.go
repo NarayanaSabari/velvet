@@ -274,3 +274,13 @@ func checkProjectInWorkspace(ctx context.Context, tx pgx.Tx, workspaceID, projec
 	}
 	return nil
 }
+
+// ScopeNames returns the organisation slug and project key a scoped key is
+// bound to, for responses and for filters that match on those names.
+func (s *Store) ScopeNames(ctx context.Context, workspaceID, projectID uuid.UUID) (string, string, error) {
+	var slug, key string
+	err := s.pool.QueryRow(ctx, `
+		SELECT w.slug, p.key FROM project p JOIN workspace w ON w.id = p.workspace_id
+		WHERE w.id = $1 AND p.id = $2`, workspaceID, projectID).Scan(&slug, &key)
+	return slug, key, mapErr(err)
+}

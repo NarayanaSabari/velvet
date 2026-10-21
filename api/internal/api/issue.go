@@ -56,6 +56,14 @@ func (s *Server) handleListIssues(w http.ResponseWriter, r *http.Request) {
 		}
 		filter.ProjectID = &id
 	}
+	// A scoped key sees only its own project's tickets, whatever it asked for.
+	if project, scoped := scopedProject(r); scoped {
+		if filter.ProjectID != nil && *filter.ProjectID != project {
+			forbidScope(w, "this key can only list its own project's tickets")
+			return
+		}
+		filter.ProjectID = &project
+	}
 	for _, status := range filter.Statuses {
 		if !store.ValidIssueStatus(status) {
 			WriteError(w, http.StatusBadRequest, "invalid_request", "unknown status "+status)
@@ -143,6 +151,25 @@ func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.ProjectID = id
+	}
+	if project, scoped := scopedProject(r); scoped {
+		if in.ProjectID != nil && *in.ProjectID != project {
+			forbidScope(w, "this key can only file tickets in its own project")
+			return
+		}
+		if in.MilestoneID != nil && !s.milestoneInProject(r, ws.WorkspaceID, *in.MilestoneID, project) {
+			forbidScope(w, "this milestone is outside the project this key is limited to")
+			return
+		}
+		if in.ParentID != nil && !s.issueIDInProject(r, ws.WorkspaceID, *in.ParentID, project) {
+			forbidScope(w, "the parent ticket is outside the project this key is limited to")
+			return
+		}
+		if in.AssigneeID != nil {
+			forbidScope(w, "assigning tickets is done in Velvet, not with a project key")
+			return
+		}
+		in.ProjectID = &project
 	}
 	in.WorkspaceID = ws.WorkspaceID
 	in.ActorID = user.ID
@@ -239,6 +266,31 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		patch.ProjectID = &id
+	}
+	if project, scoped := scopedProject(r); scoped {
+		// The ticket itself was checked before the handler ran. The patch may
+		// not move it, or point it, anywhere outside the key's project.
+		if patch.ProjectID != nil && (*patch.ProjectID == nil || **patch.ProjectID != project) {
+			forbidScope(w, "this key cannot move a ticket out of its project")
+			return
+		}
+		if patch.MilestoneID != nil && *patch.MilestoneID != nil && !s.milestoneInProject(r, ws.WorkspaceID, **patch.MilestoneID, project) {
+			forbidScope(w, "this milestone is outside the project this key is limited to")
+			return
+		}
+		if patch.ParentID != nil && *patch.ParentID != nil && !s.issueIDInProject(r, ws.WorkspaceID, **patch.ParentID, project) {
+			forbidScope(w, "the parent ticket is outside the project this key is limited to")
+			return
+		}
+		if patch.AfterID != nil && !s.issueIDInProject(r, ws.WorkspaceID, *patch.AfterID, project) ||
+			patch.BeforeID != nil && !s.issueIDInProject(r, ws.WorkspaceID, *patch.BeforeID, project) {
+			forbidScope(w, "this key can only order tickets within its own project")
+			return
+		}
+		if patch.AssigneeID != nil {
+			forbidScope(w, "assigning tickets is done in Velvet, not with a project key")
+			return
+		}
 	}
 	issue, err := s.store.GetIssueByKey(r.Context(), ws.WorkspaceID, pathIssueKey(r))
 	if err != nil {

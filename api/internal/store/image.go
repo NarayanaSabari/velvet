@@ -297,3 +297,23 @@ func (s *Store) ConsumeImageUpload(ctx context.Context, slug string, id uuid.UUI
 	})
 	return out, err
 }
+
+// ImageProjectID reports which project an image's ticket or milestone belongs
+// to. An image on a ticket with no project has none, and reads as not found.
+func (s *Store) ImageProjectID(ctx context.Context, workspaceID, imageID uuid.UUID) (uuid.UUID, error) {
+	var project *uuid.UUID
+	err := s.pool.QueryRow(ctx, `
+		SELECT COALESCE(i.project_id, s.project_id)
+		FROM image_attachment a
+		LEFT JOIN issue i ON i.id = a.issue_id
+		LEFT JOIN milestone m ON m.id = a.milestone_id
+		LEFT JOIN sprint s ON s.id = m.sprint_id
+		WHERE a.workspace_id = $1 AND a.id = $2`, workspaceID, imageID).Scan(&project)
+	if err != nil {
+		return uuid.Nil, mapErr(err)
+	}
+	if project == nil {
+		return uuid.Nil, ErrNotFound
+	}
+	return *project, nil
+}
