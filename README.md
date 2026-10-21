@@ -60,19 +60,29 @@ Any agent that can run a shell command can use it, and there is nothing to confi
 
 ```bash
 curl -fsSL https://velvet.example.com/install.sh | VELVET_SERVER=https://velvet.example.com sh
+velvet login --server https://velvet.example.com
 cd my-repo
 velvet init --server https://velvet.example.com
 ```
 
-`velvet init` opens the browser, where the person confirms the code shown in the terminal and picks one organisation and one project.
-It writes `velvet.yaml` at the repository root and stores a new key in the system keychain.
+`velvet login` opens the browser, where the person compares the terminal code and approves account setup access.
+The browser does not select an organisation or project.
+`velvet init` then selects or creates an organisation and project in the terminal, using that saved login without another browser approval.
+It writes `velvet.yaml` in the current directory and stores a separate project key in the system keychain.
+For scripts, use `velvet init --server URL --organisation SLUG --project KEY --non-interactive` after login.
 `velvet.yaml` names the server, organisation, and project, holds no secret, and is committed so teammates link the same project with their own key.
 
-The key is bound to that one project on the server.
+The saved login can list and create setup resources and issue project keys, but cannot read tickets or work logs.
+Each repository key is bound to one project on the server.
 Every request is checked against an allowlist of the routes the CLI needs, and each one against the key's project, so the key can read and write that project's tickets, sprints, milestones, images, and work log and nothing else.
-Editing `velvet.yaml` cannot widen this: the CLI finds no key for a different project, and the server refuses the old key outside its own.
+Editing `velvet.yaml` cannot widen this: a private directory binding rejects changed server, organisation, or project fields before selecting a credential, and the server refuses each key outside its own project.
+Use `velvet init --relink --yes` only when deliberately changing the directory's project.
+Repositories linked by older CLI versions need one terminal-only `velvet init` to confirm their private directory binding.
+A valid cached project key needs no new browser login for that confirmation.
+Explicit project-scoped `VELVET_TOKEN` credentials for CI remain supported after server-side identity and scope validation.
+Self-hosted CI must also set `VELVET_SERVER` to the trusted server URL, so editable YAML cannot redirect a token to another origin.
 Tickets with no project are out of reach for every repository key, and a repository key cannot change assignees or move a ticket between projects.
-The approver's role and the project are checked again when the key is collected, and no raw key is ever stored on the server.
+The user's current role and the active project are checked when a repository key is issued, and no raw key is ever stored on the server.
 
 A new account is walked through this after sign-in at `/onboarding`: an organisation named after the person, its first project, then the install and link commands.
 The screen notices the link and the key's first use without a reload.
@@ -83,7 +93,8 @@ Old Profile links still open General, and `#agent-config` bookmarks open Agent c
 Agent config also generates a "Velvet work log" section for `AGENTS.md`, `CLAUDE.md`, or a Cursor rule, which tells agents to use the CLI and how to choose where each entry goes: the ticket in the branch first, then the project.
 It names no project or key, so it is the same for every repository and safe to commit.
 
-`velvet logout` revokes a repository's key and removes it from the machine, and any key can be revoked under API tokens.
+`velvet logout` revokes the saved login and every repository key issued through it, then removes the saved login from the machine.
+It leaves `velvet.yaml` intact. Individual keys can also be revoked under API tokens.
 Personal API tokens made there are not limited to a project and suit scripts that work across projects.
 
 ### Agent plugins
@@ -100,7 +111,7 @@ codex plugin marketplace add NarayanaSabari/velvet
 codex plugin add velvet@velvet
 ```
 
-The plugin holds no key and configures nothing; its `setup` skill walks the person through installing the CLI and running `velvet init`.
+The plugin holds no key and configures nothing; its `setup` skill walks the person through installing the CLI, running `velvet login`, and linking a repository with `velvet init`.
 `cli/cmd/velvet/main_test.go` fails when a skill names a command the CLI does not have, or when a command has no skill.
 
 ### Preserving important images
@@ -466,6 +477,12 @@ For schema-compatible application rollback, Actions can rebuild and redeploy a s
 After `0006_email_identity.sql` commits, selecting an old commit is unsafe: rollback requires stopping writers and restoring the verified pre-contract backup before running the foundation release.
 Follow the [two-release organisations runbook](docs/operations/organisations-rollout.md) before either organisations release, including the approved email backfill, ownership preflights, stopped legacy writers, and fresh verified backup immediately before `0006`.
 Merging to `main` authorizes the automatic production deployment and requires separate operator approval from opening a review PR.
+
+The login/init split adds `0016_cli_setup_tokens.sql`, which makes token kinds and parent-child revocation explicit.
+After that migration, an older API binary cannot issue scoped repository keys because its inserts omit the required project kind.
+New API binaries still support legacy CLI init sessions, but application-only rollback across this migration is not supported.
+Any rollback requires an operator-approved, coordinated database recovery plan and a verified compatible backup, not an automatic image rollback.
+Setup credentials use a separate hash domain, so older API binaries cannot authenticate them as personal tokens.
 
 The host side is one restricted SSH key.
 Its `authorized_keys` entry forces a single command that accepts a commit sha, checks it out, and runs the deploy script, so the key can do nothing else:

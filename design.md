@@ -234,17 +234,18 @@ Brief table guidance explains that GitHub is optional and that account selection
 GitHub App repository access is a distinct administrator concern under Repositories, with a warning that synced evidence is shared with the Velvet organisation even if members cannot open the private GitHub links.
 
 Agent config sits between GitHub and API tokens in the section list.
-It never shows a secret: agents use the `velvet` CLI, and `velvet init` mints each repository's key on the person's machine after they approve it in the browser.
+It never shows a secret: `velvet login` grants setup access after browser consent, then terminal `velvet init` mints each repository's project key.
 The page starts with a live status region listing the repositories linked to the organisation, with each key's project and last use, and polls until one has been used.
-Below it, "Connect a repository" shows three numbered steps: the install command, the `velvet init --server` command, and a tab list of the instructions block for `AGENTS.md`, `CLAUDE.md`, and a Cursor rule.
+Below it, "Connect a repository" shows the install command, `velvet login --server`, terminal `velvet init --server`, and a tab list of the instructions block for `AGENTS.md`, `CLAUDE.md`, and a Cursor rule.
 The block names no project or key, so it is identical for every repository and safe to commit.
 An organisation without an active project shows an inline form to create one in place of the steps, because `velvet init` needs a project to pick.
 Viewers see a note that they cannot connect a repository that writes, and no steps.
-Disconnecting is `velvet logout` in the repository, or revoking the key under API tokens.
+Logging out with `velvet logout` revokes the saved login and its child repository keys. Individual keys can be revoked under API tokens.
 
-`/cli/approve` is where `velvet init` sends the browser.
-It uses the public auth layout, asks for the code if the link did not carry it, shows the code in a large monospace line to compare with the terminal, and offers an organisation select, a project select, Connect, and Refuse.
-Only organisations where the person can write are offered, and the copy says the CLI can reach only the chosen project.
+`/cli/approve` is where `velvet login` sends the browser.
+It uses the public auth layout, asks for the code if the link did not carry it, shows the code in a large monospace line to compare with the terminal, and offers Approve login and Refuse.
+Consent explains setup access and does not fetch or select organisations or projects. Terminal `velvet init` selects or creates those after login.
+Signing in preserves only a validated local approval return path, including when the email link opens in a fresh tab.
 
 Administration uses the wider workspace content width for organisation settings, invitations, member rows, GitHub connections, and the separated danger section.
 

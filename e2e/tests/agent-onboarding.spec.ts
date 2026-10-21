@@ -8,15 +8,16 @@ import { signup, unique } from './onboarding-helpers'
 import { velvetBinary } from './velvet-cli'
 
 /**
- * Runs `velvet init` with the exact command the page showed, approves it in
- * the same browser, and returns a runner for further commands in that repo.
+ * Runs browser login first, then runs the page's terminal init command.
+ * Returns a runner for further commands in that repository.
  */
 async function linkWithPageCommand(page: Page, initCommand: string, slug: string, project: string) {
   const repo = mkdtempSync(join(tmpdir(), 'velvet-onboarding-'))
   const env = { ...process.env, VELVET_NO_KEYCHAIN: '1', VELVET_TOKEN: '', HOME: repo, XDG_CONFIG_HOME: join(repo, '.config') }
   const args = initCommand.split(' ').slice(1)
   expect(initCommand.split(' ')[0]).toBe('velvet')
-  const init = spawn(velvetBinary(), [...args, '--no-browser'], { cwd: repo, env })
+  const server = args[args.indexOf('--server') + 1]!
+  const init = spawn(velvetBinary(), ['login', '--server', server, '--no-browser'], { cwd: repo, env })
   let out = ''
   init.stdout.on('data', (d) => { out += d })
   init.stderr.on('data', (d) => { out += d })
@@ -25,12 +26,12 @@ async function linkWithPageCommand(page: Page, initCommand: string, slug: string
 
   const approval = await page.context().newPage()
   await approval.goto(/http\S+\/cli\/approve\?code=\S+/.exec(out)![0])
-  await approval.getByLabel('Organisation').selectOption(slug)
-  await approval.getByLabel('Project').selectOption(project)
-  await approval.getByRole('button', { name: 'Connect' }).click()
+  await approval.getByRole('button', { name: 'Approve login' }).click()
   await expect(approval.getByText('Connected.')).toBeVisible()
   await approval.close()
   expect(await exited, out).toBe(0)
+  const linked = spawnSync(velvetBinary(), [...args, '--organisation', slug, '--project', project, '--non-interactive'], { cwd: repo, env, encoding: 'utf8' })
+  expect(linked.status, linked.stderr).toBe(0)
   expect(readFileSync(join(repo, 'velvet.yaml'), 'utf8')).toContain(`project: ${project}`)
 
   return (cmd: string[]) => {
@@ -66,6 +67,7 @@ test('a new person links a repository through onboarding', async ({ page, baseUR
   await expect(setup.getByLabel('Project key')).toHaveValue('nila-site')
   await setup.getByRole('button', { name: 'Create project' }).click()
   await expect(setup.getByTestId('cli-install')).toHaveText(`curl -fsSL ${baseURL}/install.sh | VELVET_SERVER=${baseURL} sh`)
+  await expect(setup.getByTestId('cli-login')).toHaveText(`velvet login --server ${baseURL}`)
   const initCommand = (await setup.getByTestId('cli-init').textContent())!.trim()
   expect(initCommand).toBe(`velvet init --server ${baseURL}`)
   await expect(page.getByText(/velvet_[0-9a-f]{8,}/)).toHaveCount(0)
@@ -75,7 +77,7 @@ test('a new person links a repository through onboarding', async ({ page, baseUR
 
   // The person runs it; the page notices the repository without a reload.
   const velvet = await linkWithPageCommand(page, initCommand, slug, 'nila-site')
-  await expect(connection).toContainText('Repository linked.', { timeout: 15000 })
+  await expect(connection.getByRole('list', { name: 'Linked repositories' })).toContainText('nila-site', { timeout: 15000 })
   const who = velvet(['whoami'])
   expect(who.code, who.err).toBe(0)
   expect(who.out).toContain('Project: nila-site')
@@ -123,6 +125,7 @@ test('a person who skips the agent links a repository later from Profile > Agent
   const setup = section.getByTestId('repo-setup')
   await setup.getByLabel('Project name').fill('Skip Site')
   await setup.getByRole('button', { name: 'Create project' }).click()
+  await expect(setup.getByTestId('cli-login')).toHaveText(`velvet login --server ${baseURL}`)
   const initCommand = (await setup.getByTestId('cli-init').textContent())!.trim()
   const block = (await setup.getByTestId('repo-instructions').textContent())!
   expect(block).toContain('## Velvet work log')

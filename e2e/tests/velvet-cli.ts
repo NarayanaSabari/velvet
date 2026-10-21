@@ -28,15 +28,15 @@ export function velvetBinary(): string {
 export function linkedRepo(baseURL: string, email: string, slug: string, project: string) {
   const token = `velvet_${randomBytes(32).toString('hex')}`
   sql(`
-    INSERT INTO api_token (user_id, name, token_hash, workspace_id, project_id)
-    SELECT u.id, 'velvet CLI ${randomBytes(3).toString('hex')}', '${createHash('sha256').update(token).digest('hex')}', w.id, p.id
+    INSERT INTO api_token (user_id, name, token_hash, workspace_id, project_id, kind)
+    SELECT u.id, 'velvet CLI ${randomBytes(3).toString('hex')}', '${createHash('sha256').update(token).digest('hex')}', w.id, p.id, 'project'
     FROM app_user u, workspace w JOIN project p ON p.workspace_id = w.id
     WHERE u.email = '${email}' AND w.slug = '${slug}' AND p.key = '${project}';
   `)
   const dir = mkdtempSync(join(tmpdir(), 'velvet-repo-'))
   mkdirSync(join(dir, '.config'), { recursive: true })
   writeFileSync(join(dir, 'velvet.yaml'), `server: ${baseURL}\norganisation: ${slug}\nproject: ${project}\n`)
-  const env = { ...process.env, VELVET_TOKEN: token, VELVET_NO_KEYCHAIN: '1', HOME: dir, XDG_CONFIG_HOME: join(dir, '.config') }
+  const env = { ...process.env, VELVET_SERVER: baseURL, VELVET_TOKEN: token, VELVET_NO_KEYCHAIN: '1', HOME: dir, XDG_CONFIG_HOME: join(dir, '.config') }
   const run = (args: string[]) => {
     const r = spawnSync(velvetBinary(), args, { cwd: dir, env, encoding: 'utf8' })
     return { code: r.status, out: r.stdout, err: r.stderr }

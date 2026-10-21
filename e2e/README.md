@@ -15,6 +15,18 @@ For the complete organisation signup, invitation, and installation journeys only
 env -u NO_COLOR npx playwright test tests/onboarding.spec.ts
 ```
 
+For the login, terminal repository setup, scoped-command, and onboarding journeys:
+
+```bash
+env -u NO_COLOR npx playwright test tests/cli.spec.ts tests/agent-onboarding.spec.ts
+```
+
+The CLI suite builds the real binary and isolates credentials with `VELVET_NO_KEYCHAIN=1` in a private temporary directory.
+It covers browser login consent, email sign-in return in a fresh tab, terminal organisation/project selection and creation, project scope, YAML tampering, and cascading logout revocation.
+It also checks actual setup/derived-key labels and the cascading-revocation warning under Profile, with Cancel preserving all keys.
+Consent screenshots cover 1280x900 and 390x844 in light and dark schemes with reduced motion and keyboard approval.
+Generated screenshots remain under ignored `test-results/`.
+
 The stack uses the disposable project `worklog-e2e-organisations`, HTTP port 18399, HTTPS port 18400, provider port 18599, and proxy subnet `172.30.77.0/24`.
 Its fixed Caddy, API, and GitHub stub addresses are `172.30.77.2`, `172.30.77.3`, and `172.30.77.4`; the API trusts only Caddy's `/32` for forwarded client IPs.
 Published ports bind only to `127.0.0.1`.
