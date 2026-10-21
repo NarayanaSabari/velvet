@@ -121,17 +121,19 @@ func (s *Store) PersonActivity(ctx context.Context, workspaceID uuid.UUID, from,
 
 // MilestoneCompletion is the completion rate per sprint. Cancelled milestones
 // count as neither planned nor completed: work that was called off never
-// belonged in the denominator.
+// belonged in the denominator. Closed sprints use their frozen snapshot;
+// legacy sprints without one retain live counts rather than invented history.
 func (s *Store) MilestoneCompletion(ctx context.Context, workspaceID uuid.UUID) ([]MilestoneCompletionRow, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT s.id, s.name, p.name, to_char(s.starts_on, 'YYYY-MM-DD'),
-		       count(m.id) FILTER (WHERE m.status <> 'cancelled'),
-		       count(m.id) FILTER (WHERE m.status = 'completed')
+		       COALESCE(ss.milestones_planned, count(m.id) FILTER (WHERE m.status <> 'cancelled')),
+		       COALESCE(ss.milestones_completed, count(m.id) FILTER (WHERE m.status = 'completed'))
 		FROM sprint s
 		JOIN project p ON p.id = s.project_id
+		LEFT JOIN sprint_snapshot ss ON ss.sprint_id = s.id AND ss.workspace_id = s.workspace_id AND s.state = 'completed'
 		LEFT JOIN milestone m ON m.sprint_id = s.id AND m.workspace_id = s.workspace_id
 		WHERE s.workspace_id = $1
-		GROUP BY s.id, s.name, p.name, s.starts_on
+		GROUP BY s.id, s.name, p.name, s.starts_on, ss.sprint_id
 		ORDER BY s.starts_on DESC, lower(p.name)`, workspaceID)
 	if err != nil {
 		return nil, err
@@ -151,18 +153,23 @@ func (s *Store) MilestoneCompletion(ctx context.Context, workspaceID uuid.UUID) 
 }
 
 // IssuesClosedPerSprint counts done issues against all issues filed under the
-// sprint's milestones.
+// sprint's milestones, using frozen counts for closed sprints with a snapshot.
 func (s *Store) IssuesClosedPerSprint(ctx context.Context, workspaceID uuid.UUID) ([]SprintClosedRow, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT s.id, s.name, p.name, to_char(s.starts_on, 'YYYY-MM-DD'),
-		       count(i.id) FILTER (WHERE i.status = 'done'),
-		       count(i.id)
+		       CASE WHEN ss.sprint_id IS NOT NULL
+		            THEN COALESCE((ss.issue_counts->>'done')::bigint, 0)
+		            ELSE count(i.id) FILTER (WHERE i.status = 'done') END,
+		       CASE WHEN ss.sprint_id IS NOT NULL
+		            THEN (SELECT COALESCE(sum(value::bigint), 0)::bigint FROM jsonb_each_text(ss.issue_counts))
+		            ELSE count(i.id) END
 		FROM sprint s
 		JOIN project p ON p.id = s.project_id
+		LEFT JOIN sprint_snapshot ss ON ss.sprint_id = s.id AND ss.workspace_id = s.workspace_id AND s.state = 'completed'
 		LEFT JOIN milestone m ON m.sprint_id = s.id AND m.workspace_id = s.workspace_id
 		LEFT JOIN issue i ON i.milestone_id = m.id AND i.workspace_id = s.workspace_id
 		WHERE s.workspace_id = $1
-		GROUP BY s.id, s.name, p.name, s.starts_on
+		GROUP BY s.id, s.name, p.name, s.starts_on, ss.sprint_id
 		ORDER BY s.starts_on DESC, lower(p.name)`, workspaceID)
 	if err != nil {
 		return nil, err

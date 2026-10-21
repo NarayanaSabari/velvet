@@ -144,6 +144,92 @@ func TestMilestoneCompletionAndClosedPerSprint(t *testing.T) {
 	require.Equal(t, 2, closed.Sprints[0].Total)
 }
 
+func TestClosedSprintReportsUseFrozenNumbers(t *testing.T) {
+	f := testutil.NewFixture(t)
+	project := createProject(t, f, map[string]any{"key": "web", "name": "Web"})
+	previous := sprintFor(t, f, project, "September", "2026-09-01", "2026-09-30")
+	next := sprintFor(t, f, project, "October", "2026-10-01", "2026-10-31")
+	goal := milestoneIn(t, f, previous, "Ship auth")
+	other := milestoneIn(t, f, previous, "Follow up")
+	done := createIssue(t, f, map[string]any{"title": "Done", "status": "done", "milestone_id": goal.ID.String()})
+	createIssue(t, f, map[string]any{"title": "Pending", "status": "todo", "milestone_id": other.ID.String()})
+	require.Equal(t, http.StatusOK, f.Do(http.MethodPatch, "/api/v1/w/lab/milestones/"+goal.ID.String(), map[string]string{"status": "completed"}).Code)
+	require.Equal(t, http.StatusOK, f.Do(http.MethodPost, "/api/v1/w/lab/sprints/"+previous.ID.String()+"/close", nil).Code)
+	require.Equal(t, http.StatusOK, f.Do(http.MethodPatch, "/api/v1/w/lab/issues/"+done.Key, map[string]string{"status": "cancelled"}).Code)
+	require.Equal(t, http.StatusOK, f.Do(http.MethodPatch, "/api/v1/w/lab/milestones/"+goal.ID.String(), map[string]string{"status": "cancelled"}).Code)
+
+	rec := f.Do(http.MethodGet, "/api/v1/w/lab/reports/milestones", nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var milestones struct {
+		Sprints []store.MilestoneCompletionRow `json:"sprints"`
+	}
+	f.DecodeInto(rec, &milestones)
+	require.Len(t, milestones.Sprints, 2)
+	for _, row := range milestones.Sprints {
+		if row.SprintID == previous.ID {
+			require.Equal(t, 2, row.Planned)
+			require.Equal(t, 1, row.Completed)
+		} else {
+			require.Equal(t, next.ID, row.SprintID)
+			require.Equal(t, 1, row.Planned)
+			require.Zero(t, row.Completed)
+		}
+	}
+	rec = f.Do(http.MethodGet, "/api/v1/w/lab/reports/closed", nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var closed struct {
+		Sprints []store.SprintClosedRow `json:"sprints"`
+	}
+	f.DecodeInto(rec, &closed)
+	require.Len(t, closed.Sprints, 2)
+	for _, row := range closed.Sprints {
+		if row.SprintID == previous.ID {
+			require.Equal(t, 1, row.Closed)
+			require.Equal(t, 2, row.Total)
+		} else {
+			require.Equal(t, next.ID, row.SprintID)
+			require.Zero(t, row.Closed)
+			require.Equal(t, 1, row.Total)
+		}
+	}
+}
+
+func TestSprintReportsHandleEmptyAndLegacySnapshots(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		name := "empty snapshot"
+		if legacy {
+			name = "legacy without snapshot"
+		}
+		t.Run(name, func(t *testing.T) {
+			f := testutil.NewFixture(t)
+			sprint := newSprint(t, f)
+			goal := milestoneIn(t, f, sprint, "Goal")
+			if legacy {
+				createIssue(t, f, map[string]any{"title": "Done", "status": "done", "milestone_id": goal.ID.String()})
+				_, err := f.Pool.Exec(t.Context(), `UPDATE sprint SET state='completed' WHERE id=$1`, sprint.ID)
+				require.NoError(t, err)
+			} else {
+				require.Equal(t, http.StatusOK, f.Do(http.MethodPost, "/api/v1/w/lab/sprints/"+sprint.ID.String()+"/close", nil).Code)
+				createIssue(t, f, map[string]any{"title": "Later", "status": "done", "milestone_id": goal.ID.String()})
+			}
+			rows, err := f.Store.IssuesClosedPerSprint(t.Context(), f.WorkspaceID)
+			require.NoError(t, err)
+			require.Len(t, rows, 1)
+			if legacy {
+				require.Equal(t, 1, rows[0].Closed)
+				require.Equal(t, 1, rows[0].Total)
+			} else {
+				require.Zero(t, rows[0].Closed)
+				require.Zero(t, rows[0].Total)
+			}
+			milestones, err := f.Store.MilestoneCompletion(t.Context(), f.WorkspaceID)
+			require.NoError(t, err)
+			require.Len(t, milestones, 1)
+			require.Equal(t, 1, milestones[0].Planned)
+		})
+	}
+}
+
 func TestReportsAreWorkspaceScoped(t *testing.T) {
 	f := testutil.NewFixture(t)
 
