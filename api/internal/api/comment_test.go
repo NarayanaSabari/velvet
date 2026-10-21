@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
@@ -76,6 +77,53 @@ func TestMentionCreatesAnUnreadMention(t *testing.T) {
 	require.Len(t, mentions.Mentions, 1)
 	require.Contains(t, mentions.Mentions[0].Comment.Body, "can you review")
 	require.Equal(t, issue.Key, mentions.Mentions[0].TargetLabel)
+}
+
+func TestEditingCommentReconcilesMentionsAndPreservesReadState(t *testing.T) {
+	f := testutil.NewFixture(t)
+	issue := createIssue(t, f, map[string]any{"title": "Review"})
+	other, err := testutil.CreateLinkedUser(t, f.Store, store.GitHubIdentity{ID: 2002, Login: "other"})
+	require.NoError(t, err)
+	_, err = f.Pool.Exec(t.Context(), `INSERT INTO membership (workspace_id, user_id, role) VALUES ($1, $2, 'member')`, f.WorkspaceID, other.ID)
+	require.NoError(t, err)
+	_, err = testutil.CreateLinkedUser(t, f.Store, store.GitHubIdentity{ID: 2003, Login: "outsider"})
+	require.NoError(t, err)
+	rec := f.Do(http.MethodPost, "/api/v1/w/lab/issues/"+issue.Key+"/comments", map[string]string{"body": "@sabari review"})
+	require.Equal(t, http.StatusCreated, rec.Code)
+	var comment store.Comment
+	f.DecodeInto(rec, &comment)
+	require.NoError(t, f.Store.MarkMentionsRead(t.Context(), f.WorkspaceID, f.User.ID, []uuid.UUID{comment.ID}))
+	before, err := f.Store.ListMentions(t.Context(), f.WorkspaceID, f.User.ID, false)
+	require.NoError(t, err)
+	require.Len(t, before, 1)
+	for _, step := range []struct {
+		body       string
+		own, other int
+	}{
+		{"@sabari @other @outsider updated review", 1, 1},
+		{"@other review", 0, 1},
+		{"No mentions left", 0, 0},
+		{"@sabari new request", 1, 0},
+	} {
+		rec = f.Do(http.MethodPatch, "/api/v1/w/lab/comments/"+comment.ID.String(), map[string]string{"body": step.body})
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		own, err := f.Store.ListMentions(t.Context(), f.WorkspaceID, f.User.ID, false)
+		require.NoError(t, err)
+		require.Len(t, own, step.own)
+		others, err := f.Store.ListMentions(t.Context(), f.WorkspaceID, other.ID, false)
+		require.NoError(t, err)
+		require.Len(t, others, step.other)
+		if step.body == "@sabari @other @outsider updated review" {
+			require.Equal(t, before[0].ReadAt, own[0].ReadAt)
+			require.NotNil(t, own[0].ReadAt)
+			require.Nil(t, others[0].ReadAt)
+		} else if step.body == "@sabari new request" {
+			require.Nil(t, own[0].ReadAt)
+		}
+		var count int
+		require.NoError(t, f.Pool.QueryRow(t.Context(), `SELECT count(*) FROM comment_mention WHERE comment_id=$1`, comment.ID).Scan(&count))
+		require.Equal(t, step.own+step.other, count, "non-members must never receive mentions")
+	}
 }
 
 func TestMentionWithADeletedTargetIsHidden(t *testing.T) {

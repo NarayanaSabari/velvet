@@ -183,22 +183,7 @@ func (s *Store) CreateComment(ctx context.Context, in CreateCommentInput) (Comme
 			return err
 		}
 
-		// A mention of someone outside the workspace resolves to no row, so an
-		// unknown handle never fails the comment.
-		logins := ParseMentions(in.Body)
-		if len(logins) == 0 {
-			return nil
-		}
-		_, err := tx.Exec(ctx, `
-			INSERT INTO comment_mention (comment_id, user_id)
-			SELECT $1, u.id
-			FROM app_user u
-			JOIN membership m ON m.user_id = u.id AND m.workspace_id = $2
-			LEFT JOIN membership_github_identity gi ON gi.membership_id=m.id
-			WHERE lower(COALESCE(gi.github_login,u.github_login)) = ANY($3::text[])
-			  AND (gi.membership_id IS NOT NULL OR (`+globalGitHubFallbackAvailable("m", "u")+`))
-			ON CONFLICT DO NOTHING`, out.ID, in.WorkspaceID, logins)
-		return err
+		return syncCommentMentions(ctx, tx, in.WorkspaceID, out.ID, in.Body)
 	})
 	return out, err
 }
@@ -382,7 +367,10 @@ func (s *Store) UpdateComment(ctx context.Context, workspaceID, id, actorID uuid
 			SELECT `+commentCols+`
 			FROM updated c JOIN app_user u ON u.id = c.author_id`,
 			workspaceID, id, body)
-		return scanCommentRow(row, &out)
+		if err := scanCommentRow(row, &out); err != nil {
+			return err
+		}
+		return syncCommentMentions(ctx, tx, workspaceID, id, body)
 	})
 	return out, err
 }

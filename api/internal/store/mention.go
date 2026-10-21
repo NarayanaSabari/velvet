@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // A mention is an @login at a word boundary. The leading boundary class keeps
@@ -30,6 +31,24 @@ func ParseMentions(body string) []string {
 		out = append(out, login)
 	}
 	return out
+}
+
+// Keep existing read states, retract removed mentions, and ignore non-members.
+func syncCommentMentions(ctx context.Context, tx pgx.Tx, workspaceID, commentID uuid.UUID, body string) error {
+	_, err := tx.Exec(ctx, `
+		WITH mentioned AS (
+			SELECT u.id FROM app_user u
+			JOIN membership m ON m.user_id = u.id AND m.workspace_id = $2
+			LEFT JOIN membership_github_identity gi ON gi.membership_id = m.id
+			WHERE lower(COALESCE(gi.github_login, u.github_login)) = ANY($3::text[])
+			  AND (gi.membership_id IS NOT NULL OR (`+globalGitHubFallbackAvailable("m", "u")+`))
+		), removed AS (
+			DELETE FROM comment_mention WHERE comment_id = $1
+			  AND user_id NOT IN (SELECT id FROM mentioned)
+		)
+		INSERT INTO comment_mention (comment_id, user_id)
+		SELECT $1, id FROM mentioned ON CONFLICT DO NOTHING`, commentID, workspaceID, ParseMentions(body))
+	return err
 }
 
 // Mention is a comment that named the caller, with the read state that decides
