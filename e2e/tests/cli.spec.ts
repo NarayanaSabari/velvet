@@ -69,6 +69,23 @@ test.afterAll(() => {
   rmSync(scratch, { recursive: true, force: true })
 })
 
+test('install.sh installs a checksummed binary from this server', async ({ request, baseURL }) => {
+  const dir = join(scratch, 'installed')
+  const script = await (await request.get('/install.sh')).text()
+  expect(script).toContain('SHA256SUMS')
+  const r = spawnSync('sh', ['-s'], {
+    input: script,
+    env: { ...process.env, VELVET_SERVER: baseURL!, VELVET_INSTALL_DIR: dir },
+    encoding: 'utf8',
+  })
+  expect(r.status, r.stderr).toBe(0)
+  const version = spawnSync(join(dir, 'velvet'), ['--version'], { encoding: 'utf8' })
+  expect(version.stdout).toMatch(/^velvet /)
+
+  // A missing binary is a 404, never the SPA's index.html saved as a program.
+  expect((await request.get('/download/velvet-plan9-mips')).status()).toBe(404)
+})
+
 test('velvet init links the repository after approval in the browser', async ({ page, context, baseURL }) => {
   await context.addCookies([{ name: 'ticket_session', value: session, url: baseURL! }])
 
