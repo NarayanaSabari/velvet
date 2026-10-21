@@ -82,6 +82,8 @@ describe('Onboarding', () => {
 
     // Step 2: install the CLI and link a repository. No key is ever shown.
     expect(await screen.findByTestId('cli-install')).toHaveTextContent('curl -fsSL https://velvet.example.com/install.sh | VELVET_SERVER=https://velvet.example.com sh')
+    expect(screen.getByTestId('cli-login')).toHaveTextContent('velvet login --server https://velvet.example.com')
+    expect(screen.getByText(/Choose the organisation and project in the terminal/)).toBeInTheDocument()
     expect(screen.getByTestId('cli-init')).toHaveTextContent('velvet init --server https://velvet.example.com')
     expect(screen.getByText('2. Connect agent').closest('li')).toHaveAttribute('aria-current', 'step')
     expect(screen.getByTestId('repo-instructions')).toHaveTextContent('velvet log KEY')

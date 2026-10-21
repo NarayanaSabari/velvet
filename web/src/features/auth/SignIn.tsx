@@ -3,13 +3,13 @@ import { useMutation } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { Button } from '../../ui/Button'
 import { PublicAuthPage } from './PublicAuthPage'
-import { navigateTo } from './sessionNavigation'
+import { navigateTo, cliReturnTo } from './sessionNavigation'
 
-export function SignIn({ message, navigate = navigateTo }: { message?: string; navigate?: (to: string) => void }) {
+export function SignIn({ message, returnTo, navigate = navigateTo }: { message?: string; returnTo?: string; navigate?: (to: string) => void }) {
   const [email, setEmail] = useState('')
   const emailId = useId()
   const request = useMutation({
-    mutationFn: () => api.post('/auth/email', { email: email.trim() }),
+    mutationFn: () => api.post('/auth/email', { email: email.trim(), ...(cliReturnTo(returnTo) ? { return_to: cliReturnTo(returnTo) } : {}) }),
     onSuccess: () => navigate('/check-email'),
   })
   return (

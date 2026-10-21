@@ -16,6 +16,7 @@ interface PendingSignIn {
   user_code: string
   client_name: string
   expires_at: string
+  flow?: 'login' | 'init'
 }
 
 function codeFromURL() {
@@ -23,9 +24,8 @@ function codeFromURL() {
 }
 
 /**
- * Where `velvet init` sends the person. They confirm the code their terminal
- * shows, then bind the CLI to exactly one organisation and one project. The
- * key the CLI receives can reach nothing else, whatever velvet.yaml says.
+ * Where `velvet login` requests explicit device consent. Legacy init sessions
+ * still bind a repository key to one organisation and one project.
  */
 export function ApproveCLI() {
   const session = useSession()
@@ -49,23 +49,26 @@ export function ApproveCLI() {
     enabled: session.isSignedIn && code !== '',
     retry: false,
   })
+  const login = pending.data?.flow === 'login'
+  const legacyInit = pending.isSuccess && (pending.data.flow === undefined || pending.data.flow === 'init')
   const projects = useQuery({
     queryKey: ['projects', slug, false],
     queryFn: () => api.get<{ projects: Project[] }>(`/w/${slug}/projects`),
-    enabled: session.isSignedIn && slug !== '',
+    enabled: session.isSignedIn && legacyInit && slug !== '',
   })
   const active = (projects.data?.projects ?? []).filter((p) => p.status === 'active')
   const projectKey = active.some((p) => p.key === chosenProject) ? chosenProject : (active[0]?.key ?? '')
 
   const approve = useMutation({
-    mutationFn: () => api.post(`/cli/sessions/${encodeURIComponent(code)}/approve`, { workspace_slug: slug, project_key: projectKey }),
+    mutationFn: () => api.post(`/cli/sessions/${encodeURIComponent(code)}/approve`, login ? {} : { workspace_slug: slug, project_key: projectKey }),
   })
   const deny = useMutation({
     mutationFn: () => api.post(`/cli/sessions/${encodeURIComponent(code)}/deny`, {}),
   })
 
   if (session.isLoading) return <PublicAuthPage title="Connect the Velvet CLI" note=""><p role="status" className="text-grey-500">Loading…</p></PublicAuthPage>
-  if (!session.isSignedIn) return <SignIn message="Sign in to connect the Velvet CLI. Then run velvet init again, or reopen the link it printed." />
+  if (session.error) return <PublicAuthPage title="Connect the Velvet CLI" note=""><p role="alert" className="text-blocked">{session.error.message} Reload to try again.</p></PublicAuthPage>
+  if (!session.isSignedIn) return <SignIn returnTo={code ? `/cli/approve?${new URLSearchParams({ code })}` : undefined} message="Sign in to review this CLI request. Signing in does not approve it." />
 
   const layout = (body: ReactNode) => (
     <PublicAuthPage title="Connect the Velvet CLI" note="" expanded>
@@ -81,7 +84,7 @@ export function ApproveCLI() {
     return layout(
       <div role="status" className="space-y-2">
         <p className="text-base font-medium">Connected.</p>
-        <p className="text-grey-700">Go back to your terminal. The CLI can now reach only <strong>{projectKey}</strong> in <strong>{slug}</strong>.</p>
+        {login ? <p className="text-grey-700">Go back to your terminal and run velvet init in your repository to choose an organisation and project.</p> : <p className="text-grey-700">Go back to your terminal. The CLI can now reach only <strong>{projectKey}</strong> in <strong>{slug}</strong>.</p>}
       </div>,
     )
   }
@@ -90,10 +93,11 @@ export function ApproveCLI() {
   }
 
   if (!code || pending.error) {
-    const expired = pending.error instanceof ApiError && pending.error.status === 404
+    const expired = pending.error instanceof ApiError && [404, 410].includes(pending.error.status)
     return layout(
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); setCode(typed.trim()) }}>
-        {expired ? <p role="alert" className="text-blocked">That code has expired or was already used. Run velvet init again.</p> : null}
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); const next = typed.trim().toUpperCase(); if (next === code) void pending.refetch(); else setCode(next); approve.reset(); deny.reset() }}>
+        {expired ? <p role="alert" className="text-blocked">That code has expired or was already used. Run velvet login again, or velvet init for a legacy repository request.</p> : null}
+        {pending.error && !expired ? <p role="alert" className="text-blocked">{pending.error.message} Try checking the code again.</p> : null}
         <label htmlFor={codeId} className="block text-sm font-medium">Code shown in your terminal</label>
         <input
           id={codeId}
@@ -110,19 +114,23 @@ export function ApproveCLI() {
   }
   if (pending.isPending) return layout(<p role="status" className="text-grey-500">Checking the code…</p>)
 
-  if (writable.length === 0) {
+  if (!login && !legacyInit) return layout(<p role="alert" className="text-blocked">This CLI request is not supported. Update the CLI and run velvet login again.</p>)
+
+  if (!login && writable.length === 0) {
     return layout(<p role="alert" className="text-blocked">You are a viewer in every organisation, so you cannot connect an agent that writes. Ask an admin for member access.</p>)
   }
 
-  const ready = slug !== '' && projectKey !== '' && !creating && !approve.isPending
+  const busy = approve.isPending || deny.isPending
+  const ready = (login || (slug !== '' && projectKey !== '' && !creating)) && !busy && Date.parse(pending.data.expires_at) > Date.now()
   return layout(
     <div className="space-y-5">
       <div className="rounded-[var(--radius-surface)] border border-grey-200 p-4">
         <p className="text-sm text-grey-500">Confirm this matches your terminal</p>
-        <p className="mt-1 font-mono text-lg tracking-widest" data-testid="cli-user-code">{pending.data.user_code}</p>
-        <p className="mt-1 text-sm text-grey-500">{pending.data.client_name}</p>
+        <p className="mt-1 break-all font-mono text-lg tracking-widest" data-testid="cli-user-code">{pending.data.user_code}</p>
+        <p className="mt-1 text-sm text-grey-500 [overflow-wrap:anywhere]">{pending.data.client_name}</p>
       </div>
 
+      {login ? <p className="text-sm text-grey-700">Approve only if you started velvet login on this device. This gives the CLI a setup credential to list and create organisations and projects, and create repository keys where you have write access. Routine work uses a separate key scoped to the chosen project. No repository is connected yet.</p> : <>
       <div className="space-y-1">
         <label htmlFor={orgId} className="block text-sm font-medium">Organisation</label>
         <select id={orgId} className="block min-h-12 w-full rounded-[var(--radius-control)] border border-grey-300 bg-paper px-3" value={slug}
@@ -157,10 +165,13 @@ export function ApproveCLI() {
         <p className="text-xs text-grey-500">The CLI, and any agent using it in this repository, can read and write only this project.</p>
       </div>
 
+      </>}
+      {deny.error ? <p role="alert" className="text-blocked">{deny.error.message}</p> : null}
+      {Date.parse(pending.data.expires_at) <= Date.now() ? <p role="alert" className="text-blocked">This request expired. Run velvet login again.</p> : null}
       {approve.error ? <p role="alert" className="text-blocked">{approve.error.message}</p> : null}
-      <form className="flex flex-wrap gap-3" aria-label="Connect the CLI" onSubmit={(e) => { e.preventDefault(); if (ready) approve.mutate() }}>
-        <Button className="min-h-12" variant="primary" type="submit" disabled={!ready}>{approve.isPending ? 'Connecting…' : 'Connect'}</Button>
-        <Button className="min-h-12" type="button" disabled={deny.isPending} onClick={() => deny.mutate()}>Refuse</Button>
+      <form className="flex flex-wrap gap-3" aria-label="Connect the CLI" onSubmit={(e) => { e.preventDefault(); if (ready && Date.parse(pending.data.expires_at) > Date.now()) approve.mutate() }}>
+        <Button className="min-h-12" variant="primary" type="submit" disabled={!ready}>{approve.isPending ? 'Connecting…' : login ? 'Approve login' : 'Connect'}</Button>
+        <Button className="min-h-12" type="button" disabled={busy} onClick={() => deny.mutate()}>Refuse</Button>
       </form>
     </div>,
   )

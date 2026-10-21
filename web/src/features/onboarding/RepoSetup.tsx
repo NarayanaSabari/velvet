@@ -6,15 +6,15 @@ import { api } from '../../lib/api'
 import type { Membership, Project } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { CopyField, RepoFileTabs } from './AgentSetup'
-import { initCommand, installCommand, projectKeyFrom, repoFiles } from './repoFiles'
+import { initCommand, loginCommand, installCommand, projectKeyFrom, repoFiles } from './repoFiles'
 
 const controlClass = 'ui-control block min-h-11 w-full px-2 py-1 text-sm md:min-h-9'
 
 /**
- * Connects a repository: install the CLI, run `velvet init` in the checkout,
- * and approve it in the browser for one project. The key it gets can reach
- * only that project. `velvet init` needs a project to pick, so an
- * organisation without one is offered an inline form first.
+ * Connects a repository: install the CLI, approve login in the browser,
+ * then choose the organisation and project with `velvet init` in the terminal.
+ * The repository key can reach only that project. An organisation without
+ * a project is offered an inline form first.
  */
 export function RepoSetup({ workspace, baseUrl }: { workspace: Membership; baseUrl: string }) {
   const headingId = useId()
@@ -64,9 +64,13 @@ export function RepoSetup({ workspace, baseUrl }: { workspace: Membership; baseU
             <CopyField label="Install command" value={installCommand(baseUrl)} testId="cli-install" />
           </li>
           <li className="space-y-2">
+            <p><span className="font-medium">2. Sign in to the CLI</span> <span className="text-grey-500">once per machine. Compare the code and approve login in your browser.</span></p>
+            <CopyField label="Login command" value={loginCommand(baseUrl)} testId="cli-login" />
+          </li>
+          <li className="space-y-2">
             <p>
-              <span className="font-medium">2. Link the repository</span>{' '}
-              <span className="text-grey-500">from its folder. Your browser opens to approve it and pick the project.</span>
+              <span className="font-medium">3. Link the repository</span>{' '}
+              <span className="text-grey-500">from its folder. Choose the organisation and project in the terminal.</span>
             </p>
             <CopyField label="Link command" value={initCommand(baseUrl)} testId="cli-init" />
             <p className="text-xs text-grey-500">
@@ -77,7 +81,7 @@ export function RepoSetup({ workspace, baseUrl }: { workspace: Membership; baseU
           </li>
           <li className="space-y-2">
             <p>
-              <span className="font-medium">3. Tell your agent to use it</span>{' '}
+              <span className="font-medium">4. Tell your agent to use it</span>{' '}
               <span className="text-grey-500">in a file it already reads. The same block suits every repository.</span>
             </p>
             <RepoFileTabs files={repoFiles()} />

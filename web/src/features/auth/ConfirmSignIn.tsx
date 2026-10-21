@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../../lib/api'
 import { Button } from '../../ui/Button'
-import { clearFragment, clearPrivateQueries, fragmentToken, navigateTo } from './sessionNavigation'
+import { clearFragment, clearPrivateQueries, fragmentToken, navigateTo, safeSignInNext } from './sessionNavigation'
 import { Expired } from './Expired'
 import { PublicAuthPage } from './PublicAuthPage'
 
@@ -14,7 +14,7 @@ export function ConfirmSignIn({ navigate = navigateTo }: { navigate?: (to: strin
     onSuccess: async ({ next }) => {
       clearFragment()
       await clearPrivateQueries(client)
-      navigate(next.startsWith('/') && !next.startsWith('//') ? next : '/')
+      navigate(safeSignInNext(next))
     },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 410) navigate('/expired')

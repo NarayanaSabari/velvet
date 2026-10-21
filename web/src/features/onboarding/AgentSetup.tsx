@@ -92,7 +92,7 @@ function linkedKeys(tokens: ApiToken[] | undefined, slug: string): ApiToken[] {
 
 /**
  * The repositories linked to this organisation, kept live while the person
- * runs `velvet init` in a terminal, so approving there shows up here without
+ * runs `velvet init` in a terminal, so linking there shows up here without
  * a reload. Polling stops once one has been used.
  */
 export function LinkedRepositories({ slug, workspaceName }: { slug: string; workspaceName: string }) {
@@ -124,7 +124,7 @@ export function LinkedRepositories({ slug, workspaceName }: { slug: string; work
       {linked.length === 0 ? (
         <div>
           <p className="font-medium">Waiting for velvet init…</p>
-          <p className="mt-1 text-grey-700">Run the link command in a repository and approve it in the browser tab it opens.</p>
+          <p className="mt-1 text-grey-700">Approve velvet login in your browser, then run velvet init in the repository and choose its organisation and project in the terminal.</p>
         </div>
       ) : (
         <div className="min-w-0">

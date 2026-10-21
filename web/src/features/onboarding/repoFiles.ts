@@ -25,6 +25,11 @@ export function installCommand(baseUrl: string): string {
   return `curl -fsSL ${origin}/install.sh | VELVET_SERVER=${origin} sh`
 }
 
+/** Sign in once per machine before selecting a repository in the terminal. */
+export function loginCommand(baseUrl: string): string {
+  return `velvet login --server ${baseUrl.replace(/\/+$/, '')}`
+}
+
 /** What to run in the repository, the first time on each machine. */
 export function initCommand(baseUrl: string): string {
   return `velvet init --server ${baseUrl.replace(/\/+$/, '')}`

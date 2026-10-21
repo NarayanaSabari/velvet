@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { initCommand, installCommand, projectKeyFrom, repoFiles, repoInstructions } from './repoFiles'
+import { initCommand, loginCommand, installCommand, projectKeyFrom, repoFiles, repoInstructions } from './repoFiles'
 
 describe('repository instructions', () => {
   it('tells agents to use the velvet CLI, without naming a project or key', () => {
@@ -28,6 +28,7 @@ describe('repository instructions', () => {
 
   it('builds install and link commands for this server', () => {
     expect(installCommand('https://v.example/')).toBe('curl -fsSL https://v.example/install.sh | VELVET_SERVER=https://v.example sh')
+    expect(loginCommand('https://v.example/')).toBe('velvet login --server https://v.example')
     expect(initCommand('https://v.example/')).toBe('velvet init --server https://v.example')
   })
 
