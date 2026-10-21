@@ -220,8 +220,6 @@ The bare Profile address redirects to General, and old `#agent-config` bookmarks
 Unknown sections show not found.
 Leaving a section discards any one-time key and unfinished confirmation rather than restoring them with Back.
 The token name field and agent setup stay at a readable width within the full-width content.
-Other-agent setup uses native remote HTTP configuration, never an auto-downloaded executable bridge with a token in its arguments.
-Its guidance states that only remote HTTP MCP clients are supported, names the CLI as the terminal fallback, and warns that token-bearing configuration must stay private.
 
 GitHub settings start with a compact "GitHub accounts by organisation" table of the signed-in person's memberships, showing each effective account, numeric GitHub ID, and organisation-link or global-fallback source.
 Organisation names link to their own GitHub settings and the current organisation is labelled explicitly.
@@ -236,13 +234,17 @@ Brief table guidance explains that GitHub is optional and that account selection
 GitHub App repository access is a distinct administrator concern under Repositories, with a warning that synced evidence is shared with the Velvet organisation even if members cannot open the private GitHub links.
 
 Agent config sits between GitHub and API tokens in the section list.
-It shows whether any agent key has been used, the organisation's MCP URL, and one primary action that creates a fresh key and reveals the same setup tabs and live connection status as onboarding.
-A key is never shown twice, so setting up again always makes a new key, which is also listed under API tokens.
-Viewers see a note that their agent can read but not write.
+It never shows a secret: agents use the `velvet` CLI, and `velvet init` mints each repository's key on the person's machine after they approve it in the browser.
+The page starts with a live status region listing the repositories linked to the organisation, with each key's project and last use, and polls until one has been used.
+Below it, "Connect a repository" shows three numbered steps: the install command, the `velvet init --server` command, and a tab list of the instructions block for `AGENTS.md`, `CLAUDE.md`, and a Cursor rule.
+The block names no project or key, so it is identical for every repository and safe to commit.
+An organisation without an active project shows an inline form to create one in place of the steps, because `velvet init` needs a project to pick.
+Viewers see a note that they cannot connect a repository that writes, and no steps.
+Disconnecting is `velvet logout` in the repository, or revoking the key under API tokens.
 
-Below the key setup, Agent config offers repository instructions: a project picker, or an inline form to create the first project, and a tab list of the generated block for `AGENTS.md`, `CLAUDE.md`, and a Cursor rule.
-The block names the organisation and project and never contains a key, and the section says it is safe to commit.
-Onboarding shows the same repository instructions only after the agent connects, so each moment asks for one thing.
+`/cli/approve` is where `velvet init` sends the browser.
+It uses the public auth layout, asks for the code if the link did not carry it, shows the code in a large monospace line to compare with the terminal, and offers an organisation select, a project select, Connect, and Refuse.
+Only organisations where the person can write are offered, and the copy says the CLI can reach only the chosen project.
 
 Administration uses the wider workspace content width for organisation settings, invitations, member rows, GitHub connections, and the separated danger section.
 
@@ -276,20 +278,20 @@ Do not reveal a secret again after the one-time display that the existing API-to
 
 `/onboarding` uses the public auth layout, outside the workspace shell, because a new person has no organisation to put a shell around.
 
-It has three steps shown as a numbered progress list with `aria-current="step"`: create the organisation, create an API key, and connect an agent.
+It has two steps shown as a numbered progress list with `aria-current="step"`: create the organisation, and connect an agent.
 
 The organisation step shows the suggested name, address, and ticket prefix as a preview with one primary action, and only reveals editable fields on "Change these", so the common path is a single click.
 
 Pending invitations appear above the create form, because joining an existing organisation is usually what an invited person wants.
 
-The connect step shows the key once, the MCP URL, and a tab list of per-agent setups with arrow-key navigation, followed by a live status region that announces when the agent first connects.
+The connect step shows the same "Connect a repository" steps and live linked-repositories status as Agent config, with arrow-key navigation between the instruction files.
 
-Every step offers a way to skip to the dashboard, and says that Profile > Agent config is where to connect an agent later.
+Once an organisation exists, the screen offers a link to the dashboard and says that Profile > Agent config is where to connect more repositories later.
 
 The dashboard shows a dismissible connect card until an agent connects, and it links to Profile > Agent config rather than back to onboarding.
 The command palette also offers an Agent config command, so the section stays reachable after the card is dismissed.
 
-The connection status watches the key created in that setup, so a second agent is not reported as connected because an earlier one was.
+The connection status counts only keys bound to a project in this organisation, so a personal token or another organisation's repository does not report this one as connected.
 
 ## Components and interaction rules
 

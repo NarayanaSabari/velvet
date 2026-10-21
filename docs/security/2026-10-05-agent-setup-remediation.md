@@ -1,7 +1,8 @@
 # Agent setup and local image upload security, October 5, 2026
 
+> Superseded on October 21, 2026: the hosted MCP server and its single-use image upload grants were removed.
+> Agents now use the `velvet` CLI with a key bound to one project; see the README's "Connecting an agent" section.
 > Superseded in part on October 19, 2026: the local stdio MCP server in `mcp/` was removed, so the local image approval rows below describe retired code.
-> Velvet now supports remote HTTP MCP clients only, and hosted image uploads use single-use grants.
 
 ## Scope
 
