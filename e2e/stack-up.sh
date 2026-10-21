@@ -8,9 +8,12 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/stack-common.sh"
 node "$here/stack-env.mjs"
 compose up -d --build
-# The Caddyfile is bind-mounted, so a reused stack keeps the old routes until
-# Caddy reloads. Production's remote-deploy.sh does the same.
-compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+# The Caddyfile is a single-file bind mount, so a reused stack keeps the old
+# file if a checkout replaced it. Restart Caddy when its copy is stale, as
+# production's remote-deploy.sh does.
+if ! compose exec -T caddy cat /etc/caddy/Caddyfile | cmp -s - "$root/deploy/Caddyfile"; then
+  compose restart caddy
+fi
 # Poll rather than sleep: a fixed sleep is either slow or flaky, and this loop
 # fails loudly with logs instead of leaving Playwright to time out mysteriously.
 for i in $(seq 1 60); do
