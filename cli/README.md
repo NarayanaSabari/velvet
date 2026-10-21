@@ -11,18 +11,18 @@ Set these environment variables before calling a workspace command:
 - `VELVET_TOKEN`: a personal API token beginning with `velvet_`.
 - `VELVET_WORKSPACE`: the workspace slug, such as `engineering`.
 
-Keep the token out of files and shell history where possible.
-The recommended approach is to store it in envkit and run the command through envkit:
+Keep the token out of repository files and shell history.
+Export it from your shell profile or your secret manager, then run commands directly:
 
 ```bash
-envkit run -- velvet me
-envkit run -- velvet issues --mine
+velvet me
+velvet issues --mine
 ```
 
 When using the checkout directly, replace `velvet` with `./cli/velvet`:
 
 ```bash
-envkit run -- ./cli/velvet me
+./cli/velvet me
 ```
 
 Do not create a `.env` file for the token.
