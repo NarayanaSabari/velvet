@@ -29,8 +29,8 @@ func TestUsageMatchesDispatch(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("VELVET_TOKEN", "")
 	for cmd := range usageCommands(t) {
-		if cmd == "init" {
-			continue // would start a network sign-in
+		if cmd == "init" || cmd == "update" {
+			continue // would reach the network
 		}
 		err := run([]string{cmd}, io.Discard, io.Discard, strings.NewReader(""))
 		if err != nil && strings.Contains(err.Error(), "unknown command") {

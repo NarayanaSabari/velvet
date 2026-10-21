@@ -221,6 +221,8 @@ jobs:
           file: web/Dockerfile
           platforms: linux/amd64
           push: true
+          # Stamps the served CLI so `velvet update` can tell builds apart.
+          build-args: VERSION=${{ github.sha }}
           tags: |
             ${{ env.IMAGE_REPO }}/web:sha-${{ github.sha }}
             ${{ github.ref == 'refs/heads/main' && format('{0}/web:latest', env.IMAGE_REPO) || '' }}

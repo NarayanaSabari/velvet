@@ -20,7 +20,7 @@ RUN set -e; mkdir -p /out; \
         -ldflags="-s -w -X main.version=${VERSION}" \
         -o /out/velvet-$os-$arch ./cmd/velvet; \
     done; \
-    cd /out && sha256sum velvet-* > SHA256SUMS
+    cd /out && sha256sum velvet-* > SHA256SUMS && echo "$VERSION" > VERSION
 
 # The built assets are handed to Caddy through a shared volume, so this image
 # never serves anything itself.

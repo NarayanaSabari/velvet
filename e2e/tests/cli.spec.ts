@@ -81,6 +81,10 @@ test('install.sh installs a checksummed binary from this server', async ({ reque
   expect(r.status, r.stderr).toBe(0)
   const version = spawnSync(join(dir, 'velvet'), ['--version'], { encoding: 'utf8' })
   expect(version.stdout).toMatch(/^velvet /)
+  // The server publishes the version it serves, so a fresh install is current.
+  const update = spawnSync(join(dir, 'velvet'), ['update', '--check', '--server', baseURL!], { encoding: 'utf8' })
+  expect(update.status, update.stderr).toBe(0)
+  expect(update.stdout).toContain('is up to date')
 
   // A missing binary is a 404, never the SPA's index.html saved as a program.
   expect((await request.get('/download/velvet-plan9-mips')).status()).toBe(404)

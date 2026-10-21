@@ -29,6 +29,7 @@ curl -fsSL https://velvet.sabarinarayana.com/install.sh | sh
 
 For a self-hosted Velvet: `curl -fsSL https://velvet.example.com/install.sh | VELVET_SERVER=https://velvet.example.com sh`.
 It installs to `~/.local/bin`, so that folder must be on `PATH`.
+An installed CLI updates itself from the same server with `velvet update`; `velvet update --check` only reports.
 
 ## 3. Link the repository
 

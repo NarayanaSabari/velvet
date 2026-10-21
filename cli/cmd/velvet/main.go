@@ -58,6 +58,7 @@ Set up:
   init [--server URL]                     Link this repository to one Velvet project
   whoami                                  Show the organisation, project, and person
   logout                                  Revoke this repository's key on this machine
+  update [--check] [--server URL]         Install the latest CLI from the Velvet server
 
 Work log:
   log [KEY] [--kind K] BODY               Log work on a ticket, or on the project without KEY
@@ -168,6 +169,8 @@ func run(args []string, out, errOut io.Writer, in io.Reader) error {
 		return cmdInit(rest, out, errOut)
 	case "key-from-branch":
 		return cmdKeyFromBranch(out)
+	case "update":
+		return cmdUpdate(rest, out, errOut)
 	}
 	if !repoCommands[cmd] {
 		return fail(exitUsage, "unknown command %q; run velvet --help", cmd)

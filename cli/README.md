@@ -16,6 +16,10 @@ curl -fsSL https://velvet.example.com/install.sh | VELVET_SERVER=https://velvet.
 ```
 
 The script picks the build for macOS or Linux on arm64 or amd64, checks it against the server's `SHA256SUMS`, and installs it to `~/.local/bin` (override with `VELVET_INSTALL_DIR`).
+
+Each build is stamped with the commit it was built from, shown by `velvet --version`.
+Run `velvet update` to install the server's current build after the same checksum check, or `velvet update --check` to only compare.
+It updates from `--server`, then `VELVET_SERVER`, then the repository's `velvet.yaml`, then the hosted Velvet.
 To build from source instead, run `go build -o velvet ./cmd/velvet` in this folder.
 
 ## Link a repository
