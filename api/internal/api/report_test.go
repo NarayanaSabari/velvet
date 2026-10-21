@@ -38,6 +38,37 @@ func TestStaleReportFindsSilentInProgressWork(t *testing.T) {
 	require.NotEqual(t, fresh.Key, out.Issues[0].Key)
 }
 
+func TestStaleReportUsesNonDeletedCommentUpdates(t *testing.T) {
+	for _, mode := range []string{"created", "edited", "deleted"} {
+		t.Run(mode, func(t *testing.T) {
+			f := testutil.NewFixture(t)
+			issue := createIssue(t, f, map[string]any{"title": "Ongoing", "status": "in_progress"})
+			_, err := f.Pool.Exec(t.Context(), `UPDATE issue SET updated_at=now()-interval '30 days' WHERE id=$1`, issue.ID)
+			require.NoError(t, err)
+			_, err = f.Pool.Exec(t.Context(), `UPDATE activity SET created_at=now()-interval '30 days'`)
+			require.NoError(t, err)
+			comment, err := f.Store.CreateComment(t.Context(), store.CreateCommentInput{WorkspaceID: f.WorkspaceID, ActorID: f.User.ID, TargetType: "issue", TargetID: issue.ID, Body: "Working on this"})
+			require.NoError(t, err)
+			if mode == "edited" {
+				_, err = f.Pool.Exec(t.Context(), `UPDATE comment SET created_at=now()-interval '30 days' WHERE id=$1`, comment.ID)
+				require.NoError(t, err)
+				_, err = f.Store.UpdateComment(t.Context(), f.WorkspaceID, comment.ID, f.User.ID, "Progress today")
+				require.NoError(t, err)
+			} else if mode == "deleted" {
+				require.NoError(t, f.Store.DeleteComment(t.Context(), f.WorkspaceID, comment.ID, f.User.ID))
+			}
+			rows, err := f.Store.StaleIssues(t.Context(), f.WorkspaceID, 14)
+			require.NoError(t, err)
+			if mode == "deleted" {
+				require.Len(t, rows, 1)
+				require.Equal(t, issue.Key, rows[0].Key)
+			} else {
+				require.Empty(t, rows)
+			}
+		})
+	}
+}
+
 func TestStaleReportIgnoresDoneAndCancelled(t *testing.T) {
 	f := testutil.NewFixture(t)
 	old := createIssue(t, f, map[string]any{"title": "Old but done", "status": "done"})

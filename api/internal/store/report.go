@@ -1,7 +1,9 @@
 package store
 
 import (
+	"cmp"
 	"context"
+	"slices"
 
 	"github.com/google/uuid"
 )
@@ -115,7 +117,7 @@ func (s *Store) PersonActivity(ctx context.Context, workspaceID uuid.UUID, from,
 	for _, row := range order {
 		out = append(out, *row)
 	}
-	sortDesc(out, func(r PersonActivityRow) int { return r.Total })
+	slices.SortStableFunc(out, func(a, b PersonActivityRow) int { return cmp.Compare(b.Total, a.Total) })
 	return out, nil
 }
 
@@ -190,12 +192,9 @@ func (s *Store) IssuesClosedPerSprint(ctx context.Context, workspaceID uuid.UUID
 
 // StaleIssues finds unfinished work whose newest signal is older than days.
 //
-// The signal is the newest of three things: the issue row's own updated_at,
-// the newest activity row about it, and the newest linked pull request's
-// gh_updated_at. Taking the newest of the three is what keeps the report
-// honest - an issue with a PR pushed yesterday is not stalled just because
-// nobody commented on it - and it is why the report is worth trusting when it
-// does flag something.
+// The signal includes the issue row, its non-deleted comments, activity about
+// the issue, and linked pull requests. Recent discussion or code is evidence
+// of progress even when nobody has edited the issue itself.
 //
 // Finished work is never stale: a done or cancelled issue has stopped on
 // purpose.
@@ -205,6 +204,10 @@ func (s *Store) StaleIssues(ctx context.Context, workspaceID uuid.UUID, days int
 			SELECT i.id,
 			       GREATEST(
 			           i.updated_at,
+			           COALESCE((SELECT max(GREATEST(c.created_at, c.edited_at)) FROM comment c
+			                     WHERE c.workspace_id = i.workspace_id
+			                       AND c.target_type = 'issue' AND c.target_id = i.id
+			                       AND c.deleted_at IS NULL), i.updated_at),
 			           COALESCE((SELECT max(a.created_at) FROM activity a
 			                     WHERE a.workspace_id = i.workspace_id
 			                       AND a.target_type = 'issue' AND a.target_id = i.id),
@@ -245,14 +248,4 @@ func (s *Store) StaleIssues(ctx context.Context, workspaceID uuid.UUID, days int
 		out = append(out, r)
 	}
 	return out, rows.Err()
-}
-
-// sortDesc is an insertion sort on a small slice, stable so that equal totals
-// keep the order the database returned rather than shuffling between requests.
-func sortDesc[T any](rows []T, key func(T) int) {
-	for i := 1; i < len(rows); i++ {
-		for j := i; j > 0 && key(rows[j]) > key(rows[j-1]); j-- {
-			rows[j], rows[j-1] = rows[j-1], rows[j]
-		}
-	}
 }
