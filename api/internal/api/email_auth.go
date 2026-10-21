@@ -15,7 +15,8 @@ import (
 
 func (s *Server) handleEmail(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Email string `json:"email"`
+		Email    string `json:"email"`
+		ReturnTo string `json:"return_to"`
 	}
 	if !DecodeJSON(w, r, &body) {
 		return
@@ -25,16 +26,24 @@ func (s *Server) handleEmail(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "invalid_request", "a valid email address is required")
 		return
 	}
-	s.issueEmailSignIn(w, r, email, nil)
+	if !store.ValidLoginReturnTo(body.ReturnTo) {
+		WriteError(w, http.StatusBadRequest, "invalid_request", "invalid sign-in return path")
+		return
+	}
+	s.issueEmailSignInTo(w, r, email, nil, body.ReturnTo)
 }
 
 func (s *Server) issueEmailSignIn(w http.ResponseWriter, r *http.Request, email string, inviteID *uuid.UUID) {
+	s.issueEmailSignInTo(w, r, email, inviteID, "")
+}
+
+func (s *Server) issueEmailSignInTo(w http.ResponseWriter, r *http.Request, email string, inviteID *uuid.UUID, returnTo string) {
 	ip, err := s.clientIP(r)
 	if err != nil {
 		WriteError(w, http.StatusBadRequest, "invalid_request", "invalid client address")
 		return
 	}
-	token, err := s.store.IssueLoginToken(r.Context(), email, ip, inviteID)
+	token, err := s.store.IssueLoginTokenWithReturnTo(r.Context(), email, ip, inviteID, returnTo)
 	if err != nil && !errors.Is(err, store.ErrRateLimited) {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not request sign-in")
 		return

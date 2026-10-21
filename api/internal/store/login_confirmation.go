@@ -30,10 +30,10 @@ func (s *Store) ConfirmLogin(ctx context.Context, token string) (LoginResult, er
 				return err
 			}
 		}
-		var email string
+		var email, returnTo string
 		// Acquire the token lock before evaluating expiry. An UPDATE may keep
 		// its pre-wait predicate when a competing token update rolls back.
-		if err := tx.QueryRow(ctx, `SELECT email FROM login_token WHERE token_hash=$1 FOR UPDATE`, HashToken(token)).Scan(&email); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT email, return_to FROM login_token WHERE token_hash=$1 FOR UPDATE`, HashToken(token)).Scan(&email, &returnTo); err != nil {
 			return mapErr(err)
 		}
 		if err := tx.QueryRow(ctx, `UPDATE login_token SET consumed_at=clock_timestamp() WHERE token_hash=$1 AND consumed_at IS NULL AND expires_at>clock_timestamp() RETURNING email`, HashToken(token)).Scan(&email); err != nil {
@@ -67,6 +67,9 @@ func (s *Store) ConfirmLogin(ctx context.Context, token string) (LoginResult, er
 			if err == nil {
 				result.Next = "/w/" + slug
 			}
+		}
+		if returnTo != "" && ValidLoginReturnTo(returnTo) {
+			result.Next = returnTo
 		}
 		raw := make([]byte, 32)
 		if _, err := rand.Read(raw); err != nil {

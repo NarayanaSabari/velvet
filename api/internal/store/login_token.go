@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/mail"
 	"net/netip"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -42,10 +44,26 @@ func NormalizeIP(ip string) (string, error) {
 	return addr.Unmap().String(), nil
 }
 
+var cliLoginReturn = regexp.MustCompile(`^/cli/approve\?code=[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$`)
+
+// ValidLoginReturnTo allows only the CLI approval route, never an arbitrary redirect.
+func ValidLoginReturnTo(path string) bool {
+	return path == "" || cliLoginReturn.MatchString(path)
+}
+
 // IssueLoginToken records a short-lived, single-use login token. The raw
 // token is returned only to the caller that sends the mail; the database holds
 // its SHA-256 hash. Issuance never creates an app_user before confirmation.
 func (s *Store) IssueLoginToken(ctx context.Context, email, ip string, inviteID *uuid.UUID) (string, error) {
+	return s.IssueLoginTokenWithReturnTo(ctx, email, ip, inviteID, "")
+}
+
+// IssueLoginTokenWithReturnTo binds a validated CLI continuation to the one-time
+// email token so confirmation works even when the email opens a new browser tab.
+func (s *Store) IssueLoginTokenWithReturnTo(ctx context.Context, email, ip string, inviteID *uuid.UUID, returnTo string) (string, error) {
+	if !ValidLoginReturnTo(returnTo) || (inviteID != nil && returnTo != "") {
+		return "", errors.New("invalid sign-in return path")
+	}
 	email, err := NormalizeEmail(email)
 	if err != nil {
 		return "", err
@@ -92,9 +110,9 @@ func (s *Store) IssueLoginToken(ctx context.Context, email, ip string, inviteID 
 		}
 
 		_, err := tx.Exec(ctx, `
-			INSERT INTO login_token (email, token_hash, request_ip, invite_id, expires_at)
-			VALUES ($1, $2, $3, $4, now() + $5::interval)`,
-			email, HashToken(token), ip, inviteID, loginTokenTTL)
+			INSERT INTO login_token (email, token_hash, request_ip, invite_id, expires_at, return_to)
+			VALUES ($1, $2, $3, $4, now() + $5::interval, $6)`,
+			email, HashToken(token), ip, inviteID, loginTokenTTL, returnTo)
 		return err
 	})
 	if err != nil {
