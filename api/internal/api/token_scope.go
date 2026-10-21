@@ -58,6 +58,16 @@ var scopedRoutes = map[string]bool{
 	"GET /api/v1/w/{slug}/images/{id}/content":            true,
 }
 
+// Setup credentials cannot read work data or manage arbitrary credentials.
+var setupRoutes = map[string]bool{
+	"GET /api/v1/me":                  true,
+	"POST /api/v1/orgs":               true,
+	"GET /api/v1/w/{slug}/projects":   true,
+	"POST /api/v1/w/{slug}/projects":  true,
+	"DELETE /api/v1/me/token":         true,
+	"POST /api/v1/cli/project-tokens": true,
+}
+
 func forbidScope(w http.ResponseWriter, msg string) {
 	WriteError(w, http.StatusForbidden, "out_of_scope", msg)
 }
@@ -66,6 +76,13 @@ func forbidScope(w http.ResponseWriter, msg string) {
 // and before the handler. It returns false when it has already answered.
 func (s *Server) enforceTokenScope(w http.ResponseWriter, r *http.Request) bool {
 	scope := tokenScope(r)
+	if scope.Kind == "setup" {
+		if !setupRoutes[r.Pattern] {
+			forbidScope(w, "this setup key can only configure organisations and project credentials")
+			return false
+		}
+		return true
+	}
 	if !scope.Scoped() {
 		return true
 	}

@@ -12,14 +12,17 @@ import (
 )
 
 const (
-	apiTokenPrefix = "velvet_"
-	apiTokenBytes  = 32
-	apiTokenLimit  = 20
+	apiTokenPrefix   = "velvet_"
+	setupTokenPrefix = "velvetsetup_"
+	apiTokenBytes    = 32
+	apiTokenLimit    = 20
 )
 
-// APIToken is the safe-to-return metadata for a personal API token. The raw
+// APIToken is safe-to-return metadata for any API token kind. The raw
 // token and its hash are deliberately absent from this type.
 type APIToken struct {
+	Kind       string     `json:"kind"`
+	ParentID   *uuid.UUID `json:"parent_id,omitempty"`
 	ID         uuid.UUID  `json:"id"`
 	Name       string     `json:"name"`
 	CreatedAt  time.Time  `json:"created_at"`
@@ -30,13 +33,25 @@ type APIToken struct {
 	ProjectKey    *string `json:"project_key"`
 }
 
-// TokenScope is what a key may reach. A zero scope is a personal key.
+// TokenScope is what a key may reach. A zero scope mints a personal key.
+// Setup keys are unscoped but default-denied by their explicit kind.
 type TokenScope struct {
+	Kind        string
+	ParentID    *uuid.UUID
 	WorkspaceID *uuid.UUID
 	ProjectID   *uuid.UUID
 }
 
 func (s TokenScope) Scoped() bool { return s.ProjectID != nil }
+
+// Setup hashes use a distinct domain so binaries predating kind enforcement
+// cannot authenticate these credentials as unrestricted personal tokens.
+func apiTokenHash(raw string) string {
+	if strings.HasPrefix(raw, setupTokenPrefix) {
+		return HashToken("cli-setup:" + raw)
+	}
+	return HashToken(raw)
+}
 
 // CreateAPIToken creates a personal token and returns its raw value exactly
 // once. Only the SHA-256 hash of the complete velvet_ token is persisted.
@@ -50,8 +65,8 @@ func (s *Store) CreateAPIToken(ctx context.Context, userID uuid.UUID, name strin
 	return token, err
 }
 
-// createAPITokenTx mints a key inside the caller's transaction. Only the
-// SHA-256 hash of the complete velvet_ token is persisted.
+// createAPITokenTx mints a key inside the caller's transaction. Only its hash
+// is persisted, with a separate hash domain for machine setup credentials.
 func createAPITokenTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, name string, scope TokenScope) (string, uuid.UUID, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -62,7 +77,11 @@ func createAPITokenTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, name str
 	if _, err := rand.Read(raw); err != nil {
 		return "", uuid.Nil, err
 	}
-	token := apiTokenPrefix + hex.EncodeToString(raw)
+	prefix := apiTokenPrefix
+	if scope.Kind == "setup" {
+		prefix = setupTokenPrefix
+	}
+	token := prefix + hex.EncodeToString(raw)
 
 	// Serialize the count and insert per user so concurrent issuances cannot
 	// exceed the 20-token limit.
@@ -79,11 +98,17 @@ func createAPITokenTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, name str
 		return "", uuid.Nil, ErrAPITokenLimit
 	}
 
+	if scope.Kind == "" {
+		scope.Kind = "personal"
+		if scope.Scoped() {
+			scope.Kind = "project"
+		}
+	}
 	var id uuid.UUID
 	err := tx.QueryRow(ctx, `
-		INSERT INTO api_token (user_id, name, token_hash, workspace_id, project_id)
-		VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		userID, name, HashToken(token), scope.WorkspaceID, scope.ProjectID).Scan(&id)
+		INSERT INTO api_token (user_id, name, token_hash, workspace_id, project_id, kind, parent_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+		userID, name, apiTokenHash(token), scope.WorkspaceID, scope.ProjectID, scope.Kind, scope.ParentID).Scan(&id)
 	if err != nil {
 		return "", uuid.Nil, mapErr(err)
 	}
@@ -94,7 +119,7 @@ func createAPITokenTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID, name str
 // selected so it cannot accidentally reach an API response.
 func (s *Store) ListAPITokens(ctx context.Context, userID uuid.UUID) ([]APIToken, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT t.id, t.name, t.created_at, t.last_used_at, w.slug, p.key
+		SELECT t.id, t.name, t.created_at, t.last_used_at, w.slug, p.key, t.kind, t.parent_id
 		FROM api_token t
 		LEFT JOIN workspace w ON w.id = t.workspace_id
 		LEFT JOIN project p ON p.id = t.project_id
@@ -108,7 +133,7 @@ func (s *Store) ListAPITokens(ctx context.Context, userID uuid.UUID) ([]APIToken
 	out := []APIToken{}
 	for rows.Next() {
 		var token APIToken
-		if err := rows.Scan(&token.ID, &token.Name, &token.CreatedAt, &token.LastUsedAt, &token.WorkspaceSlug, &token.ProjectKey); err != nil {
+		if err := rows.Scan(&token.ID, &token.Name, &token.CreatedAt, &token.LastUsedAt, &token.WorkspaceSlug, &token.ProjectKey, &token.Kind, &token.ParentID); err != nil {
 			return nil, mapErr(err)
 		}
 		out = append(out, token)
@@ -137,7 +162,7 @@ func (s *Store) DeleteAPIToken(ctx context.Context, userID, id uuid.UUID) error 
 // record which agent token wrote it, and its scope so every request can be
 // held to the organisation and project the key was minted for.
 func (s *Store) LookupAPIToken(ctx context.Context, rawToken string) (User, uuid.UUID, TokenScope, error) {
-	hash := HashToken(rawToken)
+	hash := apiTokenHash(rawToken)
 	if _, err := s.pool.Exec(ctx, `
 		UPDATE api_token
 		SET last_used_at=now()
@@ -150,10 +175,10 @@ func (s *Store) LookupAPIToken(ctx context.Context, rawToken string) (User, uuid
 	var tokenID uuid.UUID
 	var scope TokenScope
 	err := s.pool.QueryRow(ctx, `
-		SELECT t.id, t.workspace_id, t.project_id, u.id, COALESCE(u.email, ''), u.github_id, u.github_login, u.name, u.avatar_url
+		SELECT t.id, t.workspace_id, t.project_id, t.kind, t.parent_id, u.id, COALESCE(u.email, ''), u.github_id, u.github_login, u.name, u.avatar_url
 		FROM api_token t JOIN app_user u ON u.id=t.user_id
 		WHERE t.token_hash=$1`, hash).
-		Scan(&tokenID, &scope.WorkspaceID, &scope.ProjectID, &user.ID, &user.Email, &user.GitHubID, &user.GitHubLogin, &user.Name, &user.AvatarURL)
+		Scan(&tokenID, &scope.WorkspaceID, &scope.ProjectID, &scope.Kind, &scope.ParentID, &user.ID, &user.Email, &user.GitHubID, &user.GitHubLogin, &user.Name, &user.AvatarURL)
 	return user, tokenID, scope, mapErr(err)
 }
 

@@ -133,6 +133,10 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
+	kind := "session"
+	if isBearerAuth(r.Context()) {
+		kind = tokenScope(r).Kind
+	}
 	user, _ := CurrentUser(r.Context())
 	memberships, err := s.store.MembershipsForUser(r.Context(), user.ID)
 	if err != nil {
@@ -154,6 +158,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		WriteJSON(w, http.StatusOK, map[string]any{
+			"token_kind":  kind,
 			"user":        user,
 			"memberships": own,
 			"scope":       map[string]string{"workspace_slug": slug, "project_key": key},
@@ -169,6 +174,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{
+		"token_kind":     kind,
 		"user":           user,
 		"memberships":    memberships,
 		"last_workspace": last,

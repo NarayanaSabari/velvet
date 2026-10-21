@@ -14,9 +14,9 @@ import (
 
 // CLI sign-in follows the device authorization pattern. The CLI keeps a long
 // random device secret and polls with it; the person types or follows a short
-// user code in a browser where they are already signed in, picks one
-// organisation and one project, and approves. The key is minted only when the
-// CLI collects it, scoped to exactly that choice.
+// user code in a signed-in browser and explicitly approves. Login grants a
+// setup credential without a workspace. Legacy init chooses one organisation
+// and project. The key is minted only when the CLI collects the approval.
 const (
 	cliSessionTTL     = 10 * time.Minute
 	cliDeviceBytes    = 32
@@ -36,8 +36,9 @@ var (
 	ErrCLISessionExpired = errors.New("authorization expired")
 )
 
-// CLISession is the browser-facing view of one pending `velvet init`.
+// CLISession is the browser-facing view of one pending login or legacy init.
 type CLISession struct {
+	Flow       string    `json:"flow"`
 	ID         uuid.UUID `json:"id"`
 	UserCode   string    `json:"user_code"`
 	ClientName string    `json:"client_name"`
@@ -47,13 +48,15 @@ type CLISession struct {
 
 // CLIGrant is what the CLI receives once, when it collects an approval.
 type CLIGrant struct {
-	Token         string `json:"token"`
-	WorkspaceSlug string `json:"workspace_slug"`
-	WorkspaceName string `json:"workspace_name"`
-	IssuePrefix   string `json:"issue_prefix"`
-	ProjectKey    string `json:"project_key"`
-	ProjectName   string `json:"project_name"`
-	Role          string `json:"role"`
+	Scope         map[string]string `json:"scope,omitempty"`
+	Kind          string            `json:"kind"`
+	Token         string            `json:"token"`
+	WorkspaceSlug string            `json:"workspace_slug,omitempty"`
+	WorkspaceName string            `json:"workspace_name,omitempty"`
+	IssuePrefix   string            `json:"issue_prefix,omitempty"`
+	ProjectKey    string            `json:"project_key,omitempty"`
+	ProjectName   string            `json:"project_name,omitempty"`
+	Role          string            `json:"role,omitempty"`
 }
 
 // NormalizeUserCode accepts the code however a person typed it: any case,
@@ -92,6 +95,13 @@ func newUserCode() (string, error) {
 // CreateCLISession starts a sign-in and returns the device secret, which only
 // the CLI ever holds, and the session with its user code.
 func (s *Store) CreateCLISession(ctx context.Context, clientName string) (string, CLISession, error) {
+	return s.CreateCLISessionForFlow(ctx, clientName, "init")
+}
+
+func (s *Store) CreateCLISessionForFlow(ctx context.Context, clientName, flow string) (string, CLISession, error) {
+	if flow != "init" && flow != "login" {
+		return "", CLISession{}, ErrForbidden
+	}
 	clientName = strings.TrimSpace(clientName)
 	if clientName == "" || len(clientName) > 100 {
 		clientName = "velvet CLI"
@@ -115,11 +125,11 @@ func (s *Store) CreateCLISession(ctx context.Context, clientName string) (string
 		}
 		var out CLISession
 		err = s.pool.QueryRow(ctx, `
-			INSERT INTO cli_session (device_hash, user_code, client_name, expires_at)
-			VALUES ($1, $2, $3, now() + $4::interval)
-			RETURNING id, user_code, client_name, status, expires_at`,
-			HashToken(device), code, clientName, cliSessionTTL.String()).
-			Scan(&out.ID, &out.UserCode, &out.ClientName, &out.Status, &out.ExpiresAt)
+			INSERT INTO cli_session (device_hash, user_code, client_name, expires_at, flow)
+			VALUES ($1, $2, $3, now() + $4::interval, $5)
+			RETURNING id, user_code, client_name, status, expires_at, flow`,
+			HashToken(device), code, clientName, cliSessionTTL.String(), flow).
+			Scan(&out.ID, &out.UserCode, &out.ClientName, &out.Status, &out.ExpiresAt, &out.Flow)
 		if errors.Is(mapErr(err), ErrDuplicate) {
 			continue
 		}
@@ -137,11 +147,11 @@ func (s *Store) CreateCLISession(ctx context.Context, clientName string) (string
 func (s *Store) CLISessionByCode(ctx context.Context, code string) (CLISession, error) {
 	var out CLISession
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, user_code, client_name, status, expires_at
+		SELECT id, user_code, client_name, status, expires_at, flow
 		FROM cli_session
 		WHERE user_code = $1 AND status = 'pending' AND expires_at > now()`,
 		NormalizeUserCode(code)).
-		Scan(&out.ID, &out.UserCode, &out.ClientName, &out.Status, &out.ExpiresAt)
+		Scan(&out.ID, &out.UserCode, &out.ClientName, &out.Status, &out.ExpiresAt, &out.Flow)
 	return out, mapErr(err)
 }
 
@@ -153,7 +163,7 @@ func (s *Store) ApproveCLISession(ctx context.Context, code string, approverID, 
 		var id uuid.UUID
 		err := tx.QueryRow(ctx, `
 			SELECT id FROM cli_session
-			WHERE user_code = $1 AND status = 'pending' AND expires_at > now()
+			WHERE user_code = $1 AND flow = 'init' AND status = 'pending' AND expires_at > now()
 			FOR UPDATE`, NormalizeUserCode(code)).Scan(&id)
 		if err != nil {
 			return mapErr(err)
@@ -199,6 +209,68 @@ func (s *Store) DenyCLISession(ctx context.Context, code string) error {
 	return nil
 }
 
+// ApproveCLILogin records explicit browser consent without choosing a workspace.
+func (s *Store) ApproveCLILogin(ctx context.Context, code string, approverID uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx, `UPDATE cli_session SET status='approved', approved_by=$2
+		WHERE user_code=$1 AND flow='login' AND status='pending' AND expires_at > now()`, NormalizeUserCode(code), approverID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// IssueProjectToken rotates an existing child's secret, or creates one. Reusing
+// a row avoids quota growth. Raw secrets cannot be recovered from stored hashes,
+// so clients should reuse their cached credential rather than request it again.
+func (s *Store) IssueProjectToken(ctx context.Context, userID, parentID uuid.UUID, slug, key string) (CLIGrant, error) {
+	var grant CLIGrant
+	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		var parentName string
+		// Serialize sibling issuance and revocation on the parent row.
+		if err := tx.QueryRow(ctx, `SELECT name FROM api_token WHERE id=$1 AND user_id=$2 AND kind='setup' FOR UPDATE`, parentID, userID).Scan(&parentName); err != nil {
+			return mapErr(err)
+		}
+		var workspaceID, projectID uuid.UUID
+		err := tx.QueryRow(ctx, `SELECT w.id, p.id, m.role, w.slug, w.name, w.issue_prefix, p.key, p.name
+			FROM workspace w JOIN membership m ON m.workspace_id=w.id AND m.user_id=$1
+			JOIN project p ON p.workspace_id=w.id AND p.key=$3 AND p.status='active'
+			WHERE w.slug=$2 FOR SHARE OF m, p`, userID, slug, NormalizeProjectKey(key)).
+			Scan(&workspaceID, &projectID, &grant.Role, &grant.WorkspaceSlug, &grant.WorkspaceName, &grant.IssuePrefix, &grant.ProjectKey, &grant.ProjectName)
+		if err != nil {
+			return mapErr(err)
+		}
+		if grant.Role != "admin" && grant.Role != "member" {
+			return ErrForbidden
+		}
+		var childID uuid.UUID
+		err = tx.QueryRow(ctx, `SELECT id FROM api_token WHERE parent_id=$1 AND project_id=$2`, parentID, projectID).Scan(&childID)
+		if err == nil {
+			raw := make([]byte, apiTokenBytes)
+			if _, err := rand.Read(raw); err != nil {
+				return err
+			}
+			grant.Token = apiTokenPrefix + hex.EncodeToString(raw)
+			_, err = tx.Exec(ctx, `UPDATE api_token SET token_hash=$2, last_used_at=NULL WHERE id=$1`, childID, HashToken(grant.Token))
+			return err
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		grant.Token, _, err = createAPITokenTx(ctx, tx, userID, parentName+" · "+slug+"/"+grant.ProjectKey,
+			TokenScope{Kind: "project", ParentID: &parentID, WorkspaceID: &workspaceID, ProjectID: &projectID})
+		return err
+	})
+	if err != nil {
+		return CLIGrant{}, err
+	}
+	grant.Kind = "project"
+	grant.Scope = map[string]string{"workspace_slug": grant.WorkspaceSlug, "project_key": grant.ProjectKey}
+	return grant, nil
+}
+
 // CollectCLISession is the CLI's poll. Once approved, the first poll mints
 // the scoped key and marks the session collected, in one transaction, so the
 // key is handed out exactly once and is never stored in raw form.
@@ -207,16 +279,16 @@ func (s *Store) CollectCLISession(ctx context.Context, device string) (CLIGrant,
 	var outcome error
 	err := s.InTx(ctx, func(tx pgx.Tx) error {
 		var (
-			id                     uuid.UUID
-			status, clientName     string
-			expired                bool
-			approver               *uuid.UUID
-			workspaceID, projectID *uuid.UUID
+			id                       uuid.UUID
+			status, clientName, flow string
+			expired                  bool
+			approver                 *uuid.UUID
+			workspaceID, projectID   *uuid.UUID
 		)
 		err := tx.QueryRow(ctx, `
-			SELECT id, status, client_name, expires_at <= now(), approved_by, workspace_id, project_id
+			SELECT id, status, client_name, flow, expires_at <= now(), approved_by, workspace_id, project_id
 			FROM cli_session WHERE device_hash = $1 FOR UPDATE`, HashToken(device)).
-			Scan(&id, &status, &clientName, &expired, &approver, &workspaceID, &projectID)
+			Scan(&id, &status, &clientName, &flow, &expired, &approver, &workspaceID, &projectID)
 		if err != nil {
 			if errors.Is(mapErr(err), ErrNotFound) {
 				return ErrCLISessionExpired
@@ -232,6 +304,16 @@ func (s *Store) CollectCLISession(ctx context.Context, device string) (CLIGrant,
 			return ErrCLISessionPending
 		}
 
+		if flow == "login" {
+			token, tokenID, err := createAPITokenTx(ctx, tx, *approver, clientName+" · login · "+id.String()[:8], TokenScope{Kind: "setup"})
+			if err != nil {
+				return err
+			}
+			grant.Token, grant.Kind = token, "setup"
+			_, err = tx.Exec(ctx, `UPDATE cli_session SET status = 'collected', api_token_id = $2 WHERE id = $1`, id, tokenID)
+			return err
+		}
+
 		// Re-check at collection: the approver may have lost access, or the
 		// project may have moved, since they clicked approve.
 		var role string
@@ -239,7 +321,7 @@ func (s *Store) CollectCLISession(ctx context.Context, device string) (CLIGrant,
 			SELECT m.role, w.slug, w.name, w.issue_prefix, p.key, p.name
 			FROM membership m
 			JOIN workspace w ON w.id = m.workspace_id
-			JOIN project p ON p.id = $3 AND p.workspace_id = w.id
+			JOIN project p ON p.id = $3 AND p.workspace_id = w.id AND p.status = 'active'
 			WHERE m.workspace_id = $1 AND m.user_id = $2`,
 			workspaceID, approver, projectID).
 			Scan(&role, &grant.WorkspaceSlug, &grant.WorkspaceName, &grant.IssuePrefix, &grant.ProjectKey, &grant.ProjectName)
@@ -251,6 +333,7 @@ func (s *Store) CollectCLISession(ctx context.Context, device string) (CLIGrant,
 			return markErr
 		}
 		grant.Role = role
+		grant.Kind = "project"
 
 		name := clientName + " · " + grant.WorkspaceSlug + "/" + grant.ProjectKey + " · " + id.String()[:8]
 		token, tokenID, err := createAPITokenTx(ctx, tx, *approver, name,

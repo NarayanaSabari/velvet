@@ -9,15 +9,14 @@ import (
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 )
 
-// `velvet init` signs in like a TV app: the CLI starts a session and shows a
-// short code and a link; the person approves in the browser they are already
-// signed in to, choosing one organisation and one project; the CLI's next
-// poll collects a key bound to exactly that choice.
+// Device login requires explicit browser approval before the CLI can collect
+// a setup key. Legacy init keeps its organisation and project selection flow.
 func (s *Server) registerCLIAuthRoutes(mux *http.ServeMux) {
 	// The CLI's two calls carry no credential: the device secret in the body
 	// is what proves it started the session.
 	mux.HandleFunc("POST /api/v1/cli/sessions", s.handleCreateCLISession)
 	mux.HandleFunc("POST /api/v1/cli/sessions/token", s.handleCollectCLISession)
+	mux.Handle("POST /api/v1/cli/project-tokens", s.RequireAuth(http.HandlerFunc(s.handleIssueProjectToken)))
 	// The browser's calls need a signed-in session, never an API key, so an
 	// agent holding a key cannot approve its own escalation.
 	mux.Handle("GET /api/v1/cli/sessions/{code}", s.RequireAuth(http.HandlerFunc(s.handleGetCLISession)))
@@ -28,11 +27,19 @@ func (s *Server) registerCLIAuthRoutes(mux *http.ServeMux) {
 func (s *Server) handleCreateCLISession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ClientName string `json:"client_name"`
+		Flow       string `json:"flow"`
 	}
 	if !DecodeJSON(w, r, &body) {
 		return
 	}
-	device, session, err := s.store.CreateCLISession(r.Context(), body.ClientName)
+	if body.Flow == "" {
+		body.Flow = "init"
+	}
+	if body.Flow != "init" && body.Flow != "login" {
+		WriteError(w, http.StatusBadRequest, "invalid_request", "flow must be login or init")
+		return
+	}
+	device, session, err := s.store.CreateCLISessionForFlow(r.Context(), body.ClientName, body.Flow)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not start sign-in")
 		return
@@ -105,6 +112,23 @@ func (s *Server) handleApproveCLISession(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	user, _ := CurrentUser(r.Context())
+	session, err := s.store.CLISessionByCode(r.Context(), r.PathValue("code"))
+	if err != nil {
+		WriteError(w, http.StatusNotFound, "not_found", "that code has expired or was already used")
+		return
+	}
+	if session.Flow == "login" {
+		if body.WorkspaceSlug != "" || body.ProjectKey != "" {
+			WriteError(w, http.StatusBadRequest, "invalid_request", "login approval does not accept an organisation or project")
+			return
+		}
+		if err := s.store.ApproveCLILogin(r.Context(), r.PathValue("code"), user.ID); err != nil {
+			WriteError(w, http.StatusNotFound, "not_found", "that code has expired or was already used")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	membership, err := s.store.MembershipForSlug(r.Context(), user.ID, body.WorkspaceSlug)
 	if err != nil {
 		WriteError(w, http.StatusNotFound, "not_found", "no such organisation")
@@ -125,6 +149,40 @@ func (s *Server) handleApproveCLISession(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusNotFound, "not_found", "that code has expired or was already used")
 	default:
 		WriteError(w, http.StatusInternalServerError, "internal", "could not approve the sign-in")
+	}
+}
+
+func (s *Server) handleIssueProjectToken(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	parent := currentAPIToken(r.Context())
+	if parent == nil || tokenScope(r).Kind != "setup" {
+		WriteError(w, http.StatusForbidden, "forbidden", "a machine setup token is required")
+		return
+	}
+	var body struct {
+		WorkspaceSlug string `json:"workspace_slug"`
+		ProjectKey    string `json:"project_key"`
+	}
+	if !DecodeJSON(w, r, &body) {
+		return
+	}
+	if strings.TrimSpace(body.WorkspaceSlug) == "" || strings.TrimSpace(body.ProjectKey) == "" {
+		WriteError(w, http.StatusBadRequest, "invalid_request", "workspace_slug and project_key are required")
+		return
+	}
+	user, _ := CurrentUser(r.Context())
+	grant, err := s.store.IssueProjectToken(r.Context(), user.ID, *parent, body.WorkspaceSlug, body.ProjectKey)
+	switch {
+	case err == nil:
+		WriteJSON(w, http.StatusOK, grant)
+	case errors.Is(err, store.ErrForbidden):
+		WriteError(w, http.StatusForbidden, "forbidden", "member or admin access is required")
+	case errors.Is(err, store.ErrNotFound):
+		WriteError(w, http.StatusNotFound, "not_found", "no accessible active project")
+	case errors.Is(err, store.ErrAPITokenLimit):
+		WriteError(w, http.StatusConflict, "token_limit", "a user may have at most 20 API tokens")
+	default:
+		WriteError(w, http.StatusInternalServerError, "internal", "could not issue the project token")
 	}
 }
 
