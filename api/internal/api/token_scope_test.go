@@ -149,6 +149,51 @@ func TestScopedKeyWorksInsideItsProject(t *testing.T) {
 	require.Equal(t, "agent", source)
 }
 
+func TestScopedIssueDetailFiltersChildrenByProject(t *testing.T) {
+	s := newScopedSetup(t)
+	children := make([]store.Issue, 0, 3)
+	for _, project := range []*uuid.UUID{&s.ownProject, &s.other, nil} {
+		child, err := s.f.Store.CreateIssue(t.Context(), store.CreateIssueInput{
+			WorkspaceID: s.f.WorkspaceID, ActorID: s.f.User.ID,
+			Title: "Child", Description: "Private child description",
+			ProjectID: project, ParentID: &s.ownIssue.ID,
+		})
+		require.NoError(t, err)
+		children = append(children, child)
+	}
+	path := "/api/v1/w/lab/issues/" + s.ownIssue.Key
+	personal := s.f.AgentToken("personal")
+	for _, caller := range []struct {
+		name  string
+		token string
+		want  int
+	}{
+		{"scoped", s.key, 1},
+		{"personal", personal, 3},
+		{"browser", "", 3},
+	} {
+		t.Run(caller.name, func(t *testing.T) {
+			var rec *httptest.ResponseRecorder
+			if caller.token == "" {
+				rec = s.f.Do(http.MethodGet, path, nil)
+			} else {
+				rec = s.f.DoAsAgent(http.MethodGet, path, caller.token, nil)
+			}
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			var got store.Issue
+			s.f.DecodeInto(rec, &got)
+			require.Len(t, got.Children, caller.want)
+			if caller.name == "scoped" {
+				require.Equal(t, children[0].ID, got.Children[0].ID)
+				for _, hidden := range children[1:] {
+					require.NotContains(t, rec.Body.String(), hidden.ID.String())
+					require.NotContains(t, rec.Body.String(), hidden.Key)
+				}
+			}
+		})
+	}
+}
+
 func TestScopedKeyCannotLeaveItsProject(t *testing.T) {
 	s := newScopedSetup(t)
 	base := "/api/v1/w/lab"

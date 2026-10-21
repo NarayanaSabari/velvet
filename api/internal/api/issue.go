@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -190,6 +191,16 @@ func (s *Server) handleGetIssue(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeIssueError(w, err)
 		return
+	}
+	if project, scoped := scopedProject(r); scoped {
+		if issue.ProjectID == nil || *issue.ProjectID != project {
+			forbidScope(w, "this ticket is outside the project this key is limited to")
+			return
+		}
+		// Children can belong to another project or have no project at all.
+		issue.Children = slices.DeleteFunc(issue.Children, func(child store.Issue) bool {
+			return child.ProjectID == nil || *child.ProjectID != project
+		})
 	}
 	WriteJSON(w, http.StatusOK, issue)
 }
