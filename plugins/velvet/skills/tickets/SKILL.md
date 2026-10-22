@@ -49,7 +49,8 @@ velvet comments ENG-42 edit COMMENT_UUID "Corrected text."
 velvet comments ENG-42 delete COMMENT_UUID --yes
 ```
 
-The same operations accept `--project` in place of the ticket key.
+The same operations accept `--project` or `--milestone MILESTONE_UUID` in place of the ticket key.
+`velvet comments --milestone MILESTONE_UUID list` reads a milestone's thread within the linked project.
 Flags precede one quoted body argument. Add and edit also read the body from stdin.
 Delete only with the user's explicit approval, then supply `--yes`.
 Server permissions still decide whose comments can be edited or deleted.

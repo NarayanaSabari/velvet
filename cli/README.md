@@ -134,10 +134,10 @@ velvet issue KEY                        Show a ticket and its recent work log
 velvet new TITLE [--desc D] [--milestone ID] [--priority N]
 velvet edit KEY [--title TEXT] [--desc TEXT] [--priority N]
                 [--assignee UUID|none] [--milestone UUID|none]
-velvet comments (KEY | --project) list
-velvet comments (KEY | --project) add [--kind K] [--parent UUID] [BODY]
-velvet comments (KEY | --project) edit COMMENT_UUID [BODY]
-velvet comments (KEY | --project) delete COMMENT_UUID --yes
+velvet comments (KEY | --project | --milestone UUID) list
+velvet comments (KEY | --project | --milestone UUID) add [--kind K] [--parent UUID] [BODY]
+velvet comments (KEY | --project | --milestone UUID) edit COMMENT_UUID [BODY]
+velvet comments (KEY | --project | --milestone UUID) delete COMMENT_UUID --yes
 velvet evidence KEY list                List attached GitHub evidence
 velvet status KEY STATUS                Change a ticket's status (only when asked)
 velvet key-from-branch                  Print the ticket key named by the current branch
@@ -168,7 +168,7 @@ Organisation-wide variants belong under separately consented `velvet admin`, not
 
 `edit` changes only supplied fields. `--desc ""` clears the description; `--assignee none` and `--milestone none` clear references.
 Assignees and milestones use UUIDs. Labels and cross-project ticket moves are not supported.
-`comments` lists complete threads including replies and IDs. Add/edit take one quoted body or stdin, with flags before the body.
+`comments` lists complete ticket, project, or milestone threads including replies and IDs. Add/edit take one quoted body or stdin, with flags before the body.
 Comment deletion requires explicit user approval and `--yes`; server ownership and role checks still apply.
 `evidence KEY list` reads existing evidence, while `attach` adds a PR or commit reference.
 
