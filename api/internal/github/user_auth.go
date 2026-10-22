@@ -60,7 +60,7 @@ func NewUserClient(cfg UserClientConfig) (*UserClient, error) {
 }
 
 func (c *UserClient) AuthorizationURL(state, challenge string) string {
-	q := url.Values{"client_id": {c.cfg.ClientID}, "redirect_uri": {c.cfg.RedirectURL}, "state": {state}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}}
+	q := url.Values{"client_id": {c.cfg.ClientID}, "redirect_uri": {c.cfg.RedirectURL}, "state": {state}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}, "prompt": {"select_account"}}
 	return c.cfg.AuthorizationURL + "?" + q.Encode()
 }
 

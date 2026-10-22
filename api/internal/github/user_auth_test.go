@@ -203,6 +203,7 @@ func TestGitHubUserAuthorizationPKCEAndPagination(t *testing.T) {
 	require.Equal(t, "S256", u.Query().Get("code_challenge_method"))
 	require.Equal(t, "challenge-value", u.Query().Get("code_challenge"))
 	require.Equal(t, "state-value", u.Query().Get("state"))
+	require.Equal(t, "select_account", u.Query().Get("prompt"))
 	require.Empty(t, u.Query().Get("scope"))
 	_, err = client.Authorize(t.Context(), "code", "bad", 99)
 	require.Error(t, err)

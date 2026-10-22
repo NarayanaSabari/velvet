@@ -235,6 +235,16 @@ describe('Table-based GitHub account management', () => {
     await waitFor(() => expect(row().getByRole('link', { name: changeName })).toHaveFocus())
   })
 
+  it('starts scoped OAuth after clearing private queries when Change is clicked', async () => {
+    const view = setup()
+    const user = userEvent.setup()
+    const cleared = vi.spyOn(view.client, 'clear')
+    await user.click(await screen.findByRole('link', { name: changeName }))
+    await waitFor(() => expect(navigateTo).toHaveBeenCalledExactlyOnceWith('/api/v1/w/lab/me/github/link'))
+    expect(cleared).toHaveBeenCalledTimes(1)
+    expect(screen.getByText(/Choose Link or Change, then select the account on GitHub/)).toBeVisible()
+  })
+
   it('does not start OAuth for an obsolete row after workspace navigation during cache clearing', async () => {
     const view = setup()
     const user = userEvent.setup()

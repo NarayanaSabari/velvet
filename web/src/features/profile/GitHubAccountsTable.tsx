@@ -36,7 +36,7 @@ export function GitHubAccountsTable({ memberships, currentSlug, globalAccount }:
         </tbody>
       </table>
     </div>}
-    <p className="max-w-[46rem] text-xs text-grey-500">Organisation links override the global default. To link a different account, sign in to it on GitHub first. Repository access is managed in Administration.</p>
+    <p className="max-w-[46rem] text-xs text-grey-500">Organisation links override the global default. Choose Link or Change, then select the account on GitHub. This does not switch your Velvet organisation. Repository access is managed in Administration.</p>
   </section>
 }
 
