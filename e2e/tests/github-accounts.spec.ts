@@ -141,7 +141,9 @@ test('changing an organisation account and removing the global fallback preserve
   await page.goto(`/w/${first}/settings/profile/github`)
   await control(page.request, { identityID: 70009 })
   const completed = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/auth/github/callback')
+  const authorization = page.waitForRequest((request) => request.isNavigationRequest() && new URL(request.url()).pathname === '/authorize')
   await page.getByTestId(`github-account-row-${first}`).getByRole('link', { name: 'Change GitHub account for Client A', exact: true }).click()
+  expect(new URL((await authorization).url()).searchParams.get('prompt')).toBe('select_account')
   await completed
   await expect(page).toHaveURL(`/w/${first}/settings/profile/github`)
   expect((await effective(page, first)).github_login).toBe('runtime-client-b')
