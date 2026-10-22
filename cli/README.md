@@ -85,8 +85,8 @@ velvet init --organisation lab --project other --relink
 # Scripts must also pass --yes --non-interactive.
 ```
 
-Every normal command checks `/me` for token kind `project` and an exact organisation/project scope before work requests.
-Personal and setup credentials are refused, including through `VELVET_TOKEN`.
+Every project work command checks `/me` for token kind `project` and an exact organisation/project scope before work requests.
+Personal and setup credentials are refused for project work, including through `VELVET_TOKEN`.
 In CI, use a project-scoped `VELVET_TOKEN` and pin `VELVET_SERVER` to the YAML server, especially for unbound checkouts.
 An unbound CI checkout without `VELVET_SERVER` trusts only the hosted default server.
 API redirects are not followed with credentials.
@@ -122,27 +122,97 @@ velvet logout [--server URL] [--account ID] Revoke machine login and its project
 velvet log [KEY] [--kind K] BODY        Log work on a ticket, or on the project without KEY
 velvet attach KEY REFERENCE             Attach a PR URL, owner/repo#N, or commit sha
 velvet recap [--days N]                 Summarise recent work in this project
+velvet reports activity [--from DATE] [--to DATE]
+velvet reports (milestones | closed)
+velvet reports stale [--days N]
+velvet mentions [list [--unread]]       Read this project's mentions
+velvet mentions read COMMENT_ID...     Mark selected project mentions read
+velvet mentions read --all --yes       Mark all project mentions read
 
 velvet issues [--status S] [--mine]     List this project's tickets
 velvet issue KEY                        Show a ticket and its recent work log
 velvet new TITLE [--desc D] [--milestone ID] [--priority N]
+velvet edit KEY [--title TEXT] [--desc TEXT] [--priority N]
+                [--assignee UUID|none] [--milestone UUID|none]
+velvet comments (KEY | --project) list
+velvet comments (KEY | --project) add [--kind K] [--parent UUID] [BODY]
+velvet comments (KEY | --project) edit COMMENT_UUID [BODY]
+velvet comments (KEY | --project) delete COMMENT_UUID --yes
+velvet evidence KEY list                List attached GitHub evidence
 velvet status KEY STATUS                Change a ticket's status (only when asked)
 velvet key-from-branch                  Print the ticket key named by the current branch
 
 velvet sprints [new NAME FROM TO]       List or create this project's sprints
 velvet milestones [SPRINT_ID | new SPRINT_ID NAME]
 velvet upload-image (KEY | --milestone ID) PATH --caption TEXT
+velvet sprint ID show
+velvet sprint ID edit [--name NAME] [--starts-on DATE] [--ends-on DATE]
+velvet sprint ID activate --yes          Completes the previous active sprint
+velvet sprint ID complete --yes          Closes the sprint
+velvet milestone ID show
+velvet milestone ID edit [--name NAME] [--description TEXT] [--status STATUS]
+                         [--target-date DATE|""] [--after ID] [--before ID] [--yes]
+velvet images (KEY | --milestone ID)     List image metadata
+velvet image ID delete --yes            Delete one image attachment
+velvet admin --help                     Separately consented account management
 ```
 
 `log` reads the entry from standard input when no body is given.
 Flags go before the body, for example `velvet log ENG-42 --kind decision "Keep the CLI dependency-free."`.
 `--kind` is one of `progress`, `decision`, `blocker`, or `note`.
 
+`reports` and `mentions` use only the bound project credential and reject server/account/organisation overrides.
+Reports provide activity, milestone progress, closed work, and stale work for this project, not the whole account.
+Mention reads change notification state. Mark only requested items, and require explicit approval before marking all read.
+Organisation-wide variants belong under separately consented `velvet admin`, not project credentials.
+
+`edit` changes only supplied fields. `--desc ""` clears the description; `--assignee none` and `--milestone none` clear references.
+Assignees and milestones use UUIDs. Labels and cross-project ticket moves are not supported.
+`comments` lists complete threads including replies and IDs. Add/edit take one quoted body or stdin, with flags before the body.
+Comment deletion requires explicit user approval and `--yes`; server ownership and role checks still apply.
+`evidence KEY list` reads existing evidence, while `attach` adds a PR or commit reference.
+
+Planning IDs are UUIDs and dates use `YYYY-MM-DD`.
+Plural `sprints edit ID` and `milestones edit ID` alias the singular edit commands.
+Milestone `--status` accepts `planned`, `in_progress`, `completed`, or `cancelled`.
+Completing or cancelling a milestone requires `--yes`. `--target-date ""` clears its date.
+`--after` and `--before` reorder sibling milestones, not reassign them to another sprint.
+Sprint activation completes the previous active sprint, so activation and completion require approval and `--yes`.
+Image commands list metadata or delete a confirmed image, not download image bytes.
+
 `upload-image` sends one regular local file of at most 10 MiB.
 The server checks it really is a PNG, JPEG, or WebP image.
 Uploads never change a ticket's status.
 
-The CLI never changes a status unless `velvet status` is run, and never reports time spent.
+The CLI never changes a ticket status unless `velvet status` is run, and never reports time spent.
+Sprint and milestone status transitions also require the user's explicit request, never an inferred code or deployment event.
+
+## Separately consented administration
+
+`velvet admin login [--server URL] [--account USER_ID] [--no-browser]` requests separate browser consent for a personal management credential.
+It allows account-wide administration subject to current roles, not only the repository's project.
+Setup consent is not management consent. No management command reuses setup/project credentials, repository YAML, or `VELVET_TOKEN`.
+A valid saved management login is reused. Account commands select server from `--server`, then `VELVET_SERVER`, then the hosted default.
+An omitted account selects the last management login for that server. Prefer explicit server and account.
+`velvet admin whoami --server URL --account USER_ID` inspects that identity.
+`velvet admin logout --server URL --account USER_ID --yes` revokes only management access, leaving setup and project keys intact.
+Ordinary `velvet logout` does not revoke this separately consented access.
+
+Every organisation operation requires explicit `--server URL --account USER_ID --organisation SLUG`.
+Run `velvet admin --help` for exact action arguments. Supported resources are:
+
+- `members`: list, set-role, remove.
+- `invites`: list, create, resend, revoke.
+- `organisation`: show, update name, delete, leave.
+- `projects`: list (optionally archived), show, create, update name/description/status, archive.
+- `github`: status, repositories, sync, connect, identity, link, unlink, map-repository, unmap-repository.
+- `reports`: activity with optional date range, milestones, closed, stale with optional day threshold.
+- `mentions`: list (optionally unread), read selected comment IDs, read all.
+
+Destructive actions require explicit approval and `--yes`, including role changes, removals, revocation, leaving, deletion, archiving, and unlinking.
+Marking all mentions read also requires `--yes`. Never use that flag as standing consent.
+GitHub connect/link print trusted browser start URLs. The user completes OAuth or installation in the browser.
+The CLI does not replace browser OAuth, and management credentials do not bypass server roles.
 
 ## Examples
 

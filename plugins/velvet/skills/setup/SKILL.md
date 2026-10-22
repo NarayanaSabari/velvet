@@ -58,6 +58,9 @@ Never ask for a key in chat, never print one, and never write one into a file.
 Never edit `velvet.yaml` to point at another project. Relinking requires the person's explicit approval through `velvet init --relink`.
 `velvet logout` revokes the machine login and all project keys issued through it, not only the current directory's key.
 The shared YAML files remain intact. Do not run logout without the user's request.
+Setup login is not consent to account-wide administration.
+Only an explicit administration request warrants the separate `velvet admin login` browser flow in the management skill.
+Setup and project credentials must never be reused for it.
 
 ## 4. Verify
 

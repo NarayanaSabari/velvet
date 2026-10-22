@@ -1,6 +1,6 @@
 ---
 name: tickets
-description: Find, read, create, and update Velvet tickets with the velvet CLI. Use when the user asks about their tickets or issues, wants a ticket filed for a bug or task, or explicitly asks to move a ticket to a new status.
+description: Find, read, create, edit, and assign Velvet tickets, manage comments and replies, and list evidence with the velvet CLI. Use when the user asks about tickets or issues, wants a ticket filed or edited, requests comments or evidence, or explicitly asks to move a ticket to a new status.
 ---
 
 # Velvet tickets
@@ -28,6 +28,34 @@ Run `velvet new "title"` when the user asks for a ticket, or when you find a rea
 New tickets always land in this repository's project.
 Tell the user the new key.
 
+## Edit and assign
+
+`velvet edit ENG-42 --title "Clear title" --desc "Expected result" --priority 2` changes only supplied fields.
+Use `--assignee USER_UUID` or `--milestone MILESTONE_UUID` to assign or schedule an existing ticket.
+Use `none` to clear either field, and `--desc ""` to clear the description.
+Read the target first and change only what the user requested.
+Labels and moving a ticket to another project are not supported.
+Editing never changes status.
+
+## Comments and evidence
+
+`velvet comments ENG-42 list` reads the full thread, including replies and comment IDs.
+Use `velvet comments --project list` for the linked project's thread.
+
+```bash
+velvet comments ENG-42 add --kind note "A user-requested note."
+velvet comments ENG-42 add --parent COMMENT_UUID "A reply to that comment."
+velvet comments ENG-42 edit COMMENT_UUID "Corrected text."
+velvet comments ENG-42 delete COMMENT_UUID --yes
+```
+
+The same operations accept `--project` in place of the ticket key.
+Flags precede one quoted body argument. Add and edit also read the body from stdin.
+Delete only with the user's explicit approval, then supply `--yes`.
+Server permissions still decide whose comments can be edited or deleted.
+`velvet evidence ENG-42 list` reads attached GitHub evidence.
+Use `velvet attach ENG-42 REFERENCE` to attach a PR or commit, not to change status.
+
 ## Status
 
 Statuses are `backlog`, `todo`, `in_progress`, `in_review`, `done`, and `cancelled`.
@@ -46,5 +74,5 @@ If you think a status is out of date, say so and ask.
 ## Limits
 
 A repository's key reaches only its own project.
-It cannot assign tickets to people or move them to another project; point the user to the Velvet web app for that.
+It cannot move tickets to another project. Assignees must be current members of the same organisation, subject to server permissions.
 A viewer can read tickets but cannot change them; if a write fails for that reason, tell the user rather than retrying.

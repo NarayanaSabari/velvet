@@ -81,7 +81,7 @@ Repositories linked by older CLI versions need one terminal-only `velvet init` t
 A valid cached project key needs no new browser login for that confirmation.
 Explicit project-scoped `VELVET_TOKEN` credentials for CI remain supported after server-side identity and scope validation.
 Self-hosted CI must also set `VELVET_SERVER` to the trusted server URL, so editable YAML cannot redirect a token to another origin.
-Tickets with no project are out of reach for every repository key, and a repository key cannot change assignees or move a ticket between projects.
+Tickets with no project are out of reach for every repository key. A repository key may assign tickets within its project but cannot move a ticket between projects.
 The user's current role and the active project are checked when a repository key is issued, and no raw key is ever stored on the server.
 
 A new account is walked through this after sign-in at `/onboarding`: an organisation named after the person, its first project, then the install and link commands.
@@ -99,7 +99,7 @@ Personal API tokens made there are not limited to a project and suit scripts tha
 
 ### Agent plugins
 
-The [`plugins/velvet`](plugins/velvet) plugin adds skills that teach Claude Code and Codex when and how to use the CLI: logging work, tickets, sprints, images, and recaps.
+The [`plugins/velvet`](plugins/velvet) plugin adds skills that teach Claude Code and Codex when and how to use the CLI: logging work, ticket edits and assignment, comments, evidence, sprint and milestone planning, image management, recaps, reports, mentions, and separately consented administration.
 This repository is the marketplace for both:
 
 ```
@@ -113,6 +113,24 @@ codex plugin add velvet@velvet
 
 The plugin holds no key and configures nothing; its `setup` skill walks the person through installing the CLI, running `velvet login`, and linking a repository with `velvet init`.
 `cli/cmd/velvet/main_test.go` fails when a skill names a command the CLI does not have, or when a command has no skill.
+
+Project commands include `velvet edit` for supplied ticket fields, `velvet comments` for threads and replies, and `velvet evidence KEY list` for GitHub evidence.
+`velvet sprint` and `velvet milestone` inspect and edit planning, while `velvet images` lists attachment metadata and `velvet image ID delete --yes` removes a confirmed attachment.
+These actions never imply a ticket status change. Sprint transitions and milestone status changes require the person's explicit request too.
+Labels, cross-project ticket moves, image downloads, and sprint deletion are not exposed by these commands.
+See the [CLI command reference](cli/README.md) for supported flags.
+
+### Explicit account administration
+
+`velvet admin login` asks for separate browser consent to a personal management credential.
+Unlike setup and project keys, that credential permits account-wide administration subject to the person's current roles.
+Never reuse setup/project credentials, repository YAML, or `VELVET_TOKEN` for this wider access.
+Every organisation operation requires explicit `--server URL --account USER_ID --organisation SLUG`.
+`velvet admin --help` lists members, invitations, organisation settings, projects, GitHub integration, organisation reports, and mentions.
+Destructive operations require the person's explicit approval and `--yes`, not an autonomous cleanup decision.
+GitHub connect/link still require the person to finish browser OAuth or installation.
+`velvet admin logout --server URL --account USER_ID --yes` revokes management access only, leaving setup and project keys unchanged.
+Ordinary `velvet logout` does not revoke separately consented management access.
 
 ### Preserving important images
 
@@ -145,12 +163,12 @@ The first release provides agent upload and portal viewing/removal, not a browse
 A manager names a sprint and a goal. Neither has to exist yet, and none of it requires administration: running a sprint is the work, not administration of it, so a member can do it and every change names who made it.
 
 ```bash
-velvet sprints new --project web "September 2026" 2026-09-01 2026-09-30
+velvet sprints new "September 2026" 2026-09-01 2026-09-30
 velvet milestones new "$SPRINT_ID" "Ship the billing rewrite"
 velvet new "Migrate the invoice schema" --milestone "$MILESTONE_ID"
 ```
 
-Inside a repository mapped to a project, `--project` can be left out and the repository's project is used.
+Planning commands use the repository's linked project.
 A new sprint starts `upcoming` rather than activating itself, because activating one completes the project's current sprint and that is a decision, not a side effect.
 
 ## What did I work on last week

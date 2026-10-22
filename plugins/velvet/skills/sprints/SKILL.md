@@ -24,7 +24,9 @@ velvet sprints new "November 2026" 2026-11-01 2026-11-30
 
 Confirm the dates with the user if they did not give them.
 A new sprint starts `upcoming`.
-Do not activate it: activating a sprint completes whichever sprint the project had active, so only the user does that, from the sprint page.
+Do not activate it autonomously. `velvet sprint SPRINT_ID activate --yes` completes the project's previous active sprint.
+Use it only when the user explicitly requests that transition.
+`velvet sprint SPRINT_ID complete --yes` closes the sprint, also only when requested.
 
 ## Create a milestone
 
@@ -37,8 +39,27 @@ The name states the goal.
 ## Schedule tickets
 
 File a new ticket straight into a milestone with `velvet new "title" --milestone ID`.
-Moving an existing ticket between milestones is done in the Velvet web app.
+Moving an existing ticket into a milestone uses `velvet edit ENG-42 --milestone MILESTONE_UUID`.
+Clear that schedule with `--milestone none`.
 Scheduling a ticket never changes its status.
+
+## Inspect and edit planning
+
+`velvet sprint SPRINT_ID show` and `velvet milestone MILESTONE_ID show` read full details.
+Change only the fields the user requested:
+
+```bash
+velvet sprint SPRINT_ID edit --name "Release window" --starts-on 2026-11-01 --ends-on 2026-11-30
+velvet milestone MILESTONE_ID edit --name "Ship billing" --description "Accepted result" --target-date 2026-11-20
+```
+
+`velvet sprints edit SPRINT_ID` and `velvet milestones edit MILESTONE_ID` are aliases for these edit forms.
+Milestone `--target-date ""` clears the date.
+Milestone `--after ID` and `--before ID` reorder relative to sibling milestones, not move between sprints.
+Milestone `--status` accepts `planned`, `in_progress`, `completed`, or `cancelled`.
+Completing or cancelling a milestone also requires `--yes`.
+Never infer a sprint, milestone, or ticket status change from code, evidence, or a deployment.
+Sprint deletion and milestone reassignment to another sprint are not supported by these commands.
 
 ## The board
 

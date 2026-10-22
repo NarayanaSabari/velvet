@@ -1,6 +1,6 @@
 ---
 name: recap
-description: Summarise what the user worked on from their Velvet work log with velvet recap. Use when the user asks what they have been working on, wants a standup update, weekly summary, status report, or recap for a period.
+description: Summarise Velvet work logs, read project reports, and manage mentions with the velvet CLI. Use when the user asks for a standup, weekly summary, activity or milestone report, stale or closed work, or unread mentions.
 ---
 
 # Recap from Velvet
@@ -11,6 +11,19 @@ description: Summarise what the user worked on from their Velvet work log with v
 
 It covers only this project, because the repository's key reaches nothing else.
 For a recap across every project, point the user to My work log in the Velvet web app.
+
+## Reports and mentions
+
+`velvet reports activity --from 2026-10-01 --to 2026-10-22` reads project activity for a date range.
+`velvet reports milestones`, `velvet reports closed`, and `velvet reports stale --days 14` read other project reports.
+Use only API results in summaries. Do not invent missing activity or imply account-wide coverage.
+
+`velvet mentions` or `velvet mentions list --unread` reads mentions within this project.
+`velvet mentions read COMMENT_ID...` marks selected mentions read when requested.
+`velvet mentions read --all --yes` marks all mentions in this project read, only with explicit approval.
+Reading a list does not authorize changing notification state.
+These report and mention commands use the bound project key and reject server, account, or organisation overrides.
+For organisation-wide views, use the management skill only after separately consented administration.
 
 ## Write the recap
 

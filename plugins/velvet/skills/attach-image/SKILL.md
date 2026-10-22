@@ -31,3 +31,13 @@ Exit code 6 with "valid PNG, JPEG or WebP" means the file is not a supported ima
 
 Tell the user the image is on the ticket or milestone.
 Uploading an image never changes a ticket's status.
+
+## Inspect and remove
+
+`velvet images ENG-42` lists that ticket's image metadata and IDs.
+`velvet images --milestone MILESTONE_ID` lists a milestone's images.
+These commands list metadata, not image bytes or local downloads.
+`velvet image IMAGE_ID delete --yes` removes one attachment after the user explicitly requests deletion.
+Check the target and image ID first. Never delete an image as routine cleanup.
+The server still requires uploader ownership with write access, or an admin role.
+Deletion never changes ticket status.
