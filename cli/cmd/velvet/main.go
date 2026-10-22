@@ -71,7 +71,7 @@ Tickets:
   issue KEY                               Show a ticket and its recent work log
   edit KEY [--title TEXT] [--desc TEXT] [--priority N] [--assignee ID|none] [--milestone ID|none]
                                           Edit fields without changing ticket status
-  comments (KEY|--project) (list|add|edit|delete) ...
+  comments (KEY|--project|--milestone ID) (list|add|edit|delete) ...
                                           Read and manage comments, delete requires --yes
   evidence KEY list                       List linked evidence
   new TITLE [--desc D] [--milestone ID] [--priority N]
