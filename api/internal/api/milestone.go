@@ -75,12 +75,6 @@ func (s *Server) handleCreateMilestone(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if ownerID != nil {
-		if _, scoped := scopedProject(r); scoped {
-			forbidScope(w, "choosing a milestone owner is done in Velvet, not with a project key")
-			return
-		}
-	}
 
 	ws, _ := CurrentWorkspace(r.Context())
 	user, _ := CurrentUser(r.Context())
@@ -179,6 +173,13 @@ func (s *Server) handleUpdateMilestone(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathUUID(w, r, "id")
 	if !ok {
 		return
+	}
+	if project, scoped := scopedProject(r); scoped {
+		if patch.AfterID != nil && !s.milestoneInProject(r, ws.WorkspaceID, *patch.AfterID, project) ||
+			patch.BeforeID != nil && !s.milestoneInProject(r, ws.WorkspaceID, *patch.BeforeID, project) {
+			forbidScope(w, "this key can only order milestones within its own project")
+			return
+		}
 	}
 	sinceID, _ := s.store.LatestActivityID(r.Context(), ws.WorkspaceID)
 	milestone, err := s.store.UpdateMilestone(r.Context(), ws.WorkspaceID, id, user.ID, patch)

@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -33,6 +35,48 @@ type CreateSprintInput struct {
 // every project's sprints.
 type SprintFilter struct {
 	ProjectID uuid.UUID
+}
+
+type SprintPatch struct {
+	Name     *string
+	StartsOn *string
+	EndsOn   *string
+}
+
+var ErrInvalidSprint = errors.New("sprint requires a name and valid dates with ends_on not preceding starts_on")
+
+func (s *Store) UpdateSprint(ctx context.Context, workspaceID, id, actorID uuid.UUID, patch SprintPatch) (Sprint, error) {
+	var out Sprint
+	err := s.InTx(ctx, func(tx pgx.Tx) error {
+		if err := LockWorkspaceWriterTx(ctx, tx, workspaceID, actorID); err != nil {
+			return err
+		}
+		before, err := scanSprint(tx.QueryRow(ctx, `SELECT `+sprintCols+` FROM sprint WHERE workspace_id = $1 AND id = $2 FOR UPDATE`, workspaceID, id))
+		if err != nil {
+			return err
+		}
+		name, starts, ends := before.Name, before.StartsOn, before.EndsOn
+		if patch.Name != nil {
+			name = *patch.Name
+		}
+		if patch.StartsOn != nil {
+			starts = *patch.StartsOn
+		}
+		if patch.EndsOn != nil {
+			ends = *patch.EndsOn
+		}
+		_, startErr := time.Parse("2006-01-02", starts)
+		_, endErr := time.Parse("2006-01-02", ends)
+		if strings.TrimSpace(name) == "" || startErr != nil || endErr != nil || ends < starts {
+			return ErrInvalidSprint
+		}
+		out, err = scanSprint(tx.QueryRow(ctx, `UPDATE sprint SET name = $3, starts_on = $4::date, ends_on = $5::date WHERE workspace_id = $1 AND id = $2 RETURNING `+sprintCols, workspaceID, id, name, starts, ends))
+		if err != nil {
+			return err
+		}
+		return RecordActivity(ctx, tx, ActivityInput{WorkspaceID: workspaceID, ActorID: actorID, Verb: "updated_sprint", TargetType: "sprint", TargetID: id, Metadata: map[string]any{"name": out.Name, "starts_on": out.StartsOn, "ends_on": out.EndsOn, "project_id": out.ProjectID.String()}})
+	})
+	return out, err
 }
 
 const sprintCols = `id, workspace_id, project_id, name,

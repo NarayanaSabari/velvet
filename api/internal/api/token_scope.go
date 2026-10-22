@@ -56,6 +56,22 @@ var scopedRoutes = map[string]bool{
 	"GET /api/v1/w/{slug}/milestones/{id}/images":         true,
 	"POST /api/v1/w/{slug}/milestones/{id}/images":        true,
 	"GET /api/v1/w/{slug}/images/{id}/content":            true,
+	"DELETE /api/v1/w/{slug}/images/{id}":                 true,
+	"PATCH /api/v1/w/{slug}/comments/{id}":                true,
+	"DELETE /api/v1/w/{slug}/comments/{id}":               true,
+	"GET /api/v1/w/{slug}/milestones/{id}/comments":       true,
+	"POST /api/v1/w/{slug}/milestones/{id}/comments":      true,
+	"PATCH /api/v1/w/{slug}/milestones/{id}":              true,
+	"PATCH /api/v1/w/{slug}/sprints/{id}":                 true,
+	"POST /api/v1/w/{slug}/sprints/{id}/activate":         true,
+	"POST /api/v1/w/{slug}/sprints/{id}/close":            true,
+	"GET /api/v1/w/{slug}/sprints/{id}/snapshot":          true,
+	"GET /api/v1/w/{slug}/reports/activity":               true,
+	"GET /api/v1/w/{slug}/reports/milestones":             true,
+	"GET /api/v1/w/{slug}/reports/closed":                 true,
+	"GET /api/v1/w/{slug}/reports/stale":                  true,
+	"GET /api/v1/w/{slug}/mentions":                       true,
+	"POST /api/v1/w/{slug}/mentions/read":                 true,
 }
 
 // Setup credentials cannot read work data or manage arbitrary credentials.
@@ -104,7 +120,16 @@ func (s *Server) enforceTokenScope(w http.ResponseWriter, r *http.Request) bool 
 
 	ctx := r.Context()
 	project := *scope.ProjectID
+	if _, ok := s.requestProjectFilter(w, r); !ok {
+		return false
+	}
 	switch {
+	case strings.Contains(r.Pattern, "/comments/{id}"):
+		id, err := uuid.Parse(r.PathValue("id"))
+		if err != nil || !s.commentInProject(r, ws.WorkspaceID, id, project) {
+			forbidScope(w, "this comment is outside the project this key is limited to")
+			return false
+		}
 	case r.PathValue("key") != "" && strings.Contains(r.Pattern, "/projects/{key}"):
 		id, err := s.store.ProjectIDByKey(ctx, ws.WorkspaceID, store.NormalizeProjectKey(r.PathValue("key")))
 		if err != nil || id != project {
@@ -152,6 +177,21 @@ func (s *Server) enforceTokenScope(w http.ResponseWriter, r *http.Request) bool 
 	return true
 }
 
+func (s *Server) commentInProject(r *http.Request, workspaceID, commentID, projectID uuid.UUID) bool {
+	owner, err := s.store.CommentProjectID(r.Context(), workspaceID, commentID)
+	return err == nil && owner != nil && *owner == projectID
+}
+
+func (s *Server) scopedProjectKey(w http.ResponseWriter, r *http.Request, key string, project uuid.UUID) bool {
+	ws, _ := CurrentWorkspace(r.Context())
+	id, err := s.store.ProjectIDByKey(r.Context(), ws.WorkspaceID, store.NormalizeProjectKey(key))
+	if err != nil || id != project {
+		forbidScope(w, "this key can only reach its own project")
+		return false
+	}
+	return true
+}
+
 func (s *Server) milestoneInProject(r *http.Request, workspaceID, milestoneID, projectID uuid.UUID) bool {
 	owner, err := s.store.MilestoneProjectID(r.Context(), workspaceID, milestoneID)
 	return err == nil && owner == projectID
@@ -175,4 +215,35 @@ func scopedProject(r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return *scope.ProjectID, true
+}
+
+// requestProjectFilter validates every supplied selector before pinning a
+// scoped request. Conflicting aliases must not silently override each other.
+func (s *Server) requestProjectFilter(w http.ResponseWriter, r *http.Request) (*uuid.UUID, bool) {
+	ws, _ := CurrentWorkspace(r.Context())
+	var selected *uuid.UUID
+	if project, scoped := scopedProject(r); scoped {
+		selected = &project
+	}
+	for _, field := range []string{"project_id", "project"} {
+		for _, raw := range r.URL.Query()[field] {
+			var id uuid.UUID
+			var err error
+			if field == "project_id" {
+				id, err = uuid.Parse(raw)
+			} else {
+				id, err = s.store.ProjectIDByKey(r.Context(), ws.WorkspaceID, store.NormalizeProjectKey(raw))
+			}
+			if err != nil || selected != nil && *selected != id {
+				if _, scoped := scopedProject(r); scoped {
+					forbidScope(w, "this key can only query its own project")
+				} else {
+					WriteError(w, http.StatusBadRequest, "invalid_request", "project selectors must name one existing project")
+				}
+				return nil, false
+			}
+			selected = &id
+		}
+	}
+	return selected, true
 }

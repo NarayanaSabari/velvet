@@ -243,10 +243,14 @@ func (s *Server) handlePromoteComment(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListMentions(w http.ResponseWriter, r *http.Request) {
 	ws, _ := CurrentWorkspace(r.Context())
+	project, ok := s.requestProjectFilter(w, r)
+	if !ok {
+		return
+	}
 	user, _ := CurrentUser(r.Context())
 	unreadOnly := r.URL.Query().Get("unread") == "true"
 
-	mentions, err := s.store.ListMentions(r.Context(), ws.WorkspaceID, user.ID, unreadOnly)
+	mentions, err := s.store.ListMentions(r.Context(), ws.WorkspaceID, user.ID, unreadOnly, project)
 	if err != nil {
 		writeCommentError(w, err)
 		return
@@ -255,6 +259,10 @@ func (s *Server) handleListMentions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMarkMentionsRead(w http.ResponseWriter, r *http.Request) {
+	project, ok := s.requestProjectFilter(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		CommentIDs []string `json:"comment_ids"`
 	}
@@ -275,7 +283,15 @@ func (s *Server) handleMarkMentionsRead(w http.ResponseWriter, r *http.Request) 
 
 	ws, _ := CurrentWorkspace(r.Context())
 	user, _ := CurrentUser(r.Context())
-	if err := s.store.MarkMentionsRead(r.Context(), ws.WorkspaceID, user.ID, ids); err != nil {
+	if _, scoped := scopedProject(r); scoped {
+		for _, id := range ids {
+			if !s.commentInProject(r, ws.WorkspaceID, id, *project) {
+				forbidScope(w, "this mention is outside the project this key is limited to")
+				return
+			}
+		}
+	}
+	if err := s.store.MarkMentionsRead(r.Context(), ws.WorkspaceID, user.ID, ids, project); err != nil {
 		writeCommentError(w, err)
 		return
 	}

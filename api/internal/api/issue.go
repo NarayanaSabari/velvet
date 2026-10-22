@@ -154,6 +154,9 @@ func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
 		in.ProjectID = id
 	}
 	if project, scoped := scopedProject(r); scoped {
+		if body.Project != nil && !s.scopedProjectKey(w, r, *body.Project, project) {
+			return
+		}
 		if in.ProjectID != nil && *in.ProjectID != project {
 			forbidScope(w, "this key can only file tickets in its own project")
 			return
@@ -164,10 +167,6 @@ func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
 		}
 		if in.ParentID != nil && !s.issueIDInProject(r, ws.WorkspaceID, *in.ParentID, project) {
 			forbidScope(w, "the parent ticket is outside the project this key is limited to")
-			return
-		}
-		if in.AssigneeID != nil {
-			forbidScope(w, "assigning tickets is done in Velvet, not with a project key")
 			return
 		}
 		in.ProjectID = &project
@@ -281,6 +280,9 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 	if project, scoped := scopedProject(r); scoped {
 		// The ticket itself was checked before the handler ran. The patch may
 		// not move it, or point it, anywhere outside the key's project.
+		if body.Project != nil && !s.scopedProjectKey(w, r, *body.Project, project) {
+			return
+		}
 		if patch.ProjectID != nil && (*patch.ProjectID == nil || **patch.ProjectID != project) {
 			forbidScope(w, "this key cannot move a ticket out of its project")
 			return
@@ -296,10 +298,6 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 		if patch.AfterID != nil && !s.issueIDInProject(r, ws.WorkspaceID, *patch.AfterID, project) ||
 			patch.BeforeID != nil && !s.issueIDInProject(r, ws.WorkspaceID, *patch.BeforeID, project) {
 			forbidScope(w, "this key can only order tickets within its own project")
-			return
-		}
-		if patch.AssigneeID != nil {
-			forbidScope(w, "assigning tickets is done in Velvet, not with a project key")
 			return
 		}
 	}

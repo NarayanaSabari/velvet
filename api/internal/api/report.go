@@ -23,6 +23,10 @@ func (s *Server) registerReportRoutes(mux *http.ServeMux) {
 
 func (s *Server) handleReportActivity(w http.ResponseWriter, r *http.Request) {
 	ws, _ := CurrentWorkspace(r.Context())
+	project, ok := s.requestProjectFilter(w, r)
+	if !ok {
+		return
+	}
 	query := r.URL.Query()
 	from, to := query.Get("from"), query.Get("to")
 	if (from != "" && !dateRe.MatchString(from)) || (to != "" && !dateRe.MatchString(to)) {
@@ -30,7 +34,7 @@ func (s *Server) handleReportActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	people, err := s.store.PersonActivity(r.Context(), ws.WorkspaceID, from, to)
+	people, err := s.store.PersonActivity(r.Context(), ws.WorkspaceID, from, to, project)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not build the activity report")
 		return
@@ -40,7 +44,11 @@ func (s *Server) handleReportActivity(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleReportMilestones(w http.ResponseWriter, r *http.Request) {
 	ws, _ := CurrentWorkspace(r.Context())
-	sprints, err := s.store.MilestoneCompletion(r.Context(), ws.WorkspaceID)
+	project, ok := s.requestProjectFilter(w, r)
+	if !ok {
+		return
+	}
+	sprints, err := s.store.MilestoneCompletion(r.Context(), ws.WorkspaceID, project)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not build the milestone report")
 		return
@@ -50,7 +58,11 @@ func (s *Server) handleReportMilestones(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleReportClosed(w http.ResponseWriter, r *http.Request) {
 	ws, _ := CurrentWorkspace(r.Context())
-	sprints, err := s.store.IssuesClosedPerSprint(r.Context(), ws.WorkspaceID)
+	project, ok := s.requestProjectFilter(w, r)
+	if !ok {
+		return
+	}
+	sprints, err := s.store.IssuesClosedPerSprint(r.Context(), ws.WorkspaceID, project)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not build the closed report")
 		return
@@ -60,6 +72,10 @@ func (s *Server) handleReportClosed(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleReportStale(w http.ResponseWriter, r *http.Request) {
 	ws, _ := CurrentWorkspace(r.Context())
+	project, ok := s.requestProjectFilter(w, r)
+	if !ok {
+		return
+	}
 
 	days := defaultStaleDays
 	if raw := r.URL.Query().Get("days"); raw != "" {
@@ -72,7 +88,7 @@ func (s *Server) handleReportStale(w http.ResponseWriter, r *http.Request) {
 		days = parsed
 	}
 
-	issues, err := s.store.StaleIssues(r.Context(), ws.WorkspaceID, days)
+	issues, err := s.store.StaleIssues(r.Context(), ws.WorkspaceID, days, project)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not build the stale report")
 		return

@@ -25,12 +25,43 @@ func (s *Server) registerSprintRoutes(mux *http.ServeMux) {
 		s.RequireWorkspace(writer(http.HandlerFunc(s.handleCreateSprint))))
 	mux.Handle("GET /api/v1/w/{slug}/sprints/{id}",
 		s.RequireWorkspace(http.HandlerFunc(s.handleGetSprint)))
+	mux.Handle("PATCH /api/v1/w/{slug}/sprints/{id}",
+		s.RequireWorkspace(writer(http.HandlerFunc(s.handleUpdateSprint))))
 	mux.Handle("POST /api/v1/w/{slug}/sprints/{id}/activate",
 		s.RequireWorkspace(writer(http.HandlerFunc(s.handleActivateSprint))))
 	mux.Handle("POST /api/v1/w/{slug}/sprints/{id}/close",
 		s.RequireWorkspace(writer(http.HandlerFunc(s.handleCloseSprint))))
 	mux.Handle("GET /api/v1/w/{slug}/sprints/{id}/snapshot",
 		s.RequireWorkspace(http.HandlerFunc(s.handleSprintSnapshot)))
+}
+
+func (s *Server) handleUpdateSprint(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name     *string `json:"name"`
+		StartsOn *string `json:"starts_on"`
+		EndsOn   *string `json:"ends_on"`
+	}
+	if !DecodeJSON(w, r, &body) {
+		return
+	}
+	id, ok := pathUUID(w, r, "id")
+	if !ok {
+		return
+	}
+	ws, _ := CurrentWorkspace(r.Context())
+	user, _ := CurrentUser(r.Context())
+	sinceID, _ := s.store.LatestActivityID(r.Context(), ws.WorkspaceID)
+	sprint, err := s.store.UpdateSprint(r.Context(), ws.WorkspaceID, id, user.ID, store.SprintPatch{Name: body.Name, StartsOn: body.StartsOn, EndsOn: body.EndsOn})
+	if errors.Is(err, store.ErrInvalidSprint) {
+		WriteError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if err != nil {
+		writeStoreError(w, err, "sprint")
+		return
+	}
+	s.publishRecent(r.Context(), ws.WorkspaceID, sinceID)
+	WriteJSON(w, http.StatusOK, sprint)
 }
 
 // handleSprintSnapshot reads the report frozen when the sprint closed. An
@@ -134,6 +165,9 @@ func (s *Server) handleCreateSprint(w http.ResponseWriter, r *http.Request) {
 	}
 	if scoped, ok := scopedProject(r); ok && *projectID != scoped {
 		forbidScope(w, "this key can only create sprints in its own project")
+		return
+	}
+	if scoped, ok := scopedProject(r); ok && body.Project != nil && !s.scopedProjectKey(w, r, *body.Project, scoped) {
 		return
 	}
 	sprint, err := s.store.CreateSprint(r.Context(), store.CreateSprintInput{
