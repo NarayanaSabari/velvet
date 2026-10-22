@@ -18,7 +18,7 @@ const planningUsage = `Planning:
   sprint ID activate --yes   Completes the previous active sprint
   sprint ID complete --yes  Closes the sprint
   milestone ID show
-  milestone ID edit [--name NAME] [--description TEXT] [--status STATUS] [--target-date YYYY-MM-DD|""] [--after ID] [--before ID] [--yes]
+  milestone ID edit [--name NAME] [--description TEXT] [--owner UUID|none] [--status STATUS] [--target-date YYYY-MM-DD|""] [--after ID] [--before ID] [--yes]
   sprints edit ID [flags]    Alias for sprint ID edit
   milestones edit ID [flags] Alias for milestone ID edit
   images KEY
@@ -117,7 +117,7 @@ func runPlanningCommand(e *env, cmd string, args []string, _ io.Reader) (bool, e
 			case "sprint":
 				allowed = "--name --starts-on --ends-on"
 			case "milestone":
-				allowed = "--name --description --status --target-date --after --before --yes"
+				allowed = "--name --description --owner --status --target-date --after --before --yes"
 			default:
 				return true, fail(exitUsage, "image only supports delete")
 			}
@@ -153,6 +153,14 @@ func runPlanningCommand(e *env, cmd string, args []string, _ io.Reader) (bool, e
 						return true, fail(exitUsage, "%s requires another resource UUID", key)
 					}
 					field += "_id"
+				}
+				if key == "--owner" {
+					field = "owner_id"
+					if value == "none" {
+						value = ""
+					} else if !planningID(value) {
+						return true, fail(exitUsage, "--owner requires a UUID or none")
+					}
 				}
 				if key == "--name" && strings.TrimSpace(value) == "" {
 					return true, fail(exitUsage, "name cannot be empty")
