@@ -72,6 +72,11 @@ func TestTicketInvalidArgumentsNeverRequest(t *testing.T) {
 		cmd  string
 		args []string
 	}{
+		{"comments", []string{"--milestone"}},
+		{"comments", []string{"--milestone", ticketTestID}},
+		{"comments", []string{"--milestone", "bad", "list"}},
+		{"comments", []string{"--milestone", ticketTestID, "list", "extra"}},
+		{"comments", []string{"--milestone", ticketTestID, "delete", ticketTestID}},
 		{"edit", nil}, {"edit", []string{"LAB-1"}}, {"edit", []string{"../bad", "--title", "x"}},
 		{"edit", []string{"LAB-1", "--title", " "}}, {"edit", []string{"LAB-1", "--priority", "5"}},
 		{"edit", []string{"LAB-1", "--assignee", ""}}, {"edit", []string{"LAB-1", "--milestone", "bad"}},
@@ -100,12 +105,14 @@ func TestTicketInvalidArgumentsNeverRequest(t *testing.T) {
 
 func TestTicketCommentsMutations(t *testing.T) {
 	for _, op := range []string{"add", "edit", "delete"} {
-		for _, target := range []string{"LAB-1", "--project"} {
+		for _, target := range []string{"LAB-1", "--project", "--milestone"} {
 			t.Run(target+op, func(t *testing.T) {
 				calls := 0
 				path := "/api/v1/w/lab/issues/LAB-1/comments"
 				if target == "--project" {
 					path = "/api/v1/w/lab/projects/web/comments"
+				} else if target == "--milestone" {
+					path = "/api/v1/w/lab/milestones/" + ticketTestID + "/comments"
 				}
 				e, _ := ticketTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
 					calls++
@@ -150,6 +157,9 @@ func TestTicketCommentsMutations(t *testing.T) {
 					w.WriteHeader(204)
 				})
 				args := []string{target, op}
+				if target == "--milestone" {
+					args = []string{target, ticketTestID, op}
+				}
 				if op != "add" {
 					args = append(args, ticketTestID)
 				} else {
@@ -215,6 +225,34 @@ func TestTicketListingsEscapeAndPreserveData(t *testing.T) {
 			json.Unmarshal([]byte(response), &want)
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("output %s", out)
+			}
+		})
+	}
+}
+
+func TestTicketMilestoneCommentsListAndContainment(t *testing.T) {
+	for _, op := range []string{"list", "delete"} {
+		t.Run(op, func(t *testing.T) {
+			e, out := ticketTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/w/lab/milestones/"+ticketTestID+"/comments" {
+					t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+				}
+				io.WriteString(w, `{"comments":[]}`)
+			})
+			args := []string{"--milestone", ticketTestID, op}
+			if op == "delete" {
+				args = append(args, ticketTestID, "--yes")
+			}
+			_, err := runTicketCommand(e, "comments", args, nil)
+			if op == "list" {
+				if err != nil || !strings.Contains(out.String(), `"comments": []`) {
+					t.Fatalf("list err=%v output=%s", err, out)
+				}
+			} else {
+				var ee exitError
+				if !errors.As(err, &ee) || ee.code != exitNotFound {
+					t.Fatalf("wrong target error %v", err)
+				}
 			}
 		})
 	}

@@ -107,15 +107,21 @@ func (e env) ticketJSON(path string) error {
 
 func (e env) ticketComments(args []string, in io.Reader) error {
 	if len(args) < 2 {
-		return fail(exitUsage, "usage: velvet comments (KEY | --project) (list | add | edit ID | delete ID --yes)")
+		return fail(exitUsage, "usage: velvet comments (KEY | --project | --milestone UUID) (list | add | edit ID | delete ID --yes)")
 	}
 	target := ""
-	if args[0] == "--project" {
+	if args[0] == "--milestone" {
+		if len(args) < 3 || !ticketUUID.MatchString(args[1]) {
+			return fail(exitUsage, "comments --milestone requires a milestone UUID and operation")
+		}
+		target = "/milestones/" + url.PathEscape(args[1])
+		args = args[1:]
+	} else if args[0] == "--project" {
 		target = "/projects/" + url.PathEscape(e.repo.Project)
 	} else if looksLikeKey(args[0]) {
 		target = "/issues/" + url.PathEscape(strings.ToUpper(args[0]))
 	} else {
-		return fail(exitUsage, "comments requires a ticket KEY or --project")
+		return fail(exitUsage, "comments requires a ticket KEY, --project, or --milestone UUID")
 	}
 	op, rest := args[1], args[2:]
 	if op == "list" {
@@ -150,7 +156,7 @@ func (e env) ticketComments(args []string, in io.Reader) error {
 	}
 	if op == "delete" {
 		if !yes || fs.NArg() != 0 {
-			return fail(exitUsage, "usage: velvet comments (KEY | --project) delete ID --yes; deletion requires explicit --yes")
+			return fail(exitUsage, "usage: velvet comments (KEY | --project | --milestone UUID) delete ID --yes; deletion requires explicit --yes")
 		}
 	} else {
 		if kind != "" && !kinds[kind] {
