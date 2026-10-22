@@ -16,7 +16,7 @@ interface PendingSignIn {
   user_code: string
   client_name: string
   expires_at: string
-  flow?: 'login' | 'init'
+  flow?: 'login' | 'init' | 'manage'
 }
 
 function codeFromURL() {
@@ -50,6 +50,8 @@ export function ApproveCLI() {
     retry: false,
   })
   const login = pending.data?.flow === 'login'
+  const manage = pending.data?.flow === 'manage'
+  const unscoped = login || manage
   const legacyInit = pending.isSuccess && (pending.data.flow === undefined || pending.data.flow === 'init')
   const projects = useQuery({
     queryKey: ['projects', slug, false],
@@ -60,7 +62,7 @@ export function ApproveCLI() {
   const projectKey = active.some((p) => p.key === chosenProject) ? chosenProject : (active[0]?.key ?? '')
 
   const approve = useMutation({
-    mutationFn: () => api.post(`/cli/sessions/${encodeURIComponent(code)}/approve`, login ? {} : { workspace_slug: slug, project_key: projectKey }),
+    mutationFn: () => api.post(`/cli/sessions/${encodeURIComponent(code)}/approve`, unscoped ? {} : { workspace_slug: slug, project_key: projectKey }),
   })
   const deny = useMutation({
     mutationFn: () => api.post(`/cli/sessions/${encodeURIComponent(code)}/deny`, {}),
@@ -84,7 +86,7 @@ export function ApproveCLI() {
     return layout(
       <div role="status" className="space-y-2">
         <p className="text-base font-medium">Connected.</p>
-        {login ? <p className="text-grey-700">Go back to your terminal and run velvet init in your repository to choose an organisation and project.</p> : <p className="text-grey-700">Go back to your terminal. The CLI can now reach only <strong>{projectKey}</strong> in <strong>{slug}</strong>.</p>}
+        {manage ? <p className="text-grey-700">Go back to your terminal. Account management is connected with your current memberships and roles.</p> : login ? <p className="text-grey-700">Go back to your terminal and run velvet init in your repository to choose an organisation and project.</p> : <p className="text-grey-700">Go back to your terminal. The CLI can now reach only <strong>{projectKey}</strong> in <strong>{slug}</strong>.</p>}
       </div>,
     )
   }
@@ -114,14 +116,14 @@ export function ApproveCLI() {
   }
   if (pending.isPending) return layout(<p role="status" className="text-grey-500">Checking the code…</p>)
 
-  if (!login && !legacyInit) return layout(<p role="alert" className="text-blocked">This CLI request is not supported. Update the CLI and run velvet login again.</p>)
+  if (!unscoped && !legacyInit) return layout(<p role="alert" className="text-blocked">This CLI request is not supported. Update the CLI and run velvet login again.</p>)
 
-  if (!login && writable.length === 0) {
+  if (!unscoped && writable.length === 0) {
     return layout(<p role="alert" className="text-blocked">You are a viewer in every organisation, so you cannot connect an agent that writes. Ask an admin for member access.</p>)
   }
 
   const busy = approve.isPending || deny.isPending
-  const ready = (login || (slug !== '' && projectKey !== '' && !creating)) && !busy && Date.parse(pending.data.expires_at) > Date.now()
+  const ready = (unscoped || (slug !== '' && projectKey !== '' && !creating)) && !busy && Date.parse(pending.data.expires_at) > Date.now()
   return layout(
     <div className="space-y-5">
       <div className="rounded-[var(--radius-surface)] border border-grey-200 p-4">
@@ -130,7 +132,7 @@ export function ApproveCLI() {
         <p className="mt-1 text-sm text-grey-500 [overflow-wrap:anywhere]">{pending.data.client_name}</p>
       </div>
 
-      {login ? <p className="text-sm text-grey-700">Approve only if you started velvet login on this device. This gives the CLI a setup credential to list and create organisations and projects, and create repository keys where you have write access. Routine work uses a separate key scoped to the chosen project. No repository is connected yet.</p> : <>
+      {manage ? <p className="text-sm text-grey-700">Approve only if you started velvet admin login on this device. This grants account-wide management access using a personal credential, limited by your current organisation memberships and roles. It can manage account settings and organisations where your role allows it. This is separate from normal velvet login setup access and is not limited to one project. Do not share this credential with repository agents.</p> : login ? <p className="text-sm text-grey-700">Approve only if you started velvet login on this device. This gives the CLI a setup credential to list and create organisations and projects, and create repository keys where you have write access. Routine work uses a separate key scoped to the chosen project. No repository is connected yet.</p> : <>
       <div className="space-y-1">
         <label htmlFor={orgId} className="block text-sm font-medium">Organisation</label>
         <select id={orgId} className="block min-h-12 w-full rounded-[var(--radius-control)] border border-grey-300 bg-paper px-3" value={slug}
@@ -170,7 +172,7 @@ export function ApproveCLI() {
       {Date.parse(pending.data.expires_at) <= Date.now() ? <p role="alert" className="text-blocked">This request expired. Run velvet login again.</p> : null}
       {approve.error ? <p role="alert" className="text-blocked">{approve.error.message}</p> : null}
       <form className="flex flex-wrap gap-3" aria-label="Connect the CLI" onSubmit={(e) => { e.preventDefault(); if (ready && Date.parse(pending.data.expires_at) > Date.now()) approve.mutate() }}>
-        <Button className="min-h-12" variant="primary" type="submit" disabled={!ready}>{approve.isPending ? 'Connecting…' : login ? 'Approve login' : 'Connect'}</Button>
+        <Button className="min-h-12" variant="primary" type="submit" disabled={!ready}>{approve.isPending ? 'Connecting…' : manage ? 'Approve account management' : login ? 'Approve login' : 'Connect'}</Button>
         <Button className="min-h-12" type="button" disabled={busy} onClick={() => deny.mutate()}>Refuse</Button>
       </form>
     </div>,

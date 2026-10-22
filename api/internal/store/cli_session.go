@@ -15,8 +15,9 @@ import (
 // CLI sign-in follows the device authorization pattern. The CLI keeps a long
 // random device secret and polls with it; the person types or follows a short
 // user code in a signed-in browser and explicitly approves. Login grants a
-// setup credential without a workspace. Legacy init chooses one organisation
-// and project. The key is minted only when the CLI collects the approval.
+// setup credential without a workspace. Management grants a personal credential.
+// Legacy init chooses one organisation and project. The key is
+// minted only when the CLI collects the approval.
 const (
 	cliSessionTTL     = 10 * time.Minute
 	cliDeviceBytes    = 32
@@ -36,7 +37,7 @@ var (
 	ErrCLISessionExpired = errors.New("authorization expired")
 )
 
-// CLISession is the browser-facing view of one pending login or legacy init.
+// CLISession is the browser-facing view of a pending login, manage or init flow.
 type CLISession struct {
 	Flow       string    `json:"flow"`
 	ID         uuid.UUID `json:"id"`
@@ -99,7 +100,7 @@ func (s *Store) CreateCLISession(ctx context.Context, clientName string) (string
 }
 
 func (s *Store) CreateCLISessionForFlow(ctx context.Context, clientName, flow string) (string, CLISession, error) {
-	if flow != "init" && flow != "login" {
+	if flow != "init" && flow != "login" && flow != "manage" {
 		return "", CLISession{}, ErrForbidden
 	}
 	clientName = strings.TrimSpace(clientName)
@@ -209,10 +210,13 @@ func (s *Store) DenyCLISession(ctx context.Context, code string) error {
 	return nil
 }
 
-// ApproveCLILogin records explicit browser consent without choosing a workspace.
-func (s *Store) ApproveCLILogin(ctx context.Context, code string, approverID uuid.UUID) error {
+// ApproveCLIUnscoped records explicit consent for setup or account management.
+func (s *Store) ApproveCLIUnscoped(ctx context.Context, code string, approverID uuid.UUID, flow string) error {
+	if flow != "login" && flow != "manage" {
+		return ErrForbidden
+	}
 	tag, err := s.pool.Exec(ctx, `UPDATE cli_session SET status='approved', approved_by=$2
-		WHERE user_code=$1 AND flow='login' AND status='pending' AND expires_at > now()`, NormalizeUserCode(code), approverID)
+		WHERE user_code=$1 AND flow=$3 AND status='pending' AND expires_at > now()`, NormalizeUserCode(code), approverID, flow)
 	if err != nil {
 		return err
 	}
@@ -304,12 +308,16 @@ func (s *Store) CollectCLISession(ctx context.Context, device string) (CLIGrant,
 			return ErrCLISessionPending
 		}
 
-		if flow == "login" {
-			token, tokenID, err := createAPITokenTx(ctx, tx, *approver, clientName+" · login · "+id.String()[:8], TokenScope{Kind: "setup"})
+		if flow == "login" || flow == "manage" {
+			kind := "setup"
+			if flow == "manage" {
+				kind = "personal"
+			}
+			token, tokenID, err := createAPITokenTx(ctx, tx, *approver, clientName+" · "+flow+" · "+id.String()[:8], TokenScope{Kind: kind})
 			if err != nil {
 				return err
 			}
-			grant.Token, grant.Kind = token, "setup"
+			grant.Token, grant.Kind = token, kind
 			_, err = tx.Exec(ctx, `UPDATE cli_session SET status = 'collected', api_token_id = $2 WHERE id = $1`, id, tokenID)
 			return err
 		}

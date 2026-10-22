@@ -46,6 +46,26 @@ it.each(['member', 'viewer', 'none'])('approves login only on explicit consent f
   expect(fetchMock).toHaveBeenCalledWith('/api/v1/cli/sessions/ABCD-EFGH/approve', expect.objectContaining({ method: 'POST', body: '{}', credentials: 'same-origin' }))
 })
 
+it.each(['admin', 'member', 'viewer', 'none'])('requires explicit account management consent for %s without project selection', async (role) => {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url === '/api/v1/me') return response({ user, memberships: role === 'none' ? [] : [{ ...membership, role }] })
+    if (url.endsWith('/approve')) return response(null, 204)
+    return response({ ...pendingLogin, flow: 'manage' })
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  showCLI()
+  const approve = await screen.findByRole('button', { name: 'Approve account management' })
+  expect(screen.getByText(/account-wide management access/)).toHaveTextContent('limited by your current organisation memberships and roles')
+  expect(screen.getByText(/account-wide management access/)).toHaveTextContent('separate from normal velvet login')
+  expect(screen.queryByLabelText('Organisation')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Project')).not.toBeInTheDocument()
+  expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true)
+  expect(fetchMock.mock.calls.some(([url]) => url.includes('/projects'))).toBe(false)
+  await userEvent.click(approve)
+  expect(await screen.findByText(/Account management is connected/)).toBeInTheDocument()
+  expect(fetchMock).toHaveBeenCalledWith('/api/v1/cli/sessions/ABCD-EFGH/approve', expect.objectContaining({ method: 'POST', body: '{}', credentials: 'same-origin' }))
+})
+
 it('refuses login without issuing an approval', async () => {
   const fetchMock = vi.fn().mockImplementation((url: string) => {
     if (url === '/api/v1/me') return response({ user, memberships: [] })

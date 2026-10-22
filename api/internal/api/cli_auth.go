@@ -10,7 +10,7 @@ import (
 )
 
 // Device login requires explicit browser approval before the CLI can collect
-// a setup key. Legacy init keeps its organisation and project selection flow.
+// a setup or personal management key. Legacy init selects a project.
 func (s *Server) registerCLIAuthRoutes(mux *http.ServeMux) {
 	// The CLI's two calls carry no credential: the device secret in the body
 	// is what proves it started the session.
@@ -35,8 +35,8 @@ func (s *Server) handleCreateCLISession(w http.ResponseWriter, r *http.Request) 
 	if body.Flow == "" {
 		body.Flow = "init"
 	}
-	if body.Flow != "init" && body.Flow != "login" {
-		WriteError(w, http.StatusBadRequest, "invalid_request", "flow must be login or init")
+	if body.Flow != "init" && body.Flow != "login" && body.Flow != "manage" {
+		WriteError(w, http.StatusBadRequest, "invalid_request", "flow must be login, init or manage")
 		return
 	}
 	device, session, err := s.store.CreateCLISessionForFlow(r.Context(), body.ClientName, body.Flow)
@@ -117,12 +117,12 @@ func (s *Server) handleApproveCLISession(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusNotFound, "not_found", "that code has expired or was already used")
 		return
 	}
-	if session.Flow == "login" {
+	if session.Flow == "login" || session.Flow == "manage" {
 		if body.WorkspaceSlug != "" || body.ProjectKey != "" {
-			WriteError(w, http.StatusBadRequest, "invalid_request", "login approval does not accept an organisation or project")
+			WriteError(w, http.StatusBadRequest, "invalid_request", "unscoped approval does not accept an organisation or project")
 			return
 		}
-		if err := s.store.ApproveCLILogin(r.Context(), r.PathValue("code"), user.ID); err != nil {
+		if err := s.store.ApproveCLIUnscoped(r.Context(), r.PathValue("code"), user.ID, session.Flow); err != nil {
 			WriteError(w, http.StatusNotFound, "not_found", "that code has expired or was already used")
 			return
 		}
