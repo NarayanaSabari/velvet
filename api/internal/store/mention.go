@@ -59,9 +59,36 @@ type Mention struct {
 	TargetLabel string  `json:"target_label"`
 }
 
+// Resolve polymorphic targets only within the comment's workspace. Milestones
+// inherit their project from their sprint, not from any linked issue.
+const commentProjectJoins = `
+ LEFT JOIN issue i ON c.target_type = 'issue' AND i.id = c.target_id AND i.workspace_id = c.workspace_id
+ LEFT JOIN milestone m ON c.target_type = 'milestone' AND m.id = c.target_id AND m.workspace_id = c.workspace_id
+ LEFT JOIN sprint ms ON ms.id = m.sprint_id AND ms.workspace_id = c.workspace_id
+ LEFT JOIN project p ON c.target_type = 'project' AND p.id = c.target_id AND p.workspace_id = c.workspace_id`
+
+func optionalProjectID(ids []*uuid.UUID) *uuid.UUID {
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids[0]
+}
+
+// CommentProjectID returns the owning project of a live comment's target.
+// An unfiled issue has no project; missing or invalid targets are not found.
+func (s *Store) CommentProjectID(ctx context.Context, workspaceID, commentID uuid.UUID) (*uuid.UUID, error) {
+	var projectID *uuid.UUID
+	err := s.pool.QueryRow(ctx, `
+		SELECT COALESCE(i.project_id, ms.project_id, p.id)
+		FROM comment c `+commentProjectJoins+`
+		WHERE c.workspace_id = $1 AND c.id = $2 AND c.deleted_at IS NULL
+		  AND (i.id IS NOT NULL OR ms.id IS NOT NULL OR p.id IS NOT NULL)`, workspaceID, commentID).Scan(&projectID)
+	return projectID, mapErr(err)
+}
+
 // ListMentions returns the comments that named this user, newest first. A
 // deleted comment is skipped: retracting it retracts the notification too.
-func (s *Store) ListMentions(ctx context.Context, workspaceID, userID uuid.UUID, unreadOnly bool) ([]Mention, error) {
+func (s *Store) ListMentions(ctx context.Context, workspaceID, userID uuid.UUID, unreadOnly bool, projectIDs ...*uuid.UUID) ([]Mention, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+commentCols+`,
 		       to_char(cm.read_at, 'YYYY-MM-DD"T"HH24:MI:SSOF:TZM'),
@@ -69,16 +96,12 @@ func (s *Store) ListMentions(ctx context.Context, workspaceID, userID uuid.UUID,
 		FROM comment_mention cm
 		JOIN comment c ON c.id = cm.comment_id
 		JOIN app_user u ON u.id = c.author_id
-		LEFT JOIN issue i ON c.target_type = 'issue' AND i.id = c.target_id
-		  AND i.workspace_id = c.workspace_id
-		LEFT JOIN milestone m ON c.target_type = 'milestone' AND m.id = c.target_id
-		  AND m.workspace_id = c.workspace_id
-		LEFT JOIN project p ON c.target_type = 'project' AND p.id = c.target_id
-		  AND p.workspace_id = c.workspace_id
+		`+commentProjectJoins+`
 		WHERE cm.user_id = $1 AND c.workspace_id = $2 AND c.deleted_at IS NULL
 		  AND (i.id IS NOT NULL OR m.id IS NOT NULL OR p.id IS NOT NULL)
 		  AND (NOT $3::boolean OR cm.read_at IS NULL)
-		ORDER BY c.created_at DESC`, userID, workspaceID, unreadOnly)
+		  AND ($4::uuid IS NULL OR COALESCE(i.project_id, ms.project_id, p.id) = $4)
+		ORDER BY c.created_at DESC`, userID, workspaceID, unreadOnly, optionalProjectID(projectIDs))
 	if err != nil {
 		return nil, err
 	}
@@ -102,12 +125,7 @@ func (s *Store) UnreadMentionCount(ctx context.Context, workspaceID, userID uuid
 		SELECT count(*)
 		FROM comment_mention cm
 		JOIN comment c ON c.id = cm.comment_id
-		LEFT JOIN issue i ON c.target_type = 'issue' AND i.id = c.target_id
-		  AND i.workspace_id = c.workspace_id
-		LEFT JOIN milestone m ON c.target_type = 'milestone' AND m.id = c.target_id
-		  AND m.workspace_id = c.workspace_id
-		LEFT JOIN project p ON c.target_type = 'project' AND p.id = c.target_id
-		  AND p.workspace_id = c.workspace_id
+		`+commentProjectJoins+`
 		WHERE cm.user_id = $1 AND c.workspace_id = $2
 		  AND c.deleted_at IS NULL AND cm.read_at IS NULL
 		  AND (i.id IS NOT NULL OR m.id IS NOT NULL OR p.id IS NOT NULL)`,
@@ -117,14 +135,15 @@ func (s *Store) UnreadMentionCount(ctx context.Context, workspaceID, userID uuid
 
 // MarkMentionsRead marks the named comments read, or every mention in the
 // workspace when the list is empty.
-func (s *Store) MarkMentionsRead(ctx context.Context, workspaceID, userID uuid.UUID, commentIDs []uuid.UUID) error {
+func (s *Store) MarkMentionsRead(ctx context.Context, workspaceID, userID uuid.UUID, commentIDs []uuid.UUID, projectIDs ...*uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE comment_mention cm SET read_at = now()
-		FROM comment c
+		FROM comment c `+commentProjectJoins+`
 		WHERE c.id = cm.comment_id AND cm.user_id = $1 AND c.workspace_id = $2
 		  AND cm.read_at IS NULL
-		  AND ($3::uuid[] IS NULL OR cm.comment_id = ANY($3))`,
-		userID, workspaceID, nullableUUIDs(commentIDs))
+		  AND ($3::uuid[] IS NULL OR cm.comment_id = ANY($3))
+		  AND ($4::uuid IS NULL OR (c.deleted_at IS NULL AND COALESCE(i.project_id, ms.project_id, p.id) = $4))`,
+		userID, workspaceID, nullableUUIDs(commentIDs), optionalProjectID(projectIDs))
 	return err
 }
 

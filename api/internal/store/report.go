@@ -57,7 +57,7 @@ type StaleIssueRow struct {
 
 // PersonActivity counts activity per actor. from and to are optional
 // YYYY-MM-DD bounds; empty means unbounded on that side.
-func (s *Store) PersonActivity(ctx context.Context, workspaceID uuid.UUID, from, to string) ([]PersonActivityRow, error) {
+func (s *Store) PersonActivity(ctx context.Context, workspaceID uuid.UUID, from, to string, projectIDs ...*uuid.UUID) ([]PersonActivityRow, error) {
 	var fromPtr, toPtr *string
 	if from != "" {
 		fromPtr = &from
@@ -74,8 +74,14 @@ func (s *Store) PersonActivity(ctx context.Context, workspaceID uuid.UUID, from,
 		WHERE a.workspace_id = $1
 		  AND ($2::date IS NULL OR a.created_at >= $2::date)
 		  AND ($3::date IS NULL OR a.created_at < $3::date + interval '1 day')
+		  AND ($4::uuid IS NULL OR
+		    EXISTS (SELECT 1 FROM issue i WHERE a.target_type = 'issue' AND i.id = a.target_id AND i.workspace_id = a.workspace_id AND i.project_id = $4) OR
+		    EXISTS (SELECT 1 FROM milestone m JOIN sprint s ON s.id = m.sprint_id AND s.workspace_id = m.workspace_id WHERE a.target_type = 'milestone' AND m.id = a.target_id AND m.workspace_id = a.workspace_id AND s.project_id = $4) OR
+		    EXISTS (SELECT 1 FROM sprint s WHERE a.target_type = 'sprint' AND s.id = a.target_id AND s.workspace_id = a.workspace_id AND s.project_id = $4) OR
+		    EXISTS (SELECT 1 FROM project p WHERE a.target_type = 'project' AND p.id = a.target_id AND p.workspace_id = a.workspace_id AND p.id = $4) OR
+		    EXISTS (SELECT 1 FROM comment c `+commentProjectJoins+` WHERE a.target_type = 'comment' AND c.id = a.target_id AND c.workspace_id = a.workspace_id AND c.deleted_at IS NULL AND COALESCE(i.project_id, ms.project_id, p.id) = $4))
 		GROUP BY a.actor_id, u.email, u.github_login, u.name, a.verb`,
-		workspaceID, fromPtr, toPtr)
+		workspaceID, fromPtr, toPtr, optionalProjectID(projectIDs))
 	if err != nil {
 		return nil, err
 	}
@@ -125,18 +131,18 @@ func (s *Store) PersonActivity(ctx context.Context, workspaceID uuid.UUID, from,
 // count as neither planned nor completed: work that was called off never
 // belonged in the denominator. Closed sprints use their frozen snapshot;
 // legacy sprints without one retain live counts rather than invented history.
-func (s *Store) MilestoneCompletion(ctx context.Context, workspaceID uuid.UUID) ([]MilestoneCompletionRow, error) {
+func (s *Store) MilestoneCompletion(ctx context.Context, workspaceID uuid.UUID, projectIDs ...*uuid.UUID) ([]MilestoneCompletionRow, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT s.id, s.name, p.name, to_char(s.starts_on, 'YYYY-MM-DD'),
 		       COALESCE(ss.milestones_planned, count(m.id) FILTER (WHERE m.status <> 'cancelled')),
 		       COALESCE(ss.milestones_completed, count(m.id) FILTER (WHERE m.status = 'completed'))
 		FROM sprint s
-		JOIN project p ON p.id = s.project_id
+		JOIN project p ON p.id = s.project_id AND p.workspace_id = s.workspace_id
 		LEFT JOIN sprint_snapshot ss ON ss.sprint_id = s.id AND ss.workspace_id = s.workspace_id AND s.state = 'completed'
 		LEFT JOIN milestone m ON m.sprint_id = s.id AND m.workspace_id = s.workspace_id
-		WHERE s.workspace_id = $1
+		WHERE s.workspace_id = $1 AND ($2::uuid IS NULL OR s.project_id = $2)
 		GROUP BY s.id, s.name, p.name, s.starts_on, ss.sprint_id
-		ORDER BY s.starts_on DESC, lower(p.name)`, workspaceID)
+		ORDER BY s.starts_on DESC, lower(p.name)`, workspaceID, optionalProjectID(projectIDs))
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +162,7 @@ func (s *Store) MilestoneCompletion(ctx context.Context, workspaceID uuid.UUID) 
 
 // IssuesClosedPerSprint counts done issues against all issues filed under the
 // sprint's milestones, using frozen counts for closed sprints with a snapshot.
-func (s *Store) IssuesClosedPerSprint(ctx context.Context, workspaceID uuid.UUID) ([]SprintClosedRow, error) {
+func (s *Store) IssuesClosedPerSprint(ctx context.Context, workspaceID uuid.UUID, projectIDs ...*uuid.UUID) ([]SprintClosedRow, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT s.id, s.name, p.name, to_char(s.starts_on, 'YYYY-MM-DD'),
 		       CASE WHEN ss.sprint_id IS NOT NULL
@@ -166,13 +172,13 @@ func (s *Store) IssuesClosedPerSprint(ctx context.Context, workspaceID uuid.UUID
 		            THEN (SELECT COALESCE(sum(value::bigint), 0)::bigint FROM jsonb_each_text(ss.issue_counts))
 		            ELSE count(i.id) END
 		FROM sprint s
-		JOIN project p ON p.id = s.project_id
+		JOIN project p ON p.id = s.project_id AND p.workspace_id = s.workspace_id
 		LEFT JOIN sprint_snapshot ss ON ss.sprint_id = s.id AND ss.workspace_id = s.workspace_id AND s.state = 'completed'
 		LEFT JOIN milestone m ON m.sprint_id = s.id AND m.workspace_id = s.workspace_id
-		LEFT JOIN issue i ON i.milestone_id = m.id AND i.workspace_id = s.workspace_id
-		WHERE s.workspace_id = $1
+		LEFT JOIN issue i ON i.milestone_id = m.id AND i.workspace_id = s.workspace_id AND i.project_id = s.project_id
+		WHERE s.workspace_id = $1 AND ($2::uuid IS NULL OR s.project_id = $2)
 		GROUP BY s.id, s.name, p.name, s.starts_on, ss.sprint_id
-		ORDER BY s.starts_on DESC, lower(p.name)`, workspaceID)
+		ORDER BY s.starts_on DESC, lower(p.name)`, workspaceID, optionalProjectID(projectIDs))
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +204,7 @@ func (s *Store) IssuesClosedPerSprint(ctx context.Context, workspaceID uuid.UUID
 //
 // Finished work is never stale: a done or cancelled issue has stopped on
 // purpose.
-func (s *Store) StaleIssues(ctx context.Context, workspaceID uuid.UUID, days int) ([]StaleIssueRow, error) {
+func (s *Store) StaleIssues(ctx context.Context, workspaceID uuid.UUID, days int, projectIDs ...*uuid.UUID) ([]StaleIssueRow, error) {
 	rows, err := s.pool.Query(ctx, `
 		WITH signal AS (
 			SELECT i.id,
@@ -218,7 +224,7 @@ func (s *Store) StaleIssues(ctx context.Context, workspaceID uuid.UUID, days int
 			                    i.updated_at)
 			       ) AS last_signal_at
 			FROM issue i
-			WHERE i.workspace_id = $1
+			WHERE i.workspace_id = $1 AND ($3::uuid IS NULL OR i.project_id = $3)
 			  AND i.status NOT IN ('done', 'cancelled')
 		)
 		SELECT i.id, i.key, i.title, i.status::text,
@@ -228,10 +234,11 @@ func (s *Store) StaleIssues(ctx context.Context, workspaceID uuid.UUID, days int
 		FROM issue i
 		JOIN signal g ON g.id = i.id
 		LEFT JOIN app_user u ON u.id = i.assignee_id
-		LEFT JOIN milestone m ON m.id = i.milestone_id
-		WHERE i.workspace_id = $1
+		LEFT JOIN milestone m ON m.id = i.milestone_id AND m.workspace_id = i.workspace_id
+		  AND EXISTS (SELECT 1 FROM sprint s WHERE s.id = m.sprint_id AND s.workspace_id = i.workspace_id AND s.project_id = i.project_id)
+		WHERE i.workspace_id = $1 AND ($3::uuid IS NULL OR i.project_id = $3)
 		  AND g.last_signal_at < now() - make_interval(days => $2)
-		ORDER BY g.last_signal_at ASC`, workspaceID, days)
+		ORDER BY g.last_signal_at ASC`, workspaceID, days, optionalProjectID(projectIDs))
 	if err != nil {
 		return nil, err
 	}
