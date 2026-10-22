@@ -69,6 +69,11 @@ Work log:
 Tickets:
   issues [--status S] [--mine]            List this project's tickets
   issue KEY                               Show a ticket and its recent work log
+  edit KEY [--title TEXT] [--desc TEXT] [--priority N] [--assignee ID|none] [--milestone ID|none]
+                                          Edit fields without changing ticket status
+  comments (KEY|--project) (list|add|edit|delete) ...
+                                          Read and manage comments, delete requires --yes
+  evidence KEY list                       List linked evidence
   new TITLE [--desc D] [--milestone ID] [--priority N]
                                           File a ticket in this project
   status KEY STATUS                       Change a ticket's status (only when asked)
@@ -78,6 +83,16 @@ Planning:
   sprints [new NAME FROM TO]              List or create this project's sprints
   milestones [SPRINT_ID | new SPRINT_ID NAME]
                                           List or create milestones
+  sprint ID (show|edit|activate|complete) ...
+                                          Manage a sprint; activation/completion require --yes
+  milestone ID (show|edit) ...             Edit goals, status, ownership and ordering
+  images (KEY|--milestone ID)              List target images
+  image ID delete --yes                    Remove an image
+  reports (activity|milestones|closed|stale) [flags]
+                                          Read project-filtered reports
+  mentions (list|read) [flags]             Read project mentions and mark them read
+  admin (login|whoami|logout|RESOURCE ACTION) ...
+                                          Separately approved account administration
   upload-image (KEY | --milestone ID) PATH --caption TEXT
                                           Attach an image without changing status
 
@@ -176,6 +191,7 @@ func apiError(err error) error {
 // repoCommands need velvet.yaml and this repository's key.
 var repoCommands = map[string]bool{
 	"log": true, "attach": true, "recap": true,
+	"edit": true, "comments": true, "evidence": true, "sprint": true, "milestone": true, "images": true, "image": true, "reports": true, "mentions": true,
 	"issues": true, "issue": true, "new": true, "status": true, "sprints": true, "milestones": true, "upload-image": true,
 }
 
@@ -190,6 +206,8 @@ func run(args []string, out, errOut io.Writer, in io.Reader) error {
 	}
 	cmd, rest := args[0], args[1:]
 	switch cmd {
+	case "admin":
+		return cmdAdmin(rest, out, errOut, in)
 	case "init":
 		return cmdInit(rest, out, errOut, in)
 	case "login":
@@ -207,6 +225,15 @@ func run(args []string, out, errOut io.Writer, in io.Reader) error {
 	e, err := loadEnv(out, errOut)
 	if err != nil {
 		return err
+	}
+	if handled, err := runTicketCommand(&e, cmd, rest, in); handled {
+		return err
+	}
+	if handled, err := runPlanningCommand(&e, cmd, rest, in); handled {
+		return err
+	}
+	if cmd == "reports" || cmd == "mentions" {
+		return runProjectView(&e, cmd, rest)
 	}
 	switch cmd {
 	case "log":

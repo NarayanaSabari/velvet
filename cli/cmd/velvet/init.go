@@ -54,6 +54,19 @@ func (t terminal) ask(label string) (string, error) {
 	return line, nil
 }
 
+func (t terminal) projectKey() (string, error) {
+	for {
+		key, err := t.ask("Project key (lowercase URL identifier, e.g. aesthatiq)")
+		if err != nil {
+			return "", err
+		}
+		if err := (config.Link{Server: defaultServer, Organisation: "valid", Project: key}).Validate(); err == nil {
+			return key, nil
+		}
+		fmt.Fprintln(t.out, "Use 1 to 40 lowercase letters, numbers or hyphens. Start and end with a letter or number. This is not the uppercase issue prefix.")
+	}
+}
+
 func (t terminal) choose(label string, names []string) (int, error) {
 	if t.nonInteractive {
 		return 0, fail(exitUsage, "--%s is required in noninteractive mode", strings.ToLower(label))
@@ -264,7 +277,7 @@ func cmdInit(args []string, out, errOut io.Writer, in io.Reader) error {
 			if err != nil {
 				return err
 			}
-			link.Project, err = t.ask("Project key")
+			link.Project, err = t.projectKey()
 			if err != nil {
 				return err
 			}
@@ -290,7 +303,7 @@ func cmdInit(args []string, out, errOut io.Writer, in io.Reader) error {
 				return apiError(err)
 			}
 			fmt.Fprintln(out, "Project key already exists. Choose another key; the project name is retained.")
-			link.Project, err = t.ask("Project key")
+			link.Project, err = t.projectKey()
 			if err != nil {
 				return err
 			}

@@ -4,6 +4,9 @@ Read the repository root `AGENTS.md` and this directory's `README.md` before cha
 
 - Keep browser consent in `velvet login`. `velvet init` must remain terminal-only and write YAML in the invocation directory.
 - Setup credentials may only call identity and organisation/project setup APIs. Work commands must verify `/me` reports `token_kind: project` and the exact YAML scope.
+- Account-wide commands live under `velvet admin` and require separate explicit browser management consent. Never load management credentials from YAML, setup storage, project keys, or `VELVET_TOKEN`. Resolve the server only from an explicit flag, trusted `VELVET_SERVER`, or the hosted default. Verify personal token kind and account identity before any administration request.
+- Management logout revokes only its own account credential. Normal logout revokes setup and derived project keys, not separately approved management access. Destructive account operations and sprint activation/completion require explicit `--yes`.
+- Reports and mentions invoked outside `admin` use only repository credentials and must be filtered by the API to that exact project.
 - Never use editable YAML to choose a machine setup credential. Login/logout and explicit account identity use `--server`, `VELVET_SERVER`, or the default server.
 - Cached project credentials require a private canonical-directory binding established by confirmed init. An edited YAML file must not select another cached key.
 - Unbound CI may use `VELVET_TOKEN` only after pinning the YAML server to trusted `VELVET_SERVER` (or the hosted default) and verifying token kind and scope. Never permit personal or setup token bypasses.

@@ -118,6 +118,25 @@ func cmdLogin(args []string, out, errOut io.Writer) error {
 	} else if !errors.Is(loginErr, config.ErrNoLogin) {
 		return fail(exitConfig, "%s", loginErr)
 	}
+	api, err := deviceLogin(base, "login", "setup", *noBrowser, out)
+	if err != nil {
+		return err
+	}
+	me, err := setupIdentity(api, "")
+	if err != nil {
+		return revokeAfterFailure(api, err)
+	}
+	where, err := keys.SaveLogin(base, me.User.ID, api.Token)
+	if err != nil {
+		return revokeAfterFailure(api, fail(exitConfig, "could not store login: %s", err))
+	}
+	fmt.Fprintf(out, "Signed in as %s (%s).\nStored machine setup credential in %s. Run velvet init in a project directory.\n", displayName(me), me.User.ID, where)
+	return nil
+}
+
+// deviceLogin shares polling only. Callers independently validate and store the
+// requested credential kind, so account management cannot reuse setup access.
+func deviceLogin(base, flow, kind string, noBrowser bool, out io.Writer) (*client.Client, error) {
 	api := client.New(base, "", version)
 	host, _ := os.Hostname()
 	var start struct {
@@ -127,16 +146,16 @@ func cmdLogin(args []string, out, errOut io.Writer) error {
 		ExpiresAt       time.Time `json:"expires_at"`
 		Interval        int       `json:"interval"`
 	}
-	if err := api.Do(http.MethodPost, "/cli/sessions", nil, map[string]string{"client_name": "velvet CLI on " + host, "flow": "login"}, &start); err != nil {
-		return apiError(err)
+	if err := api.Do(http.MethodPost, "/cli/sessions", nil, map[string]string{"client_name": "velvet CLI on " + host, "flow": flow}, &start); err != nil {
+		return nil, apiError(err)
 	}
 	consent, parseErr := url.Parse(start.VerificationURI)
 	origin, _ := url.Parse(base)
 	if start.DeviceCode == "" || start.UserCode == "" || parseErr != nil || consent.Scheme != origin.Scheme || consent.Host != origin.Host || consent.User != nil {
-		return fail(exitAPI, "server returned an invalid device consent response")
+		return nil, fail(exitAPI, "server returned an invalid device consent response")
 	}
 	fmt.Fprintf(out, "Sign in through your browser:\n\n  %s\n\nConfirm the code shown there is %s.\n", start.VerificationURI, start.UserCode)
-	if !*noBrowser {
+	if !noBrowser {
 		openBrowser(start.VerificationURI)
 	}
 	fmt.Fprintln(out, "\nWaiting for approval…")
@@ -150,7 +169,7 @@ func cmdLogin(args []string, out, errOut io.Writer) error {
 	}
 	for {
 		if !time.Now().Before(deadline) {
-			return fail(exitAuth, "sign-in expired; run velvet login again")
+			return nil, fail(exitAuth, "sign-in expired; restart the login command")
 		}
 		time.Sleep(time.Duration(max(start.Interval, 1)) * time.Second)
 		err := api.Do(http.MethodPost, "/cli/sessions/token", nil, map[string]string{"device_code": start.DeviceCode}, &grant)
@@ -163,27 +182,18 @@ func cmdLogin(args []string, out, errOut io.Writer) error {
 			case "authorization_pending":
 				continue
 			case "access_denied":
-				return fail(exitAuth, "sign-in was refused in the browser")
+				return nil, fail(exitAuth, "sign-in was refused in the browser")
 			case "expired_token":
-				return fail(exitAuth, "sign-in expired; run velvet login again")
+				return nil, fail(exitAuth, "sign-in expired; restart the login command")
 			}
 		}
-		return apiError(err)
+		return nil, apiError(err)
 	}
-	if grant.Kind != "setup" || grant.Token == "" {
-		return fail(exitAuth, "server did not issue a setup credential")
+	if grant.Kind != kind || grant.Token == "" {
+		return nil, fail(exitAuth, "server did not issue the requested %s credential", kind)
 	}
 	api.Token = grant.Token
-	me, err := setupIdentity(api, "")
-	if err != nil {
-		return revokeAfterFailure(api, err)
-	}
-	where, err := keys.SaveLogin(base, me.User.ID, grant.Token)
-	if err != nil {
-		return revokeAfterFailure(api, fail(exitConfig, "could not store login: %s", err))
-	}
-	fmt.Fprintf(out, "Signed in as %s (%s).\nStored machine setup credential in %s. Run velvet init in a project directory.\n", displayName(me), me.User.ID, where)
-	return nil
+	return api, nil
 }
 
 func displayName(me identity) string {
