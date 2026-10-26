@@ -246,9 +246,37 @@ impl ApiClient {
         )?)
     }
     pub fn create_issue(&self, slug: &str, title: &str, description: &str) -> Result<Issue> {
+        self.create_issue_in_project(slug, title, description, None)
+    }
+    pub fn create_issue_in_project(
+        &self,
+        slug: &str,
+        title: &str,
+        description: &str,
+        project: Option<&str>,
+    ) -> Result<Issue> {
+        let mut body = json!({"title":title,"description":description});
+        if let Some(project) = project {
+            body["project"] = json!(project);
+        }
         Self::decode(self.request(
             Method::POST,
             &["api", "v1", "w", slug, "issues"],
+            &[],
+            Some(body),
+            true,
+        )?)
+    }
+    pub fn update_issue(
+        &self,
+        slug: &str,
+        key: &str,
+        title: &str,
+        description: &str,
+    ) -> Result<Issue> {
+        Self::decode(self.request(
+            Method::PATCH,
+            &["api", "v1", "w", slug, "issues", key],
             &[],
             Some(json!({"title":title,"description":description})),
             true,
@@ -264,13 +292,17 @@ impl ApiClient {
         )?)
     }
     pub fn revoke(&self) -> Result<()> {
-        Self::success(self.request(
+        let response = self.request(
             Method::DELETE,
             &["api", "v1", "me", "token"],
             &[],
             None,
             true,
-        )?)?;
+        )?;
+        // A missing or previously revoked credential is already signed out remotely.
+        if response.status() != StatusCode::UNAUTHORIZED {
+            Self::success(response)?;
+        }
         Ok(())
     }
 }
@@ -641,6 +673,67 @@ mod tests {
                 .issues("org", None, None)
                 .unwrap_err();
             assert!(!format!("{error:?}").contains("secret-bearer"));
+            handle.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn edit_issue_and_project_creation_contracts() {
+        let issue = r#"{"id":"i","key":"V-1","title":"A","status":"todo"}"#;
+        let (address, received, handle) = server("200 OK", issue, "");
+        ApiClient::new(&address, Some("secret".into()))
+            .unwrap()
+            .update_issue("org", "V-1", "A", "B")
+            .unwrap();
+        let request = received.recv().unwrap();
+        assert!(request.starts_with("PATCH /api/v1/w/org/issues/V-1 HTTP/1.1"));
+        assert_eq!(
+            serde_json::from_str::<Value>(request.split_once("\r\n\r\n").unwrap().1).unwrap(),
+            json!({"title":"A","description":"B"})
+        );
+        handle.join().unwrap();
+
+        for project in [None, Some("velvet")] {
+            let (address, received, handle) = server("201 Created", issue, "");
+            ApiClient::new(&address, Some("secret".into()))
+                .unwrap()
+                .create_issue_in_project("org", "A", "B", project)
+                .unwrap();
+            let request = received.recv().unwrap();
+            assert!(request.starts_with("POST /api/v1/w/org/issues HTTP/1.1"));
+            let mut expected = json!({"title":"A","description":"B"});
+            if let Some(project) = project {
+                expected["project"] = json!(project);
+            }
+            assert_eq!(
+                serde_json::from_str::<Value>(request.split_once("\r\n\r\n").unwrap().1).unwrap(),
+                expected
+            );
+            handle.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn revoke_accepts_401_but_preserves_other_failures() {
+        for (status, success) in [
+            ("401 Unauthorized", true),
+            ("403 Forbidden", false),
+            ("500 Internal Server Error", false),
+        ] {
+            let (address, received, handle) = server(status, "secret-bearer", "");
+            let result = ApiClient::new(&address, Some("secret-bearer".into()))
+                .unwrap()
+                .revoke();
+            assert_eq!(result.is_ok(), success);
+            if let Err(error) = result {
+                assert!(!format!("{error:?}").contains("secret-bearer"));
+            }
+            assert!(
+                received
+                    .recv()
+                    .unwrap()
+                    .starts_with("DELETE /api/v1/me/token HTTP/1.1")
+            );
             handle.join().unwrap();
         }
     }
