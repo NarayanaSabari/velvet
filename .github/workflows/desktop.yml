@@ -1,0 +1,51 @@
+name: Desktop preview checks
+
+on:
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Native Apple Silicon checks
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+          rustup override set 1.97.1
+      - name: Check native build prerequisites
+        run: |
+          test "$(uname -m)" = arm64
+          rustc --version
+          xcodebuild -version
+          xcrun --find metal
+      - name: Check package metadata and script
+        run: |
+          bash -n package.sh
+          plutil -lint Info.plist
+          ./package.sh --help
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check
+        run: cargo check --locked --all-targets
+      - name: Test
+        run: cargo test --locked
+      # No second release build, disk image, signing credential, upload or deploy.
+      # Run package.sh explicitly on a trusted Mac when a local preview is needed.

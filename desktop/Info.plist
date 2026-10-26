@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>app.velvet.desktop.preview</string>
+    <key>CFBundleName</key>
+    <string>Velvet Preview</string>
+    <key>CFBundleDisplayName</key>
+    <string>Velvet Preview (NOT notarized)</string>
+    <key>CFBundleExecutable</key>
+    <string>velvet-desktop</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>Local preview. Ad-hoc signed only. NOT notarized.</string>
+</dict>
+</plist>
