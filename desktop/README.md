@@ -4,21 +4,22 @@ Native Rust/GPUI application, not a webview wrapper. This is an online-first App
 
 ## Toolchain and build requirements
 
-`Cargo.toml` names `velvet-desktop` version `0.1.0`, Rust edition 2024, with `gpui-kit` pinned to `=0.8.1`. Commit and use `Cargo.lock`; build commands below use `--locked`.
+`Cargo.toml` names `velvet-desktop` version `0.1.0`, Rust edition 2024, with `gpui-kit` pinned to `=0.7.0`. Commit and use `Cargo.lock`; build commands below use `--locked`.
 
 Local inspection on October 26, 2026 found:
 
 - Apple Silicon (`arm64`), macOS 26.4.1.
 - Rust and Cargo 1.97.1 in `~/.cargo/bin`, outside the shell's initial `PATH`.
-- Active developer directory `/Library/Developer/CommandLineTools`, no `/Applications/Xcode.app`, and no Metal compiler from `xcrun --find metal`.
+- Active developer directory `/Library/Developer/CommandLineTools`, with Apple clang and the macOS SDK available through `xcrun`.
 
-Full Xcode with the Metal compiler available through the selected developer directory is a packaging prerequisite. Command Line Tools alone did not meet it on this machine. Installing Xcode or changing the selected developer directory is a separate, deliberate local setup action. These observations do not establish a supported minimum macOS version or prove the app builds and launches.
+GPUI kit 0.7.0 enables `gpui_platform`'s `runtime_shaders` feature, so the OS compiles shaders at runtime. Building requires Apple clang and the macOS SDK, not the offline `metal` compiler or full Xcode. Command Line Tools satisfy those checked prerequisites on this machine. These observations do not establish a supported minimum macOS version or prove a packaged app launches.
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
 cd desktop
 rustc --version
-xcrun --find metal
+xcrun --find clang
+xcrun --show-sdk-path
 cargo fmt --all -- --check
 cargo check --locked --all-targets
 cargo test --locked

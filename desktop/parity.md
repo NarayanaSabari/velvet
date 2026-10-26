@@ -4,7 +4,7 @@ Snapshot: October 26, 2026. This is a first native preview slice, not web-featur
 
 ## Source baseline
 
-- [x] Rust package `velvet-desktop` version `0.1.0`, edition 2024, GPUI kit pinned to `0.8.1`.
+- [x] Rust package `velvet-desktop` version `0.1.0`, edition 2024, GPUI kit pinned to `0.7.0`.
 - [x] Native GPUI application entry point and window scaffold.
 - [x] Explicit local-preview app metadata and Apple Silicon packaging script, optional DMG flag, ad-hoc signing only.
 - [x] Separate read-only manual/PR macOS workflow for formatting, locked checking and tests, with no deployment.
@@ -19,7 +19,7 @@ The authentication, API client and richer GPUI surfaces are being built alongsid
 - [x] `bash -n desktop/package.sh` passed.
 - [x] `plutil -lint desktop/Info.plist` passed.
 - [x] `--help` returned success. Unknown options and extra arguments returned exit code 2.
-- [x] A real packaging attempt stopped before compilation when the Metal compiler was unavailable.
+- [x] Apple clang and macOS SDK preflight passed with Command Line Tools. An isolated Cargo shim confirmed packaging reaches the explicit locked native release build command without requiring the offline Metal compiler.
 - [ ] Native `cargo fmt --all -- --check`, `cargo check --locked --all-targets` and `cargo test --locked` results from the completed source.
 - [ ] Release binary built and launched on Apple Silicon.
 - [ ] Packaged `.app` launch, bundle resources and signature verification.
@@ -29,7 +29,7 @@ The authentication, API client and richer GPUI surfaces are being built alongsid
 - [ ] Keyboard-only use, visible focus, VoiceOver, long content, loading, empty, error and saving states.
 - [ ] Light/dark schemes and native window resizing, including narrow layout and no horizontal overflow.
 
-Local blocker: macOS 26.4.1 on arm64 has Rust/Cargo 1.97.1 in `~/.cargo/bin`, but the active Command Line Tools installation has no Metal compiler and full Xcode was not present at `/Applications/Xcode.app`. Packaging preflight fails safely. No `.app` or DMG build, native launch or distribution verification is claimed by this document.
+Local toolchain: macOS 26.4.1 on arm64 has Rust/Cargo 1.97.1 in `~/.cargo/bin`, and the active Command Line Tools installation provides Apple clang and the macOS SDK. GPUI kit 0.7.0 enables `gpui_platform/runtime_shaders`, so missing full Xcode or the offline Metal compiler is not a build blocker for this configuration. The coordinator reported a successful `cargo check` with the settled kit pin while native source integration continued. Final formatting, check and test evidence still belongs to the completed integrated source. No release `.app` or DMG build, native launch or distribution verification is claimed by this document.
 
 ## Deliberately outside the first slice
 

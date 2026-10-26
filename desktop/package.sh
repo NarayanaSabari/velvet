@@ -26,8 +26,8 @@ for tool in cargo rustc xcrun plutil codesign ditto git; do
 done
 [[ "$(rustc -vV)" == *'host: aarch64-apple-darwin'* ]] || \
     fail 'Use a native aarch64-apple-darwin Rust toolchain.'
-xcrun --find metal >/dev/null 2>&1 || \
-    fail 'Metal compiler unavailable. Select full Xcode with Metal tooling before packaging.'
+xcrun --find clang >/dev/null 2>&1 || fail 'Apple clang unavailable. Install or select Command Line Tools.'
+xcrun --show-sdk-path >/dev/null 2>&1 || fail 'macOS SDK unavailable. Install or select Command Line Tools.'
 if "$dmg"; then command -v hdiutil >/dev/null || fail 'Missing tool: hdiutil'; fi
 
 dist="$root/dist"
