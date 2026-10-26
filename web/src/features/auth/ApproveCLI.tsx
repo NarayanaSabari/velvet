@@ -16,7 +16,7 @@ interface PendingSignIn {
   user_code: string
   client_name: string
   expires_at: string
-  flow?: 'login' | 'init' | 'manage'
+  flow?: 'login' | 'init' | 'manage' | 'desktop'
 }
 
 function codeFromURL() {
@@ -51,7 +51,8 @@ export function ApproveCLI() {
   })
   const login = pending.data?.flow === 'login'
   const manage = pending.data?.flow === 'manage'
-  const unscoped = login || manage
+  const desktop = pending.data?.flow === 'desktop'
+  const unscoped = login || manage || desktop
   const legacyInit = pending.isSuccess && (pending.data.flow === undefined || pending.data.flow === 'init')
   const projects = useQuery({
     queryKey: ['projects', slug, false],
@@ -70,10 +71,10 @@ export function ApproveCLI() {
 
   if (session.isLoading) return <PublicAuthPage title="Connect the Velvet CLI" note=""><p role="status" className="text-grey-500">Loading…</p></PublicAuthPage>
   if (session.error) return <PublicAuthPage title="Connect the Velvet CLI" note=""><p role="alert" className="text-blocked">{session.error.message} Reload to try again.</p></PublicAuthPage>
-  if (!session.isSignedIn) return <SignIn returnTo={code ? `/cli/approve?${new URLSearchParams({ code })}` : undefined} message="Sign in to review this CLI request. Signing in does not approve it." />
+  if (!session.isSignedIn) return <SignIn returnTo={code ? `/cli/approve?${new URLSearchParams({ code })}` : undefined} message="Sign in to review this device request. Signing in does not approve it." />
 
   const layout = (body: ReactNode) => (
-    <PublicAuthPage title="Connect the Velvet CLI" note="" expanded>
+    <PublicAuthPage title={desktop ? 'Connect Velvet for macOS' : 'Connect the Velvet CLI'} note="" expanded>
       <div className="space-y-6">
         <p className="text-grey-700 [overflow-wrap:anywhere]">Signed in as {userLabel(session.user)}</p>
         {body}
@@ -86,12 +87,12 @@ export function ApproveCLI() {
     return layout(
       <div role="status" className="space-y-2">
         <p className="text-base font-medium">Connected.</p>
-        {manage ? <p className="text-grey-700">Go back to your terminal. Account management is connected with your current memberships and roles.</p> : login ? <p className="text-grey-700">Go back to your terminal and run velvet init in your repository to choose an organisation and project.</p> : <p className="text-grey-700">Go back to your terminal. The CLI can now reach only <strong>{projectKey}</strong> in <strong>{slug}</strong>.</p>}
+        {desktop ? <p className="text-grey-700">Go back to Velvet for macOS. The app is connected with your current memberships and roles.</p> : manage ? <p className="text-grey-700">Go back to your terminal. Account management is connected with your current memberships and roles.</p> : login ? <p className="text-grey-700">Go back to your terminal and run velvet init in your repository to choose an organisation and project.</p> : <p className="text-grey-700">Go back to your terminal. The CLI can now reach only <strong>{projectKey}</strong> in <strong>{slug}</strong>.</p>}
       </div>,
     )
   }
   if (deny.isSuccess) {
-    return layout(<p role="status" className="text-grey-700">Refused. The CLI was not given a key.</p>)
+    return layout(<p role="status" className="text-grey-700">{desktop ? 'Refused. The desktop app was not given a key.' : 'Refused. The CLI was not given a key.'}</p>)
   }
 
   if (!code || pending.error) {
@@ -100,7 +101,7 @@ export function ApproveCLI() {
       <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); const next = typed.trim().toUpperCase(); if (next === code) void pending.refetch(); else setCode(next); approve.reset(); deny.reset() }}>
         {expired ? <p role="alert" className="text-blocked">That code has expired or was already used. Run velvet login again, or velvet init for a legacy repository request.</p> : null}
         {pending.error && !expired ? <p role="alert" className="text-blocked">{pending.error.message} Try checking the code again.</p> : null}
-        <label htmlFor={codeId} className="block text-sm font-medium">Code shown in your terminal</label>
+        <label htmlFor={codeId} className="block text-sm font-medium">Code shown on your device</label>
         <input
           id={codeId}
           className="block min-h-12 w-full rounded-[var(--radius-control)] border border-grey-300 bg-paper px-3 py-2 font-mono uppercase tracking-widest"
@@ -127,12 +128,12 @@ export function ApproveCLI() {
   return layout(
     <div className="space-y-5">
       <div className="rounded-[var(--radius-surface)] border border-grey-200 p-4">
-        <p className="text-sm text-grey-500">Confirm this matches your terminal</p>
+        <p className="text-sm text-grey-500">{desktop ? 'Confirm this matches Velvet for macOS' : 'Confirm this matches your terminal'}</p>
         <p className="mt-1 break-all font-mono text-lg tracking-widest" data-testid="cli-user-code">{pending.data.user_code}</p>
         <p className="mt-1 text-sm text-grey-500 [overflow-wrap:anywhere]">{pending.data.client_name}</p>
       </div>
 
-      {manage ? <p className="text-sm text-grey-700">Approve only if you started velvet admin login on this device. This grants account-wide management access using a personal credential, limited by your current organisation memberships and roles. It can manage account settings and organisations where your role allows it. This is separate from normal velvet login setup access and is not limited to one project. Do not share this credential with repository agents.</p> : login ? <p className="text-sm text-grey-700">Approve only if you started velvet login on this device. This gives the CLI a setup credential to list and create organisations and projects, and create repository keys where you have write access. Routine work uses a separate key scoped to the chosen project. No repository is connected yet.</p> : <>
+      {desktop ? <p className="text-sm text-grey-700">Approve only if you started sign-in in Velvet for macOS on your device. This gives the desktop app normal account access across all your current and future organisation memberships, limited by your current roles. It can read your work, create and update tickets, and manage settings where your role allows it. This is not a repository or setup key. Do not share this credential with agents. You can revoke it under Profile &gt; API tokens.</p> : manage ? <p className="text-sm text-grey-700">Approve only if you started velvet admin login on this device. This grants account-wide management access using a personal credential, limited by your current organisation memberships and roles. It can manage account settings and organisations where your role allows it. This is separate from normal velvet login setup access and is not limited to one project. Do not share this credential with repository agents.</p> : login ? <p className="text-sm text-grey-700">Approve only if you started velvet login on this device. This gives the CLI a setup credential to list and create organisations and projects, and create repository keys where you have write access. Routine work uses a separate key scoped to the chosen project. No repository is connected yet.</p> : <>
       <div className="space-y-1">
         <label htmlFor={orgId} className="block text-sm font-medium">Organisation</label>
         <select id={orgId} className="block min-h-12 w-full rounded-[var(--radius-control)] border border-grey-300 bg-paper px-3" value={slug}
@@ -169,10 +170,10 @@ export function ApproveCLI() {
 
       </>}
       {deny.error ? <p role="alert" className="text-blocked">{deny.error.message}</p> : null}
-      {Date.parse(pending.data.expires_at) <= Date.now() ? <p role="alert" className="text-blocked">This request expired. Run velvet login again.</p> : null}
+      {Date.parse(pending.data.expires_at) <= Date.now() ? <p role="alert" className="text-blocked">{desktop ? 'This request expired. Start sign-in again in Velvet for macOS.' : 'This request expired. Run velvet login again.'}</p> : null}
       {approve.error ? <p role="alert" className="text-blocked">{approve.error.message}</p> : null}
-      <form className="flex flex-wrap gap-3" aria-label="Connect the CLI" onSubmit={(e) => { e.preventDefault(); if (ready && Date.parse(pending.data.expires_at) > Date.now()) approve.mutate() }}>
-        <Button className="min-h-12" variant="primary" type="submit" disabled={!ready}>{approve.isPending ? 'Connecting…' : manage ? 'Approve account management' : login ? 'Approve login' : 'Connect'}</Button>
+      <form className="flex flex-wrap gap-3" aria-label={desktop ? 'Connect the desktop app' : 'Connect the CLI'} onSubmit={(e) => { e.preventDefault(); if (ready && Date.parse(pending.data.expires_at) > Date.now()) approve.mutate() }}>
+        <Button className="min-h-12" variant="primary" type="submit" disabled={!ready}>{approve.isPending ? 'Connecting…' : desktop ? 'Approve desktop app' : manage ? 'Approve account management' : login ? 'Approve login' : 'Connect'}</Button>
         <Button className="min-h-12" type="button" disabled={busy} onClick={() => deny.mutate()}>Refuse</Button>
       </form>
     </div>,

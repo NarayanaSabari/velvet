@@ -66,11 +66,33 @@ it.each(['admin', 'member', 'viewer', 'none'])('requires explicit account manage
   expect(fetchMock).toHaveBeenCalledWith('/api/v1/cli/sessions/ABCD-EFGH/approve', expect.objectContaining({ method: 'POST', body: '{}', credentials: 'same-origin' }))
 })
 
-it('refuses login without issuing an approval', async () => {
+it.each(['admin', 'member', 'viewer', 'none'])('requires explicit desktop app consent for %s without project selection', async (role) => {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url === '/api/v1/me') return response({ user, memberships: role === 'none' ? [] : [{ ...membership, role }] })
+    if (url.endsWith('/approve')) return response(null, 204)
+    return response({ ...pendingLogin, flow: 'desktop', client_name: 'Velvet for macOS' })
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  showCLI()
+  const approve = await screen.findByRole('button', { name: 'Approve desktop app' })
+  expect(screen.getByRole('heading', { name: 'Connect Velvet for macOS' })).toBeInTheDocument()
+  expect(screen.getByText(/normal account access/)).toHaveTextContent('all your current and future organisation memberships')
+  expect(screen.getByText(/normal account access/)).toHaveTextContent('limited by your current roles')
+  expect(screen.getByText(/normal account access/)).toHaveTextContent('not a repository or setup key')
+  expect(screen.queryByLabelText('Organisation')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Project')).not.toBeInTheDocument()
+  expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true)
+  expect(fetchMock.mock.calls.some(([url]) => url.includes('/projects'))).toBe(false)
+  await userEvent.click(approve)
+  expect(await screen.findByText(/Go back to Velvet for macOS/)).toBeInTheDocument()
+  expect(fetchMock).toHaveBeenCalledWith('/api/v1/cli/sessions/ABCD-EFGH/approve', expect.objectContaining({ method: 'POST', body: '{}', credentials: 'same-origin' }))
+})
+
+it.each(['login', 'desktop'])('refuses %s without issuing an approval', async (flow) => {
   const fetchMock = vi.fn().mockImplementation((url: string) => {
     if (url === '/api/v1/me') return response({ user, memberships: [] })
     if (url.endsWith('/deny')) return response(null, 204)
-    return response(pendingLogin)
+    return response({ ...pendingLogin, flow })
   })
   vi.stubGlobal('fetch', fetchMock)
   showCLI()

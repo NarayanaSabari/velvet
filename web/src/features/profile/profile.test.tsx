@@ -187,6 +187,19 @@ describe('Profile API tokens', () => {
     expect(fetch).toHaveBeenCalledWith('/api/v1/me/tokens/setup-1', expect.objectContaining({ method: 'DELETE' }))
   })
 
+  it('identifies desktop access and revokes only after confirmation', async () => {
+    const fetch = tokenFetch([{ id: 'desktop-1', name: 'Velvet for macOS', kind: 'desktop', created_at: '2026-10-26T10:00:00Z', last_used_at: null }])
+    vi.stubGlobal('fetch', fetch)
+    const user = userEvent.setup()
+    renderProfile('tokens')
+    expect(await screen.findByText('Desktop app · All organisations, current roles')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Revoke Velvet for macOS' }))
+    expect(fetch).not.toHaveBeenCalledWith('/api/v1/me/tokens/desktop-1', expect.objectContaining({ method: 'DELETE' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm revoke' }))
+    await screen.findByText('No API tokens yet')
+    expect(fetch).toHaveBeenCalledWith('/api/v1/me/tokens/desktop-1', expect.objectContaining({ method: 'DELETE' }))
+  })
+
   it('explains the empty state and keeps creation as the action', async () => {
     vi.stubGlobal('fetch', tokenFetch([]))
 

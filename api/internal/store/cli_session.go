@@ -100,7 +100,7 @@ func (s *Store) CreateCLISession(ctx context.Context, clientName string) (string
 }
 
 func (s *Store) CreateCLISessionForFlow(ctx context.Context, clientName, flow string) (string, CLISession, error) {
-	if flow != "init" && flow != "login" && flow != "manage" {
+	if flow != "init" && flow != "login" && flow != "manage" && flow != "desktop" {
 		return "", CLISession{}, ErrForbidden
 	}
 	clientName = strings.TrimSpace(clientName)
@@ -210,9 +210,9 @@ func (s *Store) DenyCLISession(ctx context.Context, code string) error {
 	return nil
 }
 
-// ApproveCLIUnscoped records explicit consent for setup or account management.
+// ApproveCLIUnscoped records explicit consent for setup, account management, or the desktop app.
 func (s *Store) ApproveCLIUnscoped(ctx context.Context, code string, approverID uuid.UUID, flow string) error {
-	if flow != "login" && flow != "manage" {
+	if flow != "login" && flow != "manage" && flow != "desktop" {
 		return ErrForbidden
 	}
 	tag, err := s.pool.Exec(ctx, `UPDATE cli_session SET status='approved', approved_by=$2
@@ -308,10 +308,12 @@ func (s *Store) CollectCLISession(ctx context.Context, device string) (CLIGrant,
 			return ErrCLISessionPending
 		}
 
-		if flow == "login" || flow == "manage" {
+		if flow == "login" || flow == "manage" || flow == "desktop" {
 			kind := "setup"
 			if flow == "manage" {
 				kind = "personal"
+			} else if flow == "desktop" {
+				kind = "desktop"
 			}
 			token, tokenID, err := createAPITokenTx(ctx, tx, *approver, clientName+" · "+flow+" · "+id.String()[:8], TokenScope{Kind: kind})
 			if err != nil {

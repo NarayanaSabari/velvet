@@ -35,8 +35,8 @@ func (s *Server) handleCreateCLISession(w http.ResponseWriter, r *http.Request) 
 	if body.Flow == "" {
 		body.Flow = "init"
 	}
-	if body.Flow != "init" && body.Flow != "login" && body.Flow != "manage" {
-		WriteError(w, http.StatusBadRequest, "invalid_request", "flow must be login, init or manage")
+	if body.Flow != "init" && body.Flow != "login" && body.Flow != "manage" && body.Flow != "desktop" {
+		WriteError(w, http.StatusBadRequest, "invalid_request", "flow must be login, init, manage or desktop")
 		return
 	}
 	device, session, err := s.store.CreateCLISessionForFlow(r.Context(), body.ClientName, body.Flow)
@@ -117,7 +117,7 @@ func (s *Server) handleApproveCLISession(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusNotFound, "not_found", "that code has expired or was already used")
 		return
 	}
-	if session.Flow == "login" || session.Flow == "manage" {
+	if session.Flow == "login" || session.Flow == "manage" || session.Flow == "desktop" {
 		if body.WorkspaceSlug != "" || body.ProjectKey != "" {
 			WriteError(w, http.StatusBadRequest, "invalid_request", "unscoped approval does not accept an organisation or project")
 			return

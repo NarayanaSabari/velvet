@@ -217,7 +217,7 @@ export function ApiTokens() {
                 <div className="min-w-0 flex-1">
                   <p className="break-all">{token.name}</p>
                   <p className="break-words text-xs text-grey-700">
-                    {token.kind === 'setup' ? 'Machine setup key' : token.project_key ? <>{token.parent_id ? 'Derived project key' : 'Project key'} · {token.workspace_slug} / {token.project_key}</> : 'Personal token'}
+                    {token.kind === 'desktop' ? 'Desktop app · All organisations, current roles' : token.kind === 'setup' ? 'Machine setup key' : token.project_key ? <>{token.parent_id ? 'Derived project key' : 'Project key'} · {token.workspace_slug} / {token.project_key}</> : 'Personal token'}
                   </p>
                   <dl className="flex flex-wrap gap-x-4 text-xs text-grey-500">
                     <div>

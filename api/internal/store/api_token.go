@@ -35,6 +35,7 @@ type APIToken struct {
 
 // TokenScope is what a key may reach. A zero scope mints a personal key.
 // Setup keys are unscoped but default-denied by their explicit kind.
+// Desktop credentials are unscoped and use current membership roles, like the app.
 type TokenScope struct {
 	Kind        string
 	ParentID    *uuid.UUID
