@@ -1,51 +1,50 @@
 # Desktop parity and verification
 
-Snapshot: October 26, 2026. This is a first native preview slice, not web-feature parity. A checked source item means code exists, not that a person has completed the workflow in a packaged application. Keep source implementation and runtime evidence separate.
+Snapshot: October 26, 2026. This is a first native preview slice, not full web-feature parity.
 
-## Source baseline
+## Implemented slice
 
-- [x] Rust package `velvet-desktop` version `0.1.0`, edition 2024, GPUI kit pinned to `0.7.0`.
-- [x] Native GPUI workspace shell, issue list/detail and read-only `--demo` data. `--server URL` selects an HTTPS server, with HTTP allowed only for loopback.
-- [x] Source implementation of browser-approved desktop authentication, token restoration/revocation and macOS Keychain storage.
-- [x] Source implementation of workspace/project selection, issue search/status filtering, refresh and pagination.
-- [x] Source implementation of issue creation/editing, explicit status changes and issue timeline comments. Live-server acceptance remains unchecked below.
-- [x] Explicit local-preview app metadata and Apple Silicon packaging script, optional DMG flag, ad-hoc signing only.
-- [x] Separate read-only manual/PR macOS workflow for formatting, locked checking and tests, with no deployment.
-- [ ] Confirm browser-approved desktop authentication and macOS Keychain credential lifecycle in the integrated native app.
-- [ ] Confirm authenticated organisation/project selection and server data loading in the integrated native app.
-- [ ] Confirm issue list, issue detail, explicit issue status edits and work-log creation in the integrated native app.
+- Rust/GPUI Apple Silicon application, native issue list/detail and read-only `--demo` data.
+- Browser-approved desktop authentication, dedicated desktop credentials, macOS Keychain storage and revocation.
+- Organisation/project selection, search over loaded issues, status filters, refresh and pagination.
+- Issue creation, title/description editing, explicit status changes and human-attributed progress comments.
+- Keyboard commands, modal focus handling, in-memory context-isolated drafts and draft-safe Quit confirmation.
+- Light/dark appearance and narrow-window layout. Other workflows explicitly open the web app.
+- Locked dependencies, local ad-hoc app packaging and a separate read-only macOS check workflow.
 
-The source checklist records the integrated code paths, not proof of successful consent, credentials or live writes. Update runtime evidence only from actual verification results, not the design mockup or sample data.
+## Verified evidence
 
-## Preview acceptance evidence
+- Final formatting and locked all-target Cargo checking passed.
+- Final serial suite with `--features ui-tests` passed: 22 binary tests, 12 client integration tests and 11 contract tests. Some contract tests repeat across targets, so these are not unique test counts.
+- Seven native UI tests cover issue selection, filters, workspace-isolated drafts, modal forward/backward Tab focus, Escape, blocked background mutations and saving/Quit guards.
+- A separate real macOS Keychain round trip passed using a disposable account and removed its credential afterward.
+- Real browser consent and the Rust client passed against the disposable API stack: desktop token polling, identity, issue changes, human-attributed progress comments and revocation. Test fixtures were removed.
+- Five actual Metal-rendered screenshots captured desktop light/dark, narrow layout, commands and Quit confirmation under ignored `desktop/target/screenshots/`. Reviewed layouts were readable and contained.
+- Final release packaging, plist validation and strict ad-hoc signature verification passed. Existing package output is protected against overwrite.
+- The final packaged Apple Silicon app launched. Native checks verified issue navigation, new-issue draft retention, Quit confirmation, cancellation preserving the exact draft and clean process exit after clearing the test draft.
+- API and web regression suites, web build and lint passed during desktop-auth integration.
 
-- [x] `bash -n desktop/package.sh` passed.
-- [x] `plutil -lint desktop/Info.plist` passed.
-- [x] `--help` returned success. Unknown options and extra arguments returned exit code 2.
-- [x] Apple clang and macOS SDK preflight passed with Command Line Tools. An isolated Cargo shim confirmed packaging reaches the explicit locked native release build command without requiring the offline Metal compiler.
-- [ ] Native `cargo fmt --all -- --check`, `cargo check --locked --all-targets` and `cargo test --locked` results from the completed source.
-- [x] The coordinator reported a successful native release build before the bundle-resource correction.
-- [x] The coordinator reported native unit suites with 15 and 12 passing tests, with two interactive Keychain tests ignored. These do not prove live Keychain round trips or real-server writes.
-- [ ] Release binary launched on Apple Silicon.
-- [x] Actual native release packaging succeeded after placing `PREVIEW.txt` in `Contents/Resources`; bundle plist validation and `codesign --verify --strict` passed. The packaged binary's `--help` worked, and another packaging attempt refused to overwrite the existing app. No DMG was requested or created.
-- [ ] Packaged `.app` GUI launch and final UI acceptance. The successful packaging artifact predates final UI acceptance and must be rebuilt after the coordinator's signal.
-- [ ] Optional DMG creation, mount and manual install.
-- [ ] Browser consent, token expiry, cancellation, logout, server switching and Keychain failures.
-- [ ] Real-server issue read/write and work-log workflows, including membership and permission failures.
-- [ ] Keyboard-only use, visible focus, VoiceOver, long content, loading, empty, error and saving states.
-- [ ] Light/dark schemes and native window resizing, including narrow layout and no horizontal overflow.
+These checks exercise native sample-mode UI and real-server browser/client integration separately. They do not establish complete packaged GUI-to-server acceptance.
 
-Local toolchain: macOS 26.4.1 on arm64 has Rust/Cargo 1.97.1 in `~/.cargo/bin`, and the active Command Line Tools installation provides Apple clang and the macOS SDK. GPUI kit 0.7.0 enables `gpui_platform/runtime_shaders`, so missing full Xcode or the offline Metal compiler is not a build blocker for this configuration. The coordinator reported a successful `cargo check` and native release build with the settled kit pin. Final formatting, check and test evidence still belongs to the completed integrated source. Native app launch, optional DMG installation and trusted distribution remain separate acceptance checks.
+## Remaining acceptance boundaries
 
-Work-log write was not completed: the coordinator reported CLI exit code 3. No successful Velvet log is claimed here. The coordinator owns repository-binding/authentication follow-up and the consolidated entry.
+- Full packaged native GUI-to-real-server acceptance, restored credentials and all failure states remain unverified.
+- Full VoiceOver acceptance remains unverified. The native accessibility tree sometimes stayed stale until window resize.
+- Optional DMG creation, mounting and manual installation were not performed.
+- Production sign-in requires deployment of the dedicated desktop-auth backend changes. No deployment or public release was performed.
+- Unused model-field warnings and an upstream `block` future-compatibility warning remain.
+- Work-log recording was blocked: `velvet whoami` exited 3 because the CLI was not signed in. No successful log is claimed.
+
+## Build environment
+
+Verified on macOS 26.4.1 arm64 with Rust/Cargo 1.97.1 in `~/.cargo/bin` and Apple Command Line Tools. GPUI kit is pinned to 0.7.0 with runtime shaders, so this configuration does not require full Xcode or the offline Metal compiler. The generated `desktop/dist/Velvet Preview.app` is a local ad-hoc-signed preview, not a notarized distribution.
 
 ## Deliberately outside the first slice
 
-- [ ] Offline database, offline writes, durable queue and conflict resolution.
-- [ ] Automatic updater or update feed. Preview updates are manual replacements.
-- [ ] Intel, universal, Windows, Linux or mobile packages.
-- [ ] Developer ID signing, notarization, stapling and trusted clean-machine installation. These require Apple credentials and separate release approval.
-- [ ] Full web navigation and feature parity: dashboard/feed, sprint planning and boards, milestones, comments and mentions, image attachments, GitHub evidence and suggestions, reports/recaps, command palette, profile and administration.
-- [ ] Production deployment or public release. Packaging and CI do not authorize either.
+- Offline database, offline writes, durable queues and conflict resolution.
+- Automatic updates, Intel/universal packages and other operating systems.
+- Developer ID signing, notarization, stapling and trusted clean-machine distribution.
+- Full native dashboard/feed, sprint planning, milestones, mentions, image attachments, GitHub evidence, reports, profile and administration.
+- Production deployment and public release. Builds, commits and local verification do not authorize either.
 
-No issue status changes automatically because a branch, commit, PR, package or deployment exists. The existing web application remains the reference for workflows not yet implemented natively. No completion date or parity schedule is implied.
+Issue statuses never change automatically because a branch, commit, PR, package or deployment exists. The web application remains the reference for workflows not yet implemented natively.
