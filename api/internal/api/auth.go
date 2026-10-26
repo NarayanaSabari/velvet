@@ -55,7 +55,10 @@ func currentAPIToken(ctx context.Context) *uuid.UUID {
 // mark its own entry as human or agent.
 func commentSource(ctx context.Context) string {
 	if isBearerAuth(ctx) {
-		return "agent"
+		scope, _ := ctx.Value(scopeKey).(store.TokenScope)
+		if scope.Kind != "desktop" {
+			return "agent"
+		}
 	}
 	return "human"
 }

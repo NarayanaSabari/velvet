@@ -68,6 +68,12 @@ func TestDesktopConsentKindAndRoleBoundaries(t *testing.T) {
 	require.Contains(t, me.Body.String(), `"workspace_slug":"lab"`)
 	require.Equal(t, http.StatusOK, f.DoAsAgent("GET", "/api/v1/w/desktop-org/issues", grant.Token, nil).Code)
 	require.Equal(t, http.StatusOK, f.DoAsAgent("GET", "/api/v1/w/lab/issues/"+s.otherIssue.Key, grant.Token, nil).Code)
+	commentPath := "/api/v1/w/lab/issues/" + s.ownIssue.Key + "/comments"
+	for _, writer := range []struct{ token, source string }{{grant.Token, "human"}, {s.key, "agent"}} {
+		comment := f.DoAsAgent("POST", commentPath, writer.token, map[string]string{"body": "Recorded work"})
+		require.Equal(t, http.StatusCreated, comment.Code, comment.Body.String())
+		require.Contains(t, comment.Body.String(), `"source":"`+writer.source+`"`)
+	}
 	require.Equal(t, http.StatusOK, f.DoAsAgent("PATCH", "/api/v1/w/lab", grant.Token, map[string]string{"name": "Desktop Lab"}).Code)
 	require.Equal(t, http.StatusForbidden, f.DoAsAgent("POST", "/api/v1/cli/project-tokens", grant.Token, map[string]string{"workspace_slug": f.Slug, "project_key": "own"}).Code)
 	setRole(t, f, "member")
