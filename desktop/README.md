@@ -23,8 +23,19 @@ xcrun --show-sdk-path
 cargo fmt --all -- --check
 cargo check --locked --all-targets
 cargo test --locked
-cargo run --locked
+cargo run --locked -- --server https://velvet.example.com
+# Read-only sample data, without network or Keychain access:
+cargo run --locked -- --demo
 ```
+
+The native binary accepts `--server URL`, `--demo`, and `--help`. Server URLs require HTTPS except for HTTP loopback during local development. `--demo` is read-only sample data, not proof of live server behavior. To pass arguments to a packaged preview:
+
+```bash
+open 'desktop/dist/Velvet Preview.app' --args --server https://velvet.example.com
+open 'desktop/dist/Velvet Preview.app' --args --demo
+```
+
+Quit any running preview before launching it with different arguments.
 
 The application talks to an existing Velvet server. Server deployment, database migrations and production credentials are outside this package's responsibilities. Do not put tokens or `.env` files inside the app bundle or distribution directory. Credential storage must use macOS Keychain, not a bundled config file.
 
@@ -42,7 +53,7 @@ The script requires native Apple Silicon macOS and a native Rust toolchain. It b
 
 `--dmg` additionally uses `hdiutil` to create `Velvet-0.1.0-preview-arm64-NOT-NOTARIZED.dmg`, containing the app and an Applications shortcut. Without that flag no disk image is created. Scratch staging directories are removed when the script exits. Failed disk-image creation can leave a partial output file, which must be inspected and moved aside before retrying.
 
-**This is ad-hoc signed only, NOT notarized.** The bundle's display name and included `PREVIEW.txt` say so. An ad-hoc signature is not an Apple Developer ID signature and does not establish a trusted publisher. Gatekeeper may block a downloaded preview. Do not disable Gatekeeper or remove quarantine globally to install it. Only run a local build whose source and origin you trust.
+**This is ad-hoc signed only, NOT notarized.** The bundle's display name and included `Contents/Resources/PREVIEW.txt` say so. An ad-hoc signature is not an Apple Developer ID signature and does not establish a trusted publisher. Gatekeeper may block a downloaded preview. Do not disable Gatekeeper or remove quarantine globally to install it. Only run a local build whose source and origin you trust.
 
 Distribution is a direct, manually installed preview app or optional DMG. Updates are manual: quit the app, obtain a trusted replacement, and replace the installed preview. There is no automatic updater, update feed, offline database, offline write queue, migration engine or conflict resolution in this slice. No offline durability or successful background sync is promised.
 
