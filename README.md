@@ -7,6 +7,14 @@ GitHub pull requests attach to issues as proof of that work, not as a controller
 Linear is the reference for feel and speed, not for feature scope.
 Self-hosting is the point: the team owns the data and the deployment.
 
+## Native macOS preview
+
+[`desktop/`](desktop/README.md) contains an online-first Rust/GPUI Apple Silicon preview, not a webview wrapper.
+It provides a native issue workspace, browser-approved desktop sign-in, macOS Keychain storage, issue creation and editing, explicit status changes, and progress comments.
+Other workflows open in the web app. See the [parity and verification ledger](desktop/parity.md) for tested paths and remaining limitations.
+Run `cargo run --locked --manifest-path desktop/Cargo.toml -- --demo` for read-only sample data.
+Local packaging is ad-hoc signed only, not notarized, and does not deploy the server or publish a release.
+
 ## The model
 
 **Project** is the durable thing work belongs to: a client engagement, a product area, something worked on for months.
