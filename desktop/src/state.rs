@@ -1,5 +1,14 @@
 use crate::api::{Comment, Issue, Milestone, Project, Sprint};
 
+pub fn role_label(role: &str) -> &str {
+    match role {
+        "admin" => "Admin",
+        "member" => "Member",
+        "viewer" => "Viewer",
+        _ => role,
+    }
+}
+
 pub fn sprint_state_label(state: &str) -> &str {
     match state {
         "upcoming" => "Upcoming",

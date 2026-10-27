@@ -1113,20 +1113,90 @@ impl Velvet {
             .text_color(Palette::new(self.dark).muted)
             .child(text)
     }
+    /// A left-aligned sidebar row. Button content centers by default, so the label
+    /// sits in a full-width row, and web destinations carry a quiet trailing arrow.
+    fn nav_row(&self, id: impl Into<ElementId>, label: &str, web: bool, current: bool) -> Button {
+        let p = Palette::new(self.dark);
+        Button::new(id)
+            .ghost()
+            .accessibility_label(if current {
+                format!("{label}, current view")
+            } else if web {
+                format!("{label}, opens in the web app")
+            } else {
+                label.to_owned()
+            })
+            .w_full()
+            .h(px(34.))
+            .px_2()
+            .when(current, |b| b.bg(p.paper).border_1().border_color(p.border))
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        div()
+                            .when(current, |d| d.font_weight(FontWeight::MEDIUM))
+                            .child(label.to_owned()),
+                    )
+                    .when(web, |row| row.child(div().text_color(p.muted).child("↗"))),
+            )
+    }
+    /// Dense two-line list row, with a 2px ink rule marking the selection so it never
+    /// depends on the background colour alone.
+    fn row_content(&self, selected: bool, top: impl IntoElement, bottom: impl IntoElement) -> Div {
+        let p = Palette::new(self.dark);
+        v_flex()
+            .w_full()
+            .min_w_0()
+            .pl_2()
+            .border_l_2()
+            .border_color(if selected { p.ink } else { transparent_black() })
+            .child(top)
+            .child(bottom)
+    }
+    fn row_title(title: String) -> Div {
+        div().text_size(px(16.)).truncate().child(title)
+    }
+    fn section_label(&self, text: &'static str) -> Div {
+        div()
+            .mt_4()
+            .mb_1()
+            .px_2()
+            .text_size(px(14.))
+            .text_color(Palette::new(self.dark).secondary)
+            .child(text)
+    }
     fn workspace_menu(&self, cx: &Context<Self>) -> AnyElement {
         let memberships = self
             .identity
             .as_ref()
             .map(|i| i.memberships.clone())
             .unwrap_or_default();
-        let label = memberships
+        let name = memberships
             .get(self.workspace)
-            .map(|w| format!("{}  ⇅", w.workspace_name))
+            .map(|w| w.workspace_name.clone())
             .unwrap_or_else(|| "Velvet".into());
+        let p = Palette::new(self.dark);
         let view = cx.entity().downgrade();
         Button::new("workspace")
             .ghost()
-            .label(label)
+            .accessibility_label(format!("Organisation: {name}. Switch organisation"))
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        div()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .truncate()
+                            .child(name),
+                    )
+                    .child(div().text_color(p.muted).child("⇅")),
+            )
+            .px_2()
             .w_full()
             .h(px(44.))
             .disabled(self.saving)
@@ -1261,133 +1331,152 @@ impl Velvet {
             .as_ref()
             .and_then(|i| i.memberships.get(self.workspace));
         let slug = self.slug().unwrap_or_default();
-        let nav = [
+        // Grouped like the web shell: planning, activity, then work across organisations.
+        let workspace_nav = [
             ("Dashboard", ""),
             ("Issues", "issues"),
             ("Projects", "projects"),
             ("Sprints", "sprints"),
             ("Reports", "reports"),
+        ];
+        let activity_nav = [
             ("Team feed", "feed"),
             ("Mentions", "mentions"),
             ("Unlinked PRs", "unlinked"),
         ];
+        let nav_button = |label: &'static str, path: &'static str| {
+            let slug = slug.clone();
+            let native = matches!(path, "issues" | "sprints");
+            let current = native && (path == "sprints") == self.sprints_view;
+            self.nav_row(
+                SharedString::from(format!("nav-{path}")),
+                label,
+                !native,
+                current,
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                if path == "issues" {
+                    this.commands = false;
+                    this.sprints_view = false;
+                    cx.notify();
+                } else if path == "sprints" {
+                    this.show_sprints(cx);
+                } else {
+                    this.open_web(
+                        &if path.is_empty() {
+                            format!("/w/{slug}")
+                        } else {
+                            format!("/w/{slug}/{path}")
+                        },
+                        cx,
+                    );
+                }
+            }))
+        };
         v_flex()
-            .w(px(220.))
+            .w(px(240.))
             .h_full()
             .flex_shrink_0()
             .p_3()
-            .gap_2()
+            .gap_1()
             .bg(p.surface)
             .border_r_1()
             .border_color(p.border)
             .child(self.workspace_menu(cx))
             .child(
-                self.label(
-                    workspace
-                        .map(|w| format!("{} access", w.role))
-                        .unwrap_or_default(),
-                ),
+                div()
+                    .px_2()
+                    .mb_2()
+                    .text_size(px(14.))
+                    .text_color(p.secondary)
+                    .child(
+                        workspace
+                            .map(|w| format!("{} access", state::role_label(&w.role)))
+                            .unwrap_or_default(),
+                    ),
             )
             .child(
                 Button::new("commands")
-                    .label("Search commands   ⌘K")
+                    .accessibility_label("Search commands, Command K")
                     .w_full()
+                    .px_2()
+                    .bg(p.paper)
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .justify_between()
+                            .child(div().text_color(p.secondary).child("Search…"))
+                            .child(div().text_size(px(14.)).text_color(p.muted).child("⌘K")),
+                    )
                     .on_click(cx.listener(|this, _, window, cx| this.open_commands(window, cx))),
             )
-            .child(div().mt_4().mb_1().child(self.label("Workspace")))
-            .children(nav.into_iter().map(|(label, path)| {
-                let slug = slug.clone();
-                let native = matches!(path, "issues" | "sprints");
-                let current = native && (path == "sprints") == self.sprints_view;
-                Button::new(SharedString::from(format!("nav-{path}")))
-                    .ghost()
-                    .label(if native {
-                        label.to_owned()
-                    } else {
-                        format!("{label}  ↗")
-                    })
-                    .when(current, |b| {
-                        b.accessibility_label(format!("{label}, current view"))
-                    })
-                    .w_full()
-                    .justify_start()
-                    .h(px(36.))
-                    .when(current, |b| b.bg(p.paper).border_1().border_color(p.border))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if path == "issues" {
-                            this.commands = false;
-                            this.sprints_view = false;
-                            cx.notify();
-                        } else if path == "sprints" {
-                            this.show_sprints(cx);
-                        } else {
-                            this.open_web(
-                                &if path.is_empty() {
-                                    format!("/w/{slug}")
-                                } else {
-                                    format!("/w/{slug}/{path}")
-                                },
-                                cx,
-                            );
-                        }
-                    }))
-            }))
-            .child(div().flex_1())
+            .child(self.section_label("Workspace"))
+            .children(workspace_nav.map(|(label, path)| nav_button(label, path)))
+            .child(self.section_label("Activity"))
+            .children(activity_nav.map(|(label, path)| nav_button(label, path)))
+            .child(self.section_label("Across organisations"))
             .child(
-                Button::new("worklog")
-                    .ghost()
-                    .label("My work log  ↗")
-                    .w_full()
-                    .justify_start()
+                self.nav_row("worklog", "My work log", true, false)
                     .on_click(cx.listener(|this, _, _, cx| this.open_web("/me/worklog", cx))),
             )
+            .child(div().flex_1())
             .child(
-                Button::new("theme")
-                    .ghost()
-                    .label(if self.dark {
+                self.nav_row(
+                    "theme",
+                    if self.dark {
                         "Light appearance"
                     } else {
                         "Dark appearance"
-                    })
-                    .w_full()
-                    .justify_start()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.dark = !this.dark;
-                        theme::apply(this.dark, cx);
-                        cx.notify();
-                    })),
+                    },
+                    false,
+                    false,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.dark = !this.dark;
+                    theme::apply(this.dark, cx);
+                    cx.notify();
+                })),
             )
             .child(
-                div().border_t_1().border_color(p.border).pt_3().child(
-                    self.identity
-                        .as_ref()
-                        .map(|i| i.user.label())
-                        .unwrap_or_default(),
-                ),
+                div()
+                    .mt_1()
+                    .px_2()
+                    .pt_3()
+                    .border_t_1()
+                    .border_color(p.border)
+                    .font_weight(FontWeight::MEDIUM)
+                    .truncate()
+                    .child(
+                        self.identity
+                            .as_ref()
+                            .map(|i| i.user.label())
+                            .unwrap_or_default(),
+                    ),
             )
             .child(
-                Button::new("logout")
-                    .ghost()
-                    .label(if self.demo {
+                self.nav_row(
+                    "logout",
+                    if self.demo {
                         "Exit sample preview"
                     } else {
                         "Sign out…"
-                    })
-                    .w_full()
-                    .justify_start()
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        if this.demo {
-                            this.demo = false;
-                            this.identity = None;
-                            this.issues.clear();
-                            this.selected = None;
-                            this.clear_sprints();
-                            this.sprints_view = false;
-                        } else {
-                            this.confirm_sign_out(window, cx);
-                        }
-                        cx.notify();
-                    })),
+                    },
+                    false,
+                    false,
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    if this.demo {
+                        this.demo = false;
+                        this.identity = None;
+                        this.issues.clear();
+                        this.selected = None;
+                        this.clear_sprints();
+                        this.sprints_view = false;
+                    } else {
+                        this.confirm_sign_out(window, cx);
+                    }
+                    cx.notify();
+                })),
             )
             .into_any_element()
     }
@@ -1401,58 +1490,53 @@ impl Velvet {
         );
         let view = cx.entity().downgrade();
         let count = indices.len();
-        let rows =
-            uniform_list("issue-list", count, move |range, _, cx| {
-                view.update(cx, |this, cx| {
-                    range
-                        .map(|row| {
-                            let index = indices[row];
-                            let issue = this.issues[index].clone();
-                            let p = Palette::new(this.dark);
-                            let selected = this.selected.as_ref().is_some_and(|s| s.id == issue.id);
-                            Button::new(("issue", index))
-                                .ghost()
-                                .accessibility_label(format!(
-                                    "{}: {}, {}{}",
-                                    issue.key,
-                                    issue.title,
-                                    status_label(&issue.status),
-                                    if selected { ", selected" } else { "" }
-                                ))
-                                .w_full()
-                                .h(px(96.))
-                                .justify_start()
-                                .px_3()
-                                .rounded_none()
-                                .when(selected, |b| b.bg(p.surface))
-                                .border_b_1()
-                                .border_color(p.border)
-                                .child(
-                                    v_flex()
-                                        .gap_1()
-                                        .w_full()
-                                        .min_w_0()
-                                        .child(h_flex().gap_2().child(this.label(issue.key)).child(
-                                            this.label(status_label(&issue.status).to_owned()),
-                                        ))
-                                        .child(
-                                            div()
-                                                .text_size(px(16.))
-                                                .whitespace_normal()
-                                                .line_clamp(2)
-                                                .child(issue.title),
-                                        ),
-                                )
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.select_issue(index, window, cx)
-                                }))
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default()
+        let rows = uniform_list("issue-list", count, move |range, _, cx| {
+            view.update(cx, |this, cx| {
+                range
+                    .map(|row| {
+                        let index = indices[row];
+                        let issue = this.issues[index].clone();
+                        let p = Palette::new(this.dark);
+                        let selected = this.selected.as_ref().is_some_and(|s| s.id == issue.id);
+                        Button::new(("issue", index))
+                            .ghost()
+                            .accessibility_label(format!(
+                                "{}: {}, {}{}",
+                                issue.key,
+                                issue.title,
+                                status_label(&issue.status),
+                                if selected { ", selected" } else { "" }
+                            ))
+                            .w_full()
+                            .h(px(64.))
+                            .justify_start()
+                            .pl_2()
+                            .pr_3()
+                            .rounded_none()
+                            .when(selected, |b| b.bg(p.surface))
+                            .border_b_1()
+                            .border_color(p.border)
+                            .child(
+                                this.row_content(
+                                    selected,
+                                    h_flex()
+                                        .justify_between()
+                                        .gap_2()
+                                        .child(this.label(issue.key))
+                                        .child(this.label(status_label(&issue.status).to_owned())),
+                                    Self::row_title(issue.title),
+                                ),
+                            )
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.select_issue(index, window, cx)
+                            }))
+                    })
+                    .collect::<Vec<_>>()
             })
-            .h_full()
-            .w_full();
+            .unwrap_or_default()
+        })
+        .h_full()
+        .w_full();
         v_flex()
             .w(px(340.))
             .h_full()
@@ -1599,21 +1683,19 @@ impl Velvet {
                                 if selected { ", selected" } else { "" }
                             ))
                             .w_full()
-                            .h(px(72.))
+                            .h(px(64.))
                             .justify_start()
-                            .px_3()
+                            .pl_2()
+                            .pr_3()
                             .rounded_none()
                             .when(selected, |b| b.bg(p.surface))
                             .border_b_1()
                             .border_color(p.border)
-                            .child(
-                                v_flex()
-                                    .gap_1()
-                                    .w_full()
-                                    .min_w_0()
-                                    .child(div().text_size(px(16.)).child(sprint.name.clone()))
-                                    .child(self.label(format!("{state} · {dates}"))),
-                            )
+                            .child(self.row_content(
+                                selected,
+                                Self::row_title(sprint.name.clone()),
+                                self.label(format!("{state} · {dates}")),
+                            ))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.select_sprint(Some(id.clone()), cx)
                             }))
@@ -1805,25 +1887,30 @@ impl Velvet {
         let slug = self.slug().unwrap_or_default();
         let key = issue.key.clone();
         let narrow = window.viewport_size().width < px(1200.);
+        let project = issue
+            .project_id
+            .as_ref()
+            .and_then(|id| self.projects.iter().find(|p| &p.id == id))
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| "Unfiled".into());
+        // The design's 272px metadata rail, beside the narrative on wide windows.
         let metadata = v_flex()
-            .w(if narrow { px(0.) } else { px(220.) })
+            .w(if narrow { px(0.) } else { px(272.) })
+            .flex_shrink_0()
             .when(!narrow, |v| v.p_4().border_l_1().border_color(p.border))
-            .gap_3()
+            .gap_1()
             .when(!narrow, |v| {
                 v.child(self.label("Status"))
                     .child(self.status_menu(true, cx))
                     .child(div().mt_4().child(self.label("Priority")))
                     .child(format!("P{}", issue.priority))
                     .child(div().mt_4().child(self.label("Project")))
+                    .child(project.clone())
                     .child(
-                        issue
-                            .project_id
-                            .as_ref()
-                            .and_then(|id| self.projects.iter().find(|p| &p.id == id))
-                            .map(|p| p.name.clone())
-                            .unwrap_or_else(|| "Unfiled".into()),
+                        div()
+                            .mt_6()
+                            .child(self.label("Labels, assignee and evidence are in the web app.")),
                     )
-                    .child(self.label("Other metadata and evidence are available in the web app."))
             });
         let description = TextView::markdown("description", issue.description.clone())
             // shortcut: image previews stay in the web app until authenticated native image loading lands.
@@ -1851,7 +1938,7 @@ impl Velvet {
                         h_flex()
                             .justify_between()
                             .gap_2()
-                            .child(self.label(issue.key.clone()))
+                            .child(self.label(format!("{} · {project}", issue.key)))
                             .child(
                                 h_flex()
                                     .gap_2()
@@ -1891,13 +1978,11 @@ impl Velvet {
                         v.child(
                             h_flex()
                                 .flex_wrap()
+                                .items_center()
                                 .gap_2()
-                                .child(self.label(format!(
-                                    "{} · P{}",
-                                    status_label(&issue.status),
-                                    issue.priority
-                                )))
-                                .child(self.status_menu(true, cx)),
+                                .child(self.label("Status"))
+                                .child(self.status_menu(true, cx))
+                                .child(self.label(format!("Priority P{}", issue.priority))),
                         )
                     })
                     .child(
@@ -1905,14 +1990,21 @@ impl Velvet {
                             .id("issue-description")
                             .role(Role::Paragraph)
                             .aria_label(issue.description.clone())
+                            // Readable measure, matching the web's 46rem Markdown width.
+                            .max_w(px(736.))
                             .child(description),
                     )
                     .child(
                         div()
+                            .id("activity-heading")
+                            .role(Role::Heading)
+                            .aria_label("Activity")
+                            .max_w(px(736.))
+                            .mt_2()
                             .border_t_1()
                             .border_color(p.border)
-                            .pt_4()
-                            .font_weight(FontWeight::MEDIUM)
+                            .pt_6()
+                            .font_weight(FontWeight::SEMIBOLD)
                             .child("Activity"),
                     )
                     .when(self.detail_loading, |v| {
