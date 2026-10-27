@@ -34,6 +34,148 @@ fn demo(cx: &mut TestAppContext, width: f32) -> (AnyWindowHandle, Entity<Velvet>
 }
 
 #[gpui_kit::test]
+fn native_fields_keep_accessible_names_when_values_change(cx: &mut TestAppContext) {
+    let (window, view) = demo(cx, 1280.);
+    window
+        .update(cx, |_, window, cx| {
+            window.render_frame(cx);
+            let search_id = ("input", view.read(cx).search.entity_id());
+            let composer_id = ("input", view.read(cx).composer.entity_id());
+            assert_eq!(
+                window.find(search_id.clone()).label(),
+                Some("Search loaded issues")
+            );
+            assert_eq!(
+                window.find(composer_id.clone()).label(),
+                Some("Progress update")
+            );
+            assert_eq!(
+                window.find(search_id).role(),
+                Some(gpui_kit::Role::TextInput)
+            );
+            assert_eq!(
+                window.find(composer_id.clone()).role(),
+                Some(gpui_kit::Role::MultilineTextInput)
+            );
+            view.update(cx, |this, cx| {
+                this.composer.update(cx, |input, cx| {
+                    input.set_value("Private progress draft", window, cx)
+                });
+            });
+            window.render_frame(cx);
+            assert_eq!(
+                window.find(composer_id.clone()).label(),
+                Some("Progress update")
+            );
+            assert_eq!(
+                window.find(composer_id).value(),
+                Some("Private progress draft")
+            );
+            window.click("new", cx);
+            let title_id = ("input", view.read(cx).title.entity_id());
+            let description_id = ("input", view.read(cx).description.entity_id());
+            assert_eq!(window.find(title_id.clone()).label(), Some("Issue title"));
+            assert_eq!(
+                window.find(description_id).label(),
+                Some("Issue description")
+            );
+            window.input("Named field stays named", cx);
+            assert_eq!(window.find(title_id.clone()).label(), Some("Issue title"));
+            assert_eq!(
+                window.find(title_id).value(),
+                Some("Named field stays named")
+            );
+            view.update(cx, |this, cx| {
+                this.close_overlay(window, cx);
+                this.identity = None;
+                cx.notify();
+            });
+            window.render_frame(cx);
+            let server_id = ("input", view.read(cx).server_input.entity_id());
+            assert_eq!(window.find(server_id).label(), Some("Velvet server"));
+            assert!(view.read(cx).client.is_none());
+        })
+        .unwrap();
+}
+
+#[gpui_kit::test]
+fn issue_selection_is_named_and_updates_without_resizing(cx: &mut TestAppContext) {
+    let (window, _) = demo(cx, 1280.);
+    window
+        .update(cx, |_, window, cx| {
+            window.render_frame(cx);
+            for selected in 0..2usize {
+                if selected == 1 {
+                    window.click(("issue", selected), cx);
+                }
+                for index in 0..2usize {
+                    let label = window.find(("issue", index)).label().unwrap().to_owned();
+                    assert_eq!(label.ends_with(", selected"), index == selected, "{label}");
+                }
+            }
+        })
+        .unwrap();
+}
+
+#[gpui_kit::test]
+fn native_buttons_support_tab_enter_and_space_without_pointer_input(cx: &mut TestAppContext) {
+    let (window, view) = demo(cx, 1280.);
+    window
+        .update(cx, |_, window, cx| {
+            window.render_frame(cx);
+            for _ in 0..40 {
+                if window.find("new").focused() == Some(true) {
+                    break;
+                }
+                window.press("tab", cx);
+            }
+            assert_eq!(window.find("new").focused(), Some(true));
+            assert_eq!(window.find("new").role(), Some(gpui_kit::Role::Button));
+            window.press("enter", cx);
+            assert!(view.read(cx).editing);
+            assert!(view.read(cx).title.focus_handle(cx).is_focused(window));
+            for _ in 0..12 {
+                if window.find("cancel-edit").focused() == Some(true) {
+                    break;
+                }
+                window.press("tab", cx);
+            }
+            assert_eq!(window.find("cancel-edit").focused(), Some(true));
+            window.press("space", cx);
+            assert!(!view.read(cx).editing);
+            assert_eq!(window.find("new").focused(), Some(true));
+        })
+        .unwrap();
+}
+
+#[gpui_kit::test]
+fn composer_tab_navigation_does_not_change_private_draft(cx: &mut TestAppContext) {
+    let (window, view) = demo(cx, 1280.);
+    window
+        .update(cx, |_, window, cx| {
+            window.render_frame(cx);
+            view.update(cx, |this, cx| {
+                this.composer.update(cx, |input, cx| {
+                    input.set_value("Keep this draft exact", window, cx);
+                    input.focus(window, cx);
+                });
+            });
+            window.render_frame(cx);
+            window.press("tab", cx);
+            assert_eq!(window.find("post").focused(), Some(true));
+            window.press("shift-tab", cx);
+            assert!(view.read(cx).composer.focus_handle(cx).is_focused(window));
+            window.press("shift-tab", cx);
+            assert!(!view.read(cx).composer.focus_handle(cx).is_focused(window));
+            assert_eq!(
+                view.read(cx).composer.read(cx).value().as_ref(),
+                "Keep this draft exact"
+            );
+        })
+        .unwrap();
+}
+
+#[gpui_kit::test]
 fn demo_renders_issue_buttons_and_selection(cx: &mut TestAppContext) {
     let (window, view) = demo(cx, 1440.);
     window
