@@ -1,4 +1,20 @@
-use crate::api::Issue;
+use crate::api::{Comment, Issue, Project};
+
+/// Filters hold a project id, but the API names a project by its key.
+pub fn project_key(projects: &[Project], id: Option<&str>) -> Option<String> {
+    let id = id?;
+    projects.iter().find(|p| p.id == id).map(|p| p.key.clone())
+}
+
+/// Names the author and says when an agent, not the person, wrote the entry.
+pub fn author_label(comment: &Comment) -> String {
+    let name = comment.author.label();
+    if comment.source == "agent" {
+        format!("{name} (agent)")
+    } else {
+        name
+    }
+}
 
 pub const STATUSES: [&str; 6] = [
     "backlog",
@@ -99,6 +115,37 @@ mod tests {
         assert_eq!(matching_indices(&issues, "vel-2", None, None), vec![1]);
         assert!(matching_indices(&issues, "native", Some("two"), Some("todo")).is_empty());
         assert_eq!(matching_indices(&issues, "", None, None), vec![0, 1]);
+    }
+    #[test]
+    fn new_issues_name_the_filtered_project_by_key() {
+        let projects = vec![Project {
+            id: "0b9f-uuid".into(),
+            key: "desktop".into(),
+            name: "Desktop".into(),
+        }];
+        assert_eq!(
+            project_key(&projects, Some("0b9f-uuid")),
+            Some("desktop".into())
+        );
+        assert_eq!(project_key(&projects, Some("missing")), None);
+        assert_eq!(project_key(&projects, None), None);
+    }
+    #[test]
+    fn author_falls_back_to_email_and_marks_agents() {
+        let mut comment = Comment {
+            author: crate::api::User {
+                email: "person@example.com".into(),
+                name: " ".into(),
+            },
+            body: String::new(),
+            source: "human".into(),
+            kind: None,
+            deleted_at: None,
+        };
+        assert_eq!(author_label(&comment), "person@example.com");
+        comment.author.name = "Ada".into();
+        comment.source = "agent".into();
+        assert_eq!(author_label(&comment), "Ada (agent)");
     }
     #[test]
     fn switching_context_rejects_late_responses() {

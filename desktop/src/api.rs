@@ -173,14 +173,6 @@ impl ApiClient {
         )?)?;
         Ok(result.projects)
     }
-    pub fn issues(
-        &self,
-        slug: &str,
-        project: Option<&str>,
-        status: Option<&str>,
-    ) -> Result<IssuePage> {
-        self.issues_page(slug, project, status, None)
-    }
     pub fn issues_page(
         &self,
         slug: &str,
@@ -244,9 +236,6 @@ impl ApiClient {
             Some(json!({"body":body,"kind":kind})),
             true,
         )?)
-    }
-    pub fn create_issue(&self, slug: &str, title: &str, description: &str) -> Result<Issue> {
-        self.create_issue_in_project(slug, title, description, None)
     }
     pub fn create_issue_in_project(
         &self,
@@ -318,9 +307,6 @@ fn null_vec<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
 pub struct DeviceSession {
     pub device_code: String,
     pub user_code: String,
-    pub verification_uri: String,
-    pub verification_uri_complete: String,
-    pub expires_at: String,
     pub interval: u64,
 }
 #[derive(Clone, Deserialize)]
@@ -337,22 +323,25 @@ pub struct Identity {
 }
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct User {
-    pub id: String,
     #[serde(default)]
     pub email: String,
     #[serde(default)]
     pub name: String,
-    #[serde(default)]
-    pub avatar_url: String,
-    pub github_login: Option<String>,
+}
+impl User {
+    /// Accounts may have no display name, so fall back to the email like the web app.
+    pub fn label(&self) -> String {
+        if self.name.trim().is_empty() {
+            self.email.clone()
+        } else {
+            self.name.clone()
+        }
+    }
 }
 #[derive(Clone, Debug, Deserialize)]
 pub struct Membership {
-    pub id: String,
-    pub workspace_id: String,
     pub workspace_slug: String,
     pub workspace_name: String,
-    pub issue_prefix: String,
     pub role: String,
 }
 #[derive(Clone, Debug, Deserialize)]
@@ -360,9 +349,6 @@ pub struct Project {
     pub id: String,
     pub key: String,
     pub name: String,
-    #[serde(default)]
-    pub description: String,
-    pub status: String,
 }
 #[derive(Clone, Debug, Deserialize)]
 pub struct IssuePage {
@@ -382,26 +368,14 @@ pub struct Issue {
     #[serde(default)]
     pub priority: i32,
     pub project_id: Option<String>,
-    pub assignee_id: Option<String>,
-    #[serde(default)]
-    pub created_at: String,
-    #[serde(default)]
-    pub updated_at: String,
-    #[serde(default, deserialize_with = "null_vec")]
-    pub children: Vec<Issue>,
 }
 #[derive(Clone, Debug, Deserialize)]
 pub struct Comment {
-    pub id: String,
     pub author: User,
     pub body: String,
     pub source: String,
     pub kind: Option<String>,
-    pub created_at: String,
-    pub edited_at: Option<String>,
     pub deleted_at: Option<String>,
-    #[serde(default, deserialize_with = "null_vec")]
-    pub replies: Vec<Comment>,
 }
 
 #[cfg(test)]
@@ -577,7 +551,7 @@ mod tests {
         let (address, _, handle) = server("302 Found", "secret-bearer", &headers);
         let error = ApiClient::new(&address, Some("secret-bearer".into()))
             .unwrap()
-            .issues("org", None, None)
+            .issues_page("org", None, None, None)
             .unwrap_err();
         assert!(error.to_string().contains("302"));
         assert!(!format!("{error:?}").contains("secret-bearer"));
@@ -632,13 +606,13 @@ mod tests {
         );
         handle.join().unwrap();
 
-        let comment = r#"{"id":"c","author":{"id":"u"},"body":"Update","source":"human","kind":"note","created_at":"now"}"#;
+        let comment = r#"{"id":"c","author":{"id":"u","email":"u@example.com"},"body":"Update","source":"human","kind":"note","created_at":"now"}"#;
         let (address, received, handle) = server("201 Created", comment, "");
         let comment = ApiClient::new(&address, Some("secret".into()))
             .unwrap()
             .add_comment("org", "V-1", "Update", Some("note"))
             .unwrap();
-        assert_eq!(comment.author.id, "u");
+        assert_eq!(comment.author.email, "u@example.com");
         let request = received.recv().unwrap();
         assert!(request.starts_with("POST /api/v1/w/org/issues/V-1/comments "));
         assert_eq!(
@@ -670,7 +644,7 @@ mod tests {
             let (address, _, handle) = server(status, body, "");
             let error = ApiClient::new(&address, Some("secret-bearer".into()))
                 .unwrap()
-                .issues("org", None, None)
+                .issues_page("org", None, None, None)
                 .unwrap_err();
             assert!(!format!("{error:?}").contains("secret-bearer"));
             handle.join().unwrap();
@@ -756,7 +730,9 @@ mod tests {
             let (address, received, handle) = server("200 OK", issue, "");
             let client = ApiClient::new(&address, Some("secret".into())).unwrap();
             if method == "POST" {
-                client.create_issue("org", "A", "B").unwrap();
+                client
+                    .create_issue_in_project("org", "A", "B", None)
+                    .unwrap();
             } else {
                 client.update_status("org", "V-1", "done").unwrap();
             }

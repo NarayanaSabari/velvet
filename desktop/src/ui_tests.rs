@@ -222,18 +222,13 @@ fn native_semantics_expose_workspace_comment_text_and_modal_heading(cx: &mut Tes
         .update(cx, |_, window, cx| {
             view.update(cx, |this, cx| {
                 let comment = crate::api::Comment {
-                    id: "accessible-comment".into(),
                     author: this.identity.as_ref().unwrap().user.clone(),
                     body: "Progress body readable without pointer input".into(),
-                    source: "user".into(),
+                    source: "human".into(),
                     kind: Some("Progress".into()),
-                    created_at: "2026-10-27T10:00:00Z".into(),
-                    edited_at: None,
                     deleted_at: None,
-                    replies: vec![],
                 };
                 let mut deleted = comment.clone();
-                deleted.id = "deleted-comment".into();
                 deleted.body = "Deleted private text must not be announced".into();
                 deleted.deleted_at = Some("2026-10-27T10:01:00Z".into());
                 this.comments = vec![comment, deleted];
@@ -330,7 +325,6 @@ fn create_and_edit_drafts_stay_separate_across_workspaces(cx: &mut TestAppContex
             view.update(cx, |this, cx| {
                 let mut second = this.identity.as_ref().unwrap().memberships[0].clone();
                 second.workspace_slug = "other".into();
-                second.workspace_id = "other".into();
                 this.identity.as_mut().unwrap().memberships.push(second);
                 this.switch_workspace(1, window, cx);
                 this.open_form(false, window, cx);

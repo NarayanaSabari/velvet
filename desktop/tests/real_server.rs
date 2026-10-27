@@ -2,6 +2,8 @@
 //! First read e2e/README.md and run ./e2e/stack-up.sh. Do not run alongside Playwright.
 //! Run: cargo test --manifest-path desktop/Cargo.toml --test real_server connected_desktop_flow -- --ignored
 //! This test creates and deletes its own user/workspace, never touches Keychain, and never prints credentials.
+// This flow exercises a subset of the shared client, so unused items are expected.
+#[allow(dead_code)]
 #[path = "../src/api.rs"]
 mod api;
 
@@ -166,7 +168,8 @@ fn connected_desktop_flow() -> Result<()> {
     let anonymous = ApiClient::new(SERVER, None)?;
     let device = anonymous.start_login()?;
     assert!(anonymous.poll_login(&device.device_code)?.is_none());
-    fixture.approve_in_browser(&device.verification_uri_complete)?;
+    // Approve the same URL the app opens, built from the user code.
+    fixture.approve_in_browser(&format!("{SERVER}/cli/approve?code={}", device.user_code))?;
     let grant = anonymous
         .poll_login(&device.device_code)?
         .context("Approved desktop grant was not ready")?;
@@ -217,12 +220,12 @@ fn connected_desktop_flow() -> Result<()> {
         Some("note"),
     )?;
     assert_eq!(comment.source, "human");
-    assert_eq!(comment.author.id, identity.user.id);
+    assert_eq!(comment.author.email, identity.user.email);
     let comments = client.comments(&fixture.slug, &issue.key)?;
     assert!(
         comments
             .iter()
-            .any(|item| item.id == comment.id && item.source == "human")
+            .any(|item| item.body == comment.body && item.source == "human")
     );
     client.revoke()?;
     let revoked = client.identity().unwrap_err();

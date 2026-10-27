@@ -1,7 +1,7 @@
 use crate::{
     api::{ApiClient, Comment, DeviceSession, Identity, Issue, Project},
     credentials,
-    state::{self, Revision, STATUSES, status_label},
+    state::{self, Revision, STATUSES, author_label, status_label},
     theme::{self, Palette},
 };
 use gpui_kit::base::{FocusTrapElement, TestSupportExt, text::TextView};
@@ -648,7 +648,7 @@ impl Velvet {
         };
         let key = self.edit_key.clone();
         let draft_key = (slug.clone(), key.clone());
-        let project = self.project.clone();
+        let project = state::project_key(&self.projects, self.project.as_deref());
         let revision = self.session_revision.current();
         self.list_revision.next();
         self.loading = false;
@@ -906,7 +906,10 @@ impl Velvet {
     }
     fn seed_demo(&mut self) {
         self.identity=serde_json::from_value(serde_json::json!({"token_kind":"desktop","user":{"id":"sample","name":"Sabari","email":"Sample account"},"memberships":[{"id":"sample","workspace_id":"sample","workspace_slug":"velvet","workspace_name":"Velvet","issue_prefix":"VEL","role":"member"}]})).ok();
-        self.projects=serde_json::from_value(serde_json::json!([{"id":"desktop","key":"desktop","name":"Desktop","status":"active"}])).unwrap_or_default();
+        self.projects = serde_json::from_value(
+            serde_json::json!([{"id":"sample-project-id","key":"desktop","name":"Desktop"}]),
+        )
+        .unwrap_or_default();
         self.issues=[("Build the native workspace shell","in_progress"),("Add browser sign-in","todo"),("Connect issue details","todo"),("Write a work log","backlog"),("Add keyboard navigation","todo"),("Package the macOS app","done")].into_iter().enumerate().map(|(i,(title,status))|Issue{id:format!("sample-{i}"),key:format!("VEL-{}",142+i),title:title.into(),description:"Bring issues, project context, and work logs into one native workspace.\n\nKeep the interface fast, quiet, and keyboard-first.\n\n### Checklist\n- [x] Workspace switcher\n- [x] Issue list and detail\n- [ ] Command palette\n\nThis is **sample data**, not your project’s current work.".into(),status:status.into(),priority:2,project_id:Some("desktop".into()),..Default::default()}).collect();
         self.selected = self.issues.first().cloned();
     }
@@ -1161,7 +1164,7 @@ impl Velvet {
                 div().border_t_1().border_color(p.border).pt_3().child(
                     self.identity
                         .as_ref()
-                        .map(|i| i.user.name.clone())
+                        .map(|i| i.user.label())
                         .unwrap_or_default(),
                 ),
             )
@@ -1475,9 +1478,9 @@ impl Velvet {
                                         div()
                                             .id(("comment-author", index))
                                             .role(Role::Paragraph)
-                                            .aria_label(comment.author.name.clone())
+                                            .aria_label(author_label(comment))
                                             .test_support()
-                                            .child(comment.author.name.clone()),
+                                            .child(author_label(comment)),
                                     )
                                     .child(self.label(
                                         comment.kind.clone().unwrap_or_else(|| "Comment".into()),

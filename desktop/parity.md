@@ -47,7 +47,8 @@ The final c39a3c3 package was also launched against the same real server after t
 - DMG: `desktop/dist/Velvet-0.1.0-preview-arm64-NOT-NOTARIZED.dmg`, SHA-256 `3c6bb06c721c1c919aafd9f5f6191a990c993111826fc86f0caafa74f6e10456`.
 - Production sign-in requires a server with the dedicated desktop-auth migration and handlers. Package verification does not establish deployment success; rollout and native remote-check results must be checked independently.
 - No valid Apple code-signing identity is installed on the build machine. Developer ID signing, notarization and trusted clean-machine distribution remain blocked, not completed.
-- Unused model-field warnings and an upstream `block` future-compatibility warning remain.
+- An upstream `block` future-compatibility warning from GPUI's dependencies remains. Local unused-field warnings were removed on October 27.
+- New issues created under a project filter now send the project key the API expects, not the project id. This was fixed on October 27 and covered by a unit test, but not yet re-run against the live stack.
 - Work-log recording was blocked: `velvet whoami` exited 3 because the CLI was not signed in. No successful log is claimed.
 
 ## Build environment
