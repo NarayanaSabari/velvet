@@ -177,8 +177,20 @@ it('does not approve an expired session returned by lookup', async () => {
   vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => response(url === '/api/v1/me'
     ? { user, memberships: [] } : { ...pendingLogin, expires_at: '2020-01-01T00:00:00Z' })))
   showCLI()
-  expect(await screen.findByRole('button', { name: 'Approve login' })).toBeDisabled()
+  const approve = await screen.findByRole('button', { name: 'Approve login' })
+  await waitFor(() => expect(approve).toBeDisabled())
   expect(screen.getByRole('alert')).toHaveTextContent('expired')
+})
+
+it('disables approval when an open session expires', async () => {
+  const expiresAt = new Date(Date.now() + 500).toISOString()
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => response(url === '/api/v1/me'
+    ? { user, memberships: [] } : { ...pendingLogin, expires_at: expiresAt })))
+  showCLI()
+  const approve = await screen.findByRole('button', { name: 'Approve login' })
+  expect(approve).toBeEnabled()
+  await waitFor(() => expect(approve).toBeDisabled(), { timeout: 2000 })
+  expect(screen.getByRole('alert')).toHaveTextContent('This request expired')
 })
 
 it('includes safe consent context in signed-out email requests without approving', async () => {

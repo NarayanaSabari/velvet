@@ -10,7 +10,7 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
 
 const RTF = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
 
-export function relativeLabel(iso: string, now: number = Date.now()): string {
+function relativeLabel(iso: string, now: number = Date.now()): string {
   const then = new Date(iso).getTime()
   if (Number.isNaN(then)) return iso
   const seconds = (then - now) / 1000

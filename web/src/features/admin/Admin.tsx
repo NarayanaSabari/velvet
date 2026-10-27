@@ -32,7 +32,7 @@ function AdminPage({ slug, page, workspace }: { slug: string; page: AdminPageId;
     case 'general':
       return (
         <>
-          <OrganisationPanel slug={slug} workspace={workspace} />
+          <OrganisationPanel key={slug} slug={slug} workspace={workspace} />
           <SuggestionsPanel slug={slug} />
         </>
       )

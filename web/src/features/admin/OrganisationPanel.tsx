@@ -8,7 +8,9 @@ import { refreshPrivateQueries } from '../auth/sessionNavigation'
 
 export function OrganisationPanel({ slug, workspace }: { slug: string; workspace: Membership }) {
   const client = useQueryClient()
-  const [name, setName] = useState(workspace.workspace_name)
+  // An unsaved edit wins; otherwise the field follows the server's name.
+  const [draft, setName] = useState<string>()
+  const name = draft ?? workspace.workspace_name
   const [saved, setSaved] = useState(false)
   const update = useMutation({
     mutationFn: () => api.patch<Workspace>(`/w/${slug}`, { name: name.trim() }),
@@ -16,12 +18,9 @@ export function OrganisationPanel({ slug, workspace }: { slug: string; workspace
       setName(updated.name)
       setSaved(true)
       await refreshPrivateQueries(client)
+      setName(undefined)
     },
   })
-
-  useEffect(() => {
-    setName(workspace.workspace_name)
-  }, [workspace.workspace_name])
 
   useEffect(() => {
     if (!saved) return

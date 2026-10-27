@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { api, ApiError } from '../../lib/api'
@@ -54,6 +54,18 @@ export function ApproveCLI() {
   const desktop = pending.data?.flow === 'desktop'
   const unscoped = login || manage || desktop
   const legacyInit = pending.isSuccess && (pending.data.flow === undefined || pending.data.flow === 'init')
+  // Expiry is tracked per deadline so a new code starts unexpired, and the page
+  // flips to expired on time instead of on the next unrelated render.
+  const expiresAt = pending.data ? Date.parse(pending.data.expires_at) : NaN
+  const [expiredAt, setExpiredAt] = useState<number>()
+  const expired = expiredAt === expiresAt
+  useEffect(() => {
+    const delay = expiresAt - Date.now()
+    // Beyond setTimeout's 32-bit limit the timer would fire immediately.
+    if (Number.isNaN(delay) || delay > 2 ** 31 - 1) return
+    const timer = setTimeout(() => setExpiredAt(expiresAt), Math.max(delay, 0))
+    return () => clearTimeout(timer)
+  }, [expiresAt])
   const projects = useQuery({
     queryKey: ['projects', slug, false],
     queryFn: () => api.get<{ projects: Project[] }>(`/w/${slug}/projects`),
@@ -124,7 +136,7 @@ export function ApproveCLI() {
   }
 
   const busy = approve.isPending || deny.isPending
-  const ready = (unscoped || (slug !== '' && projectKey !== '' && !creating)) && !busy && Date.parse(pending.data.expires_at) > Date.now()
+  const ready = (unscoped || (slug !== '' && projectKey !== '' && !creating)) && !busy && !expired
   return layout(
     <div className="space-y-5">
       <div className="rounded-[var(--radius-surface)] border border-grey-200 p-4">
@@ -170,9 +182,9 @@ export function ApproveCLI() {
 
       </>}
       {deny.error ? <p role="alert" className="text-blocked">{deny.error.message}</p> : null}
-      {Date.parse(pending.data.expires_at) <= Date.now() ? <p role="alert" className="text-blocked">{desktop ? 'This request expired. Start sign-in again in Velvet for macOS.' : 'This request expired. Run velvet login again.'}</p> : null}
+      {expired ? <p role="alert" className="text-blocked">{desktop ? 'This request expired. Start sign-in again in Velvet for macOS.' : 'This request expired. Run velvet login again.'}</p> : null}
       {approve.error ? <p role="alert" className="text-blocked">{approve.error.message}</p> : null}
-      <form className="flex flex-wrap gap-3" aria-label={desktop ? 'Connect the desktop app' : 'Connect the CLI'} onSubmit={(e) => { e.preventDefault(); if (ready && Date.parse(pending.data.expires_at) > Date.now()) approve.mutate() }}>
+      <form className="flex flex-wrap gap-3" aria-label={desktop ? 'Connect the desktop app' : 'Connect the CLI'} onSubmit={(e) => { e.preventDefault(); if (ready) approve.mutate() }}>
         <Button className="min-h-12" variant="primary" type="submit" disabled={!ready}>{approve.isPending ? 'Connecting…' : desktop ? 'Approve desktop app' : manage ? 'Approve account management' : login ? 'Approve login' : 'Connect'}</Button>
         <Button className="min-h-12" type="button" disabled={busy} onClick={() => deny.mutate()}>Refuse</Button>
       </form>

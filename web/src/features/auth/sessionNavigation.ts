@@ -11,6 +11,7 @@ export function cliReturnTo(value?: string): string | undefined {
 
 /** Reject browser URL parsing tricks, including backslashes and control characters. */
 export function safeSignInNext(value: string): string {
+  // oxlint-disable-next-line no-control-regex -- matching control characters is the point.
   if (!value.startsWith('/') || value.startsWith('//') || /[\\\s\u0000-\u001f\u007f]/.test(value)) return '/'
   const url = new URL(value, window.location.origin)
   return url.origin === window.location.origin ? `${url.pathname}${url.search}${url.hash}` : '/'

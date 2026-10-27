@@ -86,7 +86,7 @@ function parseableTimestamp(iso: string): string {
   return iso
 }
 
-export function daysSince(iso: string, now: number = Date.now()): number {
+function daysSince(iso: string, now: number = Date.now()): number {
   const then = new Date(parseableTimestamp(iso)).getTime()
   if (Number.isNaN(then)) return 0
   return Math.floor((now - then) / 864e5)

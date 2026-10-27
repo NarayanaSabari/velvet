@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 
 export interface ListProps<T> {
   items: T[]
@@ -15,13 +15,10 @@ export function List<T>({
   onActivate,
   ariaLabel,
 }: ListProps<T>) {
-  const [index, setIndex] = useState(0)
+  const [cursor, setIndex] = useState(0)
   const ref = useRef<HTMLUListElement>(null)
-
-  useEffect(() => {
-    // Keep the cursor inside the list when items are filtered away underneath it.
-    setIndex((i) => Math.min(i, Math.max(items.length - 1, 0)))
-  }, [items.length])
+  // Keep the cursor inside the list when items are filtered away underneath it.
+  const index = Math.min(cursor, Math.max(items.length - 1, 0))
 
   const active = items[index]
   const activeId = active ? `list-item-${keyExtractor(active)}` : undefined
@@ -39,10 +36,10 @@ export function List<T>({
           // preventDefault only on keys actually handled, so an unhandled key
           // still scrolls the page normally.
           e.preventDefault()
-          setIndex((i) => Math.min(i + 1, items.length - 1))
+          setIndex(Math.min(index + 1, items.length - 1))
         } else if (e.key === 'k' || e.key === 'ArrowUp') {
           e.preventDefault()
-          setIndex((i) => Math.max(i - 1, 0))
+          setIndex(Math.max(index - 1, 0))
         } else if (e.key === 'Enter') {
           e.preventDefault()
           const item = items[index]
