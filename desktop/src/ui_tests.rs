@@ -176,6 +176,111 @@ fn composer_tab_navigation_does_not_change_private_draft(cx: &mut TestAppContext
 }
 
 #[gpui_kit::test]
+fn dropdowns_open_with_enter_and_space_and_escape_dismisses(cx: &mut TestAppContext) {
+    let (window, _) = demo(cx, 1280.);
+    for trigger in [
+        "workspace",
+        "project-filter",
+        "status-filter",
+        "issue-status",
+    ] {
+        for key in ["enter", "space"] {
+            window
+                .update(cx, |_, window, cx| {
+                    window.render_frame(cx);
+                    for _ in 0..60 {
+                        if window.find(trigger).focused() == Some(true) {
+                            break;
+                        }
+                        window.press("tab", cx);
+                    }
+                    assert_eq!(window.find(trigger).focused(), Some(true), "{trigger}");
+                    window.press(key, cx);
+                })
+                .unwrap();
+            window
+                .update(cx, |_, window, cx| {
+                    window.render_frame(cx);
+                    assert_eq!(window.find("popup-menu").role(), Some(gpui_kit::Role::Menu));
+                    window.press("escape", cx);
+                })
+                .unwrap();
+            window
+                .update(cx, |_, window, cx| {
+                    window.render_frame(cx);
+                    assert!(window.try_find("popup-menu").is_none());
+                })
+                .unwrap();
+        }
+    }
+}
+
+#[gpui_kit::test]
+fn native_semantics_expose_workspace_comment_text_and_modal_heading(cx: &mut TestAppContext) {
+    let (window, view) = demo(cx, 1280.);
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |this, cx| {
+                let comment = crate::api::Comment {
+                    id: "accessible-comment".into(),
+                    author: this.identity.as_ref().unwrap().user.clone(),
+                    body: "Progress body readable without pointer input".into(),
+                    source: "user".into(),
+                    kind: Some("Progress".into()),
+                    created_at: "2026-10-27T10:00:00Z".into(),
+                    edited_at: None,
+                    deleted_at: None,
+                    replies: vec![],
+                };
+                let mut deleted = comment.clone();
+                deleted.id = "deleted-comment".into();
+                deleted.body = "Deleted private text must not be announced".into();
+                deleted.deleted_at = Some("2026-10-27T10:01:00Z".into());
+                this.comments = vec![comment, deleted];
+                cx.notify();
+            });
+            window.render_frame(cx);
+            assert_eq!(
+                window.find("velvet-workspace").role(),
+                Some(gpui_kit::Role::Main)
+            );
+            assert_eq!(
+                window.find("velvet-workspace").label(),
+                Some("Velvet workspace")
+            );
+            let author = &view.read(cx).identity.as_ref().unwrap().user.name;
+            assert_eq!(
+                window.find(("comment-author", 0usize)).label(),
+                Some(author.as_str())
+            );
+            assert_eq!(
+                window.find(("comment-body", 0usize)).role(),
+                Some(gpui_kit::Role::Paragraph)
+            );
+            assert_eq!(
+                window.find(("comment-body", 0usize)).label(),
+                Some("Progress body readable without pointer input")
+            );
+            assert_eq!(
+                window.find(("comment-body", 1usize)).label(),
+                Some("Comment deleted.")
+            );
+            window.click("new", cx);
+            assert_eq!(
+                window.find("velvet-modal").role(),
+                Some(gpui_kit::Role::Dialog)
+            );
+            assert_eq!(window.find("velvet-modal").label(), Some("Issue editor"));
+            assert_eq!(
+                window.find("overlay-heading").role(),
+                Some(gpui_kit::Role::Heading)
+            );
+            assert_eq!(window.find("overlay-heading").label(), Some("New issue"));
+        })
+        .unwrap();
+}
+
+#[gpui_kit::test]
 fn demo_renders_issue_buttons_and_selection(cx: &mut TestAppContext) {
     let (window, view) = demo(cx, 1440.);
     window
