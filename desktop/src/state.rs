@@ -1,4 +1,58 @@
-use crate::api::{Comment, Issue, Project};
+use crate::api::{Comment, Issue, Milestone, Project, Sprint};
+
+pub fn sprint_state_label(state: &str) -> &str {
+    match state {
+        "upcoming" => "Upcoming",
+        "active" => "Active",
+        "completed" => "Completed",
+        _ => state,
+    }
+}
+
+pub fn milestone_status_label(status: &str) -> &str {
+    match status {
+        "planned" => "Planned",
+        "in_progress" => "In progress",
+        "completed" => "Completed",
+        "cancelled" => "Cancelled",
+        _ => status,
+    }
+}
+
+/// Done issues against every issue in the milestone, matching the web sprint board.
+pub fn milestone_progress(milestone: &Milestone) -> (u32, u32) {
+    let done = milestone.issue_counts.get("done").copied().unwrap_or(0);
+    (done, milestone.issue_counts.values().sum())
+}
+
+/// Sprints in the project filter, keeping the server's newest-first order.
+pub fn visible_sprints(sprints: &[Sprint], project: Option<&str>) -> Vec<usize> {
+    sprints
+        .iter()
+        .enumerate()
+        .filter(|(_, sprint)| project.is_none_or(|id| sprint.project_id == id))
+        .map(|(index, _)| index)
+        .collect()
+}
+
+/// Keeps the chosen sprint while it stays visible, otherwise opens the active one.
+pub fn default_sprint(
+    sprints: &[Sprint],
+    project: Option<&str>,
+    current: Option<&str>,
+) -> Option<String> {
+    let visible = visible_sprints(sprints, project);
+    let pick = |wanted: &dyn Fn(&Sprint) -> bool| {
+        visible
+            .iter()
+            .map(|&index| &sprints[index])
+            .find(|sprint| wanted(sprint))
+            .map(|sprint| sprint.id.clone())
+    };
+    pick(&|sprint| Some(sprint.id.as_str()) == current)
+        .or_else(|| pick(&|sprint| sprint.state == "active"))
+        .or_else(|| pick(&|_| true))
+}
 
 /// Filters hold a project id, but the API names a project by its key.
 pub fn project_key(projects: &[Project], id: Option<&str>) -> Option<String> {
@@ -115,6 +169,54 @@ mod tests {
         assert_eq!(matching_indices(&issues, "vel-2", None, None), vec![1]);
         assert!(matching_indices(&issues, "native", Some("two"), Some("todo")).is_empty());
         assert_eq!(matching_indices(&issues, "", None, None), vec![0, 1]);
+    }
+    #[test]
+    fn sprints_follow_the_project_filter_and_open_the_active_one() {
+        let sprint = |id: &str, project: &str, state: &str| Sprint {
+            id: id.into(),
+            project_id: project.into(),
+            name: id.into(),
+            starts_on: String::new(),
+            ends_on: String::new(),
+            state: state.into(),
+        };
+        let sprints = vec![
+            sprint("next", "one", "upcoming"),
+            sprint("now", "one", "active"),
+            sprint("other", "two", "active"),
+        ];
+        assert_eq!(visible_sprints(&sprints, Some("one")), vec![0, 1]);
+        assert_eq!(
+            default_sprint(&sprints, Some("one"), None),
+            Some("now".into())
+        );
+        assert_eq!(
+            default_sprint(&sprints, Some("one"), Some("next")),
+            Some("next".into())
+        );
+        // A choice hidden by the filter falls back to the visible active sprint.
+        assert_eq!(
+            default_sprint(&sprints, Some("two"), Some("next")),
+            Some("other".into())
+        );
+        assert_eq!(default_sprint(&sprints, Some("none"), None), None);
+    }
+    #[test]
+    fn milestone_progress_counts_every_status() {
+        let milestone = Milestone {
+            id: "m".into(),
+            name: "Ship".into(),
+            status: "in_progress".into(),
+            target_date: None,
+            issue_counts: [
+                ("done".into(), 2),
+                ("todo".into(), 1),
+                ("cancelled".into(), 1),
+            ]
+            .into(),
+        };
+        assert_eq!(milestone_progress(&milestone), (2, 4));
+        assert_eq!(milestone_status_label("in_progress"), "In progress");
     }
     #[test]
     fn new_issues_name_the_filtered_project_by_key() {

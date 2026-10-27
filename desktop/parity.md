@@ -10,6 +10,7 @@ Snapshot: October 27, 2026. This is a first native preview slice, not full web-f
 - Issue creation, title/description editing, explicit status changes and human-attributed progress comments.
 - Keyboard commands, modal focus handling, in-memory context-isolated drafts and draft-safe Quit confirmation.
 - Light/dark appearance and narrow-window layout. Other workflows explicitly open the web app.
+- Read-only native sprints view (added October 27): sprints follow the project filter and open the active one, milestones show status, target date and done-of-total progress, and an expanded milestone lists its issues, which open in the native issue detail. Sprint transitions, milestone edits and milestone comments stay in the web app. Verified by unit, contract and native UI tests and by sample-data screenshots in both schemes. Not yet run against the live stack.
 - Locked dependencies, local ad-hoc app packaging and a separate read-only macOS check workflow.
 
 ## Verified evidence
@@ -60,7 +61,7 @@ Verified on macOS 26.4.1 arm64 with Rust/Cargo 1.97.1 in `~/.cargo/bin` and Appl
 - Offline database, offline writes, durable queues and conflict resolution.
 - Automatic updates, Intel/universal packages and other operating systems.
 - Developer ID signing, notarization, stapling and trusted clean-machine distribution.
-- Full native dashboard/feed, sprint planning, milestones, mentions, image attachments, GitHub evidence, reports, profile and administration.
+- Full native dashboard/feed, sprint planning and transitions, milestone editing and comments, mentions, image attachments, GitHub evidence, reports, profile and administration.
 - Public release. Builds, commits and local verification do not authorize a public release.
 
 Issue statuses never change automatically because a branch, commit, PR, package or deployment exists. The web application remains the reference for workflows not yet implemented natively.

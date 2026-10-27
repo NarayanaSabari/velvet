@@ -118,6 +118,52 @@ fn issue_selection_is_named_and_updates_without_resizing(cx: &mut TestAppContext
 }
 
 #[gpui_kit::test]
+fn sprint_board_shows_milestone_progress_and_opens_issues(cx: &mut TestAppContext) {
+    let (window, view) = demo(cx, 1280.);
+    window
+        .update(cx, |_, window, cx| {
+            window.render_frame(cx);
+            window.click("nav-sprints", cx);
+            window.render_frame(cx);
+            assert_eq!(
+                window.find("nav-sprints").label(),
+                Some("Sprints, current view")
+            );
+            assert_eq!(
+                window.find(("sprint", 0usize)).label(),
+                Some("October: Active, 2026-10-01 to 2026-10-31, selected")
+            );
+            assert_eq!(window.find("sprint-heading").label(), Some("October"));
+            assert_eq!(
+                window.find(("milestone", 1usize)).label(),
+                Some("Preview release: Planned · 1 of 3 done, collapsed")
+            );
+            window.click(("milestone", 1usize), cx);
+            window.render_frame(cx);
+            assert!(
+                window
+                    .find(("milestone", 1usize))
+                    .label()
+                    .unwrap()
+                    .ends_with(", expanded")
+            );
+            assert_eq!(
+                window.find(("milestone-issue", 2usize)).label(),
+                Some("VEL-147: Package the macOS app, Done")
+            );
+            window.click(("milestone-issue", 2usize), cx);
+            window.render_frame(cx);
+            let view = view.read(cx);
+            assert!(
+                !view.sprints_view,
+                "opening an issue returns to the issue view"
+            );
+            assert_eq!(view.selected.as_ref().unwrap().key, "VEL-147");
+        })
+        .unwrap();
+}
+
+#[gpui_kit::test]
 fn native_buttons_support_tab_enter_and_space_without_pointer_input(cx: &mut TestAppContext) {
     let (window, view) = demo(cx, 1280.);
     window

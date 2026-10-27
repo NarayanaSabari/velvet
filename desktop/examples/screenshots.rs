@@ -30,6 +30,8 @@ fn main() -> anyhow::Result<()> {
         ("narrow-light", 1000., false, ""),
         ("commands-light", 1280., false, "commands"),
         ("quit-light", 1280., false, "quit"),
+        ("sprints-light", 1280., false, "sprints"),
+        ("sprints-dark", 1280., true, "sprints"),
     ] {
         let mut cx = HeadlessAppContext::with_platform(
             platform.text_system(),
@@ -63,6 +65,10 @@ fn main() -> anyhow::Result<()> {
             window.render_frame(cx);
             if overlay == "commands" {
                 window.click("commands", cx);
+            } else if overlay == "sprints" {
+                window.click("nav-sprints", cx);
+                window.render_frame(cx);
+                window.click(("milestone", 1usize), cx);
             } else if overlay == "quit" {
                 window.click("new", cx);
                 window.input("Unsent draft retained until you confirm", cx);

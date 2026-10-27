@@ -198,6 +198,47 @@ impl ApiClient {
             true,
         )?)
     }
+    pub fn sprints(&self, slug: &str) -> Result<Vec<Sprint>> {
+        #[derive(Deserialize)]
+        struct Envelope {
+            #[serde(default, deserialize_with = "null_vec")]
+            sprints: Vec<Sprint>,
+        }
+        let result: Envelope = Self::decode(self.request(
+            Method::GET,
+            &["api", "v1", "w", slug, "sprints"],
+            &[],
+            None,
+            true,
+        )?)?;
+        Ok(result.sprints)
+    }
+    pub fn milestones(&self, slug: &str, sprint: &str) -> Result<Vec<Milestone>> {
+        #[derive(Deserialize)]
+        struct Envelope {
+            #[serde(default, deserialize_with = "null_vec")]
+            milestones: Vec<Milestone>,
+        }
+        let result: Envelope = Self::decode(self.request(
+            Method::GET,
+            &["api", "v1", "w", slug, "sprints", sprint, "milestones"],
+            &[],
+            None,
+            true,
+        )?)?;
+        Ok(result.milestones)
+    }
+    /// ponytail: one page of up to 200 issues per milestone, paginate if milestones grow past that.
+    pub fn milestone_issues(&self, slug: &str, milestone: &str) -> Result<Vec<Issue>> {
+        let page: IssuePage = Self::decode(self.request(
+            Method::GET,
+            &["api", "v1", "w", slug, "issues"],
+            &[("milestone_id", milestone), ("limit", "200")],
+            None,
+            true,
+        )?)?;
+        Ok(page.issues)
+    }
     pub fn issue(&self, slug: &str, key: &str) -> Result<Issue> {
         Self::decode(self.request(
             Method::GET,
@@ -368,6 +409,26 @@ pub struct Issue {
     #[serde(default)]
     pub priority: i32,
     pub project_id: Option<String>,
+    #[serde(default)]
+    pub milestone_id: Option<String>,
+}
+#[derive(Clone, Debug, Deserialize)]
+pub struct Sprint {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub starts_on: String,
+    pub ends_on: String,
+    pub state: String,
+}
+#[derive(Clone, Debug, Deserialize)]
+pub struct Milestone {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub target_date: Option<String>,
+    #[serde(default)]
+    pub issue_counts: std::collections::HashMap<String, u32>,
 }
 #[derive(Clone, Debug, Deserialize)]
 pub struct Comment {
@@ -577,6 +638,56 @@ mod tests {
         handle.join().unwrap();
     }
 
+    #[test]
+    fn sprint_and_milestone_contracts() {
+        let sprints = r#"{"sprints":[{"id":"s","workspace_id":"w","project_id":"p","name":"October","starts_on":"2026-10-01","ends_on":"2026-10-31","state":"active","created_at":"now","completed_at":null}]}"#;
+        let (address, received, handle) = server("200 OK", sprints, "");
+        let sprints = ApiClient::new(&address, Some("secret".into()))
+            .unwrap()
+            .sprints("org")
+            .unwrap();
+        assert_eq!(sprints[0].state, "active");
+        assert!(
+            received
+                .recv()
+                .unwrap()
+                .starts_with("GET /api/v1/w/org/sprints ")
+        );
+        handle.join().unwrap();
+
+        // A milestone with no issues omits issue_counts entirely.
+        let milestones = r#"{"milestones":[{"id":"m","name":"Ship","status":"planned","target_date":null},{"id":"n","name":"Polish","status":"in_progress","target_date":"2026-10-20","issue_counts":{"done":2,"todo":1}}]}"#;
+        let (address, received, handle) = server("200 OK", milestones, "");
+        let milestones = ApiClient::new(&address, Some("secret".into()))
+            .unwrap()
+            .milestones("org", "s")
+            .unwrap();
+        assert!(milestones[0].issue_counts.is_empty());
+        assert_eq!(milestones[1].issue_counts["done"], 2);
+        assert!(
+            received
+                .recv()
+                .unwrap()
+                .starts_with("GET /api/v1/w/org/sprints/s/milestones ")
+        );
+        handle.join().unwrap();
+
+        let (address, received, handle) = server("200 OK", r#"{"issues":null}"#, "");
+        assert!(
+            ApiClient::new(&address, Some("secret".into()))
+                .unwrap()
+                .milestone_issues("org", "m")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            received
+                .recv()
+                .unwrap()
+                .starts_with("GET /api/v1/w/org/issues?milestone_id=m&limit=200 ")
+        );
+        handle.join().unwrap();
+    }
     #[test]
     fn projects_comments_and_revoke_contracts() {
         let (address, received, handle) = server("200 OK", r#"{"projects":null}"#, "");

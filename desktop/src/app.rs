@@ -1,5 +1,5 @@
 use crate::{
-    api::{ApiClient, Comment, DeviceSession, Identity, Issue, Project},
+    api::{ApiClient, Comment, DeviceSession, Identity, Issue, Milestone, Project, Sprint},
     credentials,
     state::{self, Revision, STATUSES, author_label, status_label},
     theme::{self, Palette},
@@ -60,6 +60,16 @@ pub struct Velvet {
     selected: Option<Issue>,
     comments: Vec<Comment>,
     next_cursor: Option<String>,
+    sprints_view: bool,
+    sprints: Vec<Sprint>,
+    sprint: Option<String>,
+    milestones: Vec<Milestone>,
+    milestone: Option<String>,
+    /// Issues of the expanded milestone; `None` while they load.
+    milestone_issues: Option<Vec<Issue>>,
+    sprint_revision: Revision,
+    milestone_revision: Revision,
+    sprint_loading: bool,
     drafts: HashMap<(String, String), String>,
     form_drafts: HashMap<(String, Option<String>), (String, String)>,
     session_revision: Revision,
@@ -148,6 +158,15 @@ impl Velvet {
             selected: None,
             comments: vec![],
             next_cursor: None,
+            sprints_view: false,
+            sprints: vec![],
+            sprint: None,
+            milestones: vec![],
+            milestone: None,
+            milestone_issues: None,
+            sprint_revision: Revision::default(),
+            milestone_revision: Revision::default(),
+            sprint_loading: false,
             drafts: HashMap::new(),
             form_drafts: HashMap::new(),
             session_revision: Revision::default(),
@@ -408,6 +427,9 @@ impl Velvet {
         let (Some(client), Some(slug)) = (self.client.clone(), self.slug()) else {
             return;
         };
+        if self.sprints_view && !more {
+            self.load_sprints(cx);
+        }
         let cursor = if more { self.next_cursor.clone() } else { None };
         let session = self.session_revision.current();
         let revision = self.list_revision.next();
@@ -507,6 +529,151 @@ impl Velvet {
         .detach();
         cx.notify();
     }
+    fn clear_sprints(&mut self) {
+        self.sprint_revision.next();
+        self.milestone_revision.next();
+        self.sprints.clear();
+        self.sprint = None;
+        self.milestones.clear();
+        self.milestone = None;
+        self.milestone_issues = None;
+        self.sprint_loading = false;
+    }
+    fn show_sprints(&mut self, cx: &mut Context<Self>) {
+        self.commands = false;
+        self.sprints_view = true;
+        if self.sprints.is_empty() {
+            self.load_sprints(cx);
+        }
+        cx.notify();
+    }
+    fn load_sprints(&mut self, cx: &mut Context<Self>) {
+        if self.demo {
+            return;
+        }
+        let (Some(client), Some(slug)) = (self.client.clone(), self.slug()) else {
+            return;
+        };
+        let session = self.session_revision.current();
+        let revision = self.sprint_revision.next();
+        self.sprint_loading = true;
+        cx.spawn(async move |view, cx| {
+            let result = smol::unblock(move || client.sprints(&slug)).await;
+            let _ = view.update(cx, |this, cx| {
+                if !this.session_revision.accepts(session)
+                    || !this.sprint_revision.accepts(revision)
+                {
+                    return;
+                }
+                this.sprint_loading = false;
+                match result {
+                    Ok(sprints) => {
+                        this.sprints = sprints;
+                        let next = state::default_sprint(
+                            &this.sprints,
+                            this.project.as_deref(),
+                            this.sprint.as_deref(),
+                        );
+                        this.select_sprint(next, cx);
+                    }
+                    Err(e) => this.error = Some(e.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+    fn select_sprint(&mut self, id: Option<String>, cx: &mut Context<Self>) {
+        self.milestone_revision.next();
+        self.milestone = None;
+        self.milestone_issues = None;
+        self.sprint = id.clone();
+        cx.notify();
+        // The sample workspace has one sprint whose milestones are already seeded.
+        if self.demo {
+            return;
+        }
+        self.milestones.clear();
+        let (Some(id), Some(client), Some(slug)) = (id, self.client.clone(), self.slug()) else {
+            return;
+        };
+        let session = self.session_revision.current();
+        let revision = self.sprint_revision.next();
+        self.sprint_loading = true;
+        cx.spawn(async move |view, cx| {
+            let result = smol::unblock(move || client.milestones(&slug, &id)).await;
+            let _ = view.update(cx, |this, cx| {
+                if !this.session_revision.accepts(session)
+                    || !this.sprint_revision.accepts(revision)
+                {
+                    return;
+                }
+                this.sprint_loading = false;
+                match result {
+                    Ok(milestones) => this.milestones = milestones,
+                    Err(e) => this.error = Some(e.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+    fn toggle_milestone(&mut self, id: String, cx: &mut Context<Self>) {
+        let revision = self.milestone_revision.next();
+        self.milestone_issues = None;
+        cx.notify();
+        if self.milestone.as_deref() == Some(id.as_str()) {
+            self.milestone = None;
+            return;
+        }
+        self.milestone = Some(id.clone());
+        if self.demo {
+            let issues = self
+                .issues
+                .iter()
+                .filter(|i| i.milestone_id.as_ref() == Some(&id));
+            self.milestone_issues = Some(issues.cloned().collect());
+            return;
+        }
+        let (Some(client), Some(slug)) = (self.client.clone(), self.slug()) else {
+            return;
+        };
+        let session = self.session_revision.current();
+        cx.spawn(async move |view, cx| {
+            let result = smol::unblock(move || client.milestone_issues(&slug, &id)).await;
+            let _ = view.update(cx, |this, cx| {
+                if !this.session_revision.accepts(session)
+                    || !this.milestone_revision.accepts(revision)
+                {
+                    return;
+                }
+                match result {
+                    Ok(issues) => this.milestone_issues = Some(issues),
+                    Err(e) => {
+                        this.milestone = None;
+                        this.error = Some(e.to_string());
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+    /// Opens a sprint issue in the native detail, even if it is not in the loaded page.
+    fn open_issue(&mut self, issue: Issue, window: &mut Window, cx: &mut Context<Self>) {
+        if self.saving {
+            return;
+        }
+        self.sprints_view = false;
+        let index = match self.issues.iter().position(|i| i.id == issue.id) {
+            Some(index) => index,
+            None => {
+                self.issues.push(issue);
+                self.issues.len() - 1
+            }
+        };
+        self.select_issue(index, window, cx);
+    }
     fn switch_workspace(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         if self.saving || self.editing {
             self.error =
@@ -532,6 +699,7 @@ impl Velvet {
         self.comments.clear();
         self.next_cursor = None;
         self.detail_loading = false;
+        self.clear_sprints();
         self.search.update(cx, |s, cx| s.set_value("", window, cx));
         self.composer
             .update(cx, |s, cx| s.set_value("", window, cx));
@@ -851,6 +1019,8 @@ impl Velvet {
                         this.editing = false;
                         this.commands = false;
                         this.detail_loading = false;
+                        this.clear_sprints();
+                        this.sprints_view = false;
                         this.composer
                             .update(cx, |s, cx| s.set_value("", window, cx));
                         this.title.update(cx, |s, cx| s.set_value("", window, cx));
@@ -881,7 +1051,12 @@ impl Velvet {
         }
     }
     fn move_selection(&mut self, offset: isize, window: &mut Window, cx: &mut Context<Self>) {
-        if self.commands || self.editing || self.confirm_logout || self.quit_prompt {
+        if self.commands
+            || self.editing
+            || self.confirm_logout
+            || self.quit_prompt
+            || self.sprints_view
+        {
             return;
         }
         let indices = state::matching_indices(
@@ -910,8 +1085,14 @@ impl Velvet {
             serde_json::json!([{"id":"sample-project-id","key":"desktop","name":"Desktop"}]),
         )
         .unwrap_or_default();
-        self.issues=[("Build the native workspace shell","in_progress"),("Add browser sign-in","todo"),("Connect issue details","todo"),("Write a work log","backlog"),("Add keyboard navigation","todo"),("Package the macOS app","done")].into_iter().enumerate().map(|(i,(title,status))|Issue{id:format!("sample-{i}"),key:format!("VEL-{}",142+i),title:title.into(),description:"Bring issues, project context, and work logs into one native workspace.\n\nKeep the interface fast, quiet, and keyboard-first.\n\n### Checklist\n- [x] Workspace switcher\n- [x] Issue list and detail\n- [ ] Command palette\n\nThis is **sample data**, not your project’s current work.".into(),status:status.into(),priority:2,project_id:Some("desktop".into()),..Default::default()}).collect();
+        self.issues=[("Build the native workspace shell","in_progress"),("Add browser sign-in","todo"),("Connect issue details","todo"),("Write a work log","backlog"),("Add keyboard navigation","todo"),("Package the macOS app","done")].into_iter().enumerate().map(|(i,(title,status))|Issue{id:format!("sample-{i}"),key:format!("VEL-{}",142+i),title:title.into(),description:"Bring issues, project context, and work logs into one native workspace.\n\nKeep the interface fast, quiet, and keyboard-first.\n\n### Checklist\n- [x] Workspace switcher\n- [x] Issue list and detail\n- [ ] Command palette\n\nThis is **sample data**, not your project’s current work.".into(),status:status.into(),priority:2,project_id:Some("sample-project-id".into()),milestone_id:Some(if i < 3 {"sample-shell"} else {"sample-release"}.into())}).collect();
         self.selected = self.issues.first().cloned();
+        self.sprints = serde_json::from_value(serde_json::json!([{"id":"sample-sprint","project_id":"sample-project-id","name":"October","starts_on":"2026-10-01","ends_on":"2026-10-31","state":"active"}])).unwrap_or_default();
+        self.sprint = Some("sample-sprint".into());
+        self.milestones = serde_json::from_value(serde_json::json!([
+            {"id":"sample-shell","name":"Native workspace","status":"in_progress","target_date":"2026-10-15","issue_counts":{"in_progress":1,"todo":2}},
+            {"id":"sample-release","name":"Preview release","status":"planned","target_date":null,"issue_counts":{"backlog":1,"todo":1,"done":1}}
+        ])).unwrap_or_default();
     }
 }
 
@@ -992,6 +1173,16 @@ impl Velvet {
                     menu = menu.item(PopupMenuItem::new(name.clone()).on_click(move |_, _, cx| {
                         let _ = view.update(cx, |this, cx| {
                             this.project = id.clone();
+                            if this.sprints_view {
+                                let next = state::default_sprint(
+                                    &this.sprints,
+                                    this.project.as_deref(),
+                                    this.sprint.as_deref(),
+                                );
+                                if next != this.sprint {
+                                    this.select_sprint(next, cx);
+                                }
+                            }
                             cx.notify();
                         });
                     }));
@@ -1106,23 +1297,29 @@ impl Velvet {
             .child(div().mt_4().mb_1().child(self.label("Workspace")))
             .children(nav.into_iter().map(|(label, path)| {
                 let slug = slug.clone();
+                let native = matches!(path, "issues" | "sprints");
+                let current = native && (path == "sprints") == self.sprints_view;
                 Button::new(SharedString::from(format!("nav-{path}")))
                     .ghost()
-                    .label(if path == "issues" {
+                    .label(if native {
                         label.to_owned()
                     } else {
                         format!("{label}  ↗")
                     })
+                    .when(current, |b| {
+                        b.accessibility_label(format!("{label}, current view"))
+                    })
                     .w_full()
                     .justify_start()
                     .h(px(36.))
-                    .when(path == "issues", |b| {
-                        b.bg(p.paper).border_1().border_color(p.border)
-                    })
+                    .when(current, |b| b.bg(p.paper).border_1().border_color(p.border))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if path == "issues" {
                             this.commands = false;
+                            this.sprints_view = false;
                             cx.notify();
+                        } else if path == "sprints" {
+                            this.show_sprints(cx);
                         } else {
                             this.open_web(
                                 &if path.is_empty() {
@@ -1184,6 +1381,8 @@ impl Velvet {
                             this.identity = None;
                             this.issues.clear();
                             this.selected = None;
+                            this.clear_sprints();
+                            this.sprints_view = false;
                         } else {
                             this.confirm_sign_out(window, cx);
                         }
@@ -1332,6 +1531,264 @@ impl Velvet {
                         .on_click(cx.listener(|this, _, _, cx| this.refresh(true, cx))),
                 )
             })
+            .into_any_element()
+    }
+    fn sprint_list(&self, cx: &Context<Self>) -> AnyElement {
+        let p = Palette::new(self.dark);
+        let visible = state::visible_sprints(&self.sprints, self.project.as_deref());
+        v_flex()
+            .w(px(340.))
+            .h_full()
+            .flex_shrink_0()
+            .border_r_1()
+            .border_color(p.border)
+            .child(
+                v_flex()
+                    .p_4()
+                    .gap_3()
+                    .child(
+                        div()
+                            .id("sprints-heading")
+                            .role(Role::Heading)
+                            .aria_label("Sprints")
+                            .test_support()
+                            .text_size(px(24.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child("Sprints"),
+                    )
+                    .child(
+                        h_flex()
+                            .justify_between()
+                            .child(self.project_menu(cx))
+                            .child(
+                                Button::new("refresh-sprints")
+                                    .ghost()
+                                    .label("Refresh")
+                                    .disabled(self.sprint_loading || self.demo)
+                                    .on_click(cx.listener(|this, _, _, cx| this.load_sprints(cx))),
+                            ),
+                    ),
+            )
+            .when(self.sprint_loading && self.sprints.is_empty(), |v| {
+                v.child(div().p_3().child(self.label("Loading sprints…")))
+            })
+            .when(visible.is_empty() && !self.sprint_loading, |v| {
+                v.child(div().p_4().child(if self.sprints.is_empty() {
+                    "No sprints yet. Plan one in the web app."
+                } else {
+                    "No sprints in this project. Choose another project."
+                }))
+            })
+            .child(
+                v_flex()
+                    .id("sprint-list")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .children(visible.into_iter().map(|index| {
+                        let sprint = &self.sprints[index];
+                        let selected = self.sprint.as_deref() == Some(sprint.id.as_str());
+                        let id = sprint.id.clone();
+                        let dates = format!("{} to {}", sprint.starts_on, sprint.ends_on);
+                        let state = state::sprint_state_label(&sprint.state).to_owned();
+                        Button::new(("sprint", index))
+                            .ghost()
+                            .accessibility_label(format!(
+                                "{}: {state}, {dates}{}",
+                                sprint.name,
+                                if selected { ", selected" } else { "" }
+                            ))
+                            .w_full()
+                            .h(px(72.))
+                            .justify_start()
+                            .px_3()
+                            .rounded_none()
+                            .when(selected, |b| b.bg(p.surface))
+                            .border_b_1()
+                            .border_color(p.border)
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .w_full()
+                                    .min_w_0()
+                                    .child(div().text_size(px(16.)).child(sprint.name.clone()))
+                                    .child(self.label(format!("{state} · {dates}"))),
+                            )
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.select_sprint(Some(id.clone()), cx)
+                            }))
+                    })),
+            )
+            .into_any_element()
+    }
+    fn sprint_board(&self, cx: &Context<Self>) -> AnyElement {
+        let p = Palette::new(self.dark);
+        let Some(sprint) = self
+            .sprint
+            .as_ref()
+            .and_then(|id| self.sprints.iter().find(|s| &s.id == id))
+        else {
+            return v_flex()
+                .flex_1()
+                .p_6()
+                .gap_3()
+                .child(div().text_size(px(24.)).child("Plans, in focus."))
+                .child(self.label("Choose a sprint to see its milestones and progress."))
+                .into_any_element();
+        };
+        let path = format!(
+            "/w/{}/sprints/{}",
+            self.slug().unwrap_or_default(),
+            sprint.id
+        );
+        v_flex()
+            .id("sprint-board")
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .overflow_y_scroll()
+            .p_6()
+            .gap_4()
+            .child(
+                h_flex()
+                    .justify_between()
+                    .gap_2()
+                    .child(self.label(format!(
+                        "{} · {} to {}",
+                        state::sprint_state_label(&sprint.state),
+                        sprint.starts_on,
+                        sprint.ends_on
+                    )))
+                    .child(
+                        Button::new("sprint-web")
+                            .ghost()
+                            .label("Open in web ↗")
+                            .disabled(self.demo)
+                            .on_click(cx.listener(move |this, _, _, cx| this.open_web(&path, cx))),
+                    ),
+            )
+            .child(
+                div()
+                    .id("sprint-heading")
+                    .role(Role::Heading)
+                    .aria_label(sprint.name.clone())
+                    .test_support()
+                    .text_size(px(24.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(sprint.name.clone()),
+            )
+            .child(self.label("Milestones and their issues are read-only here. Plan and change them in the web app."))
+            .when(self.sprint_loading && self.milestones.is_empty(), |v| {
+                v.child(self.label("Loading milestones…"))
+            })
+            .when(!self.sprint_loading && self.milestones.is_empty(), |v| {
+                v.child(self.label("No milestones in this sprint yet."))
+            })
+            .children(self.milestones.iter().enumerate().map(|(index, milestone)| {
+                let (done, total) = state::milestone_progress(milestone);
+                let expanded = self.milestone.as_deref() == Some(milestone.id.as_str());
+                let status = state::milestone_status_label(&milestone.status).to_owned();
+                let target = milestone
+                    .target_date
+                    .as_ref()
+                    .map(|date| format!(" · due {date}"))
+                    .unwrap_or_default();
+                let summary = format!("{status}{target} · {done} of {total} done");
+                let id = milestone.id.clone();
+                v_flex()
+                    .border_1()
+                    .border_color(p.border)
+                    .rounded(px(8.))
+                    .child(
+                        Button::new(("milestone", index))
+                            .ghost()
+                            .accessibility_label(format!(
+                                "{}: {summary}, {}",
+                                milestone.name,
+                                if expanded { "expanded" } else { "collapsed" }
+                            ))
+                            .w_full()
+                            .h(px(68.))
+                            .justify_start()
+                            .px_3()
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .w_full()
+                                    .min_w_0()
+                                    .child(
+                                        div()
+                                            .text_size(px(16.))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .child(format!(
+                                                "{} {}",
+                                                if expanded { "▾" } else { "▸" },
+                                                milestone.name
+                                            )),
+                                    )
+                                    .child(self.label(summary)),
+                            )
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.toggle_milestone(id.clone(), cx)
+                            })),
+                    )
+                    .when(expanded, |v| {
+                        v.child(self.milestone_issue_rows(cx))
+                    })
+            }))
+            .into_any_element()
+    }
+    fn milestone_issue_rows(&self, cx: &Context<Self>) -> AnyElement {
+        let p = Palette::new(self.dark);
+        let Some(issues) = self.milestone_issues.as_ref() else {
+            return div()
+                .p_3()
+                .child(self.label("Loading issues…"))
+                .into_any_element();
+        };
+        if issues.is_empty() {
+            return div()
+                .p_3()
+                .child(self.label("No issues in this milestone."))
+                .into_any_element();
+        }
+        v_flex()
+            .border_t_1()
+            .border_color(p.border)
+            .children(issues.iter().enumerate().map(|(index, issue)| {
+                let target = issue.clone();
+                Button::new(("milestone-issue", index))
+                    .ghost()
+                    .accessibility_label(format!(
+                        "{}: {}, {}",
+                        issue.key,
+                        issue.title,
+                        status_label(&issue.status)
+                    ))
+                    .w_full()
+                    .h(px(40.))
+                    .justify_start()
+                    .px_3()
+                    .rounded_none()
+                    .child(
+                        h_flex()
+                            .gap_3()
+                            .w_full()
+                            .min_w_0()
+                            .child(self.label(issue.key.clone()))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .child(issue.title.clone()),
+                            )
+                            .child(self.label(status_label(&issue.status).to_owned())),
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.open_issue(target.clone(), window, cx)
+                    }))
+            }))
             .into_any_element()
     }
     fn detail(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
@@ -1872,8 +2329,12 @@ impl Render for Velvet {
                     .min_h_0()
                     .w_full()
                     .child(self.sidebar(cx))
-                    .child(self.issue_list(cx))
-                    .child(self.detail(window, cx))
+                    .when(self.sprints_view, |v| {
+                        v.child(self.sprint_list(cx)).child(self.sprint_board(cx))
+                    })
+                    .when(!self.sprints_view, |v| {
+                        v.child(self.issue_list(cx)).child(self.detail(window, cx))
+                    })
                     .into_any_element()
             })
             .when(
