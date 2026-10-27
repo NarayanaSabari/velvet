@@ -21,8 +21,8 @@ rustc --version
 xcrun --find clang
 xcrun --show-sdk-path
 cargo fmt --all -- --check
-cargo check --locked --all-targets
-cargo test --locked
+cargo check --locked --all-targets --features ui-tests
+cargo test --locked --features ui-tests -- --test-threads=1
 cargo run --locked -- --server https://velvet.example.com
 # Read-only sample data, without network or Keychain access:
 cargo run --locked -- --demo
@@ -67,6 +67,6 @@ plutil -lint desktop/Info.plist
 ./desktop/package.sh --help
 ```
 
-`.github/workflows/desktop.yml` runs only on manual dispatch and pull requests touching `desktop/**` or that workflow. It uses read-only repository permissions, Rust 1.97.1, and native macOS formatting, locked check and locked tests. It checks packaging syntax and metadata but intentionally avoids another release build or a DMG. It uploads no release artifact, uses no Apple credentials and has no production deployment step. Existing repository-wide workflows remain independent.
+`.github/workflows/desktop.yml` runs only on manual dispatch and pull requests touching `desktop/**` or that workflow. It uses read-only repository permissions, Rust 1.97.1, and native macOS formatting, locked all-target checking with `ui-tests`, and serial native UI and client tests. It checks packaging syntax and metadata but intentionally avoids another release build or a DMG. It uploads no release artifact, uses no Apple credentials and has no production deployment step. Existing repository-wide workflows remain independent.
 
 A syntax check or plist validation is not evidence that the app, Keychain behavior, authentication, DMG, signature trust or native UI works. Record actual build, test and launch results in [parity.md](parity.md) as they become available.
