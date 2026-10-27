@@ -44,8 +44,8 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Check
-        run: cargo check --locked --all-targets
+        run: cargo check --locked --all-targets --features ui-tests
       - name: Test
-        run: cargo test --locked
+        run: cargo test --locked --features ui-tests -- --test-threads=1
       # No second release build, disk image, signing credential, upload or deploy.
       # Run package.sh explicitly on a trusted Mac when a local preview is needed.
