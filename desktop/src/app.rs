@@ -4,7 +4,7 @@ use crate::{
     state::{self, Revision, STATUSES, status_label},
     theme::{self, Palette},
 };
-use gpui_kit::base::{FocusTrapElement, text::TextView};
+use gpui_kit::base::{FocusTrapElement, TestSupportExt, text::TextView};
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::{
     button::{Button, ButtonVariants},
@@ -946,6 +946,8 @@ impl Velvet {
             .w_full()
             .h(px(44.))
             .disabled(self.saving)
+            // Advertise accessibility Press; the dropdown opens on mouse-down.
+            .on_click(|_, _, _| {})
             .dropdown_menu(move |mut menu, _, _| {
                 for (index, membership) in memberships.iter().enumerate() {
                     let view = view.clone();
@@ -978,6 +980,8 @@ impl Velvet {
         let view = cx.entity().downgrade();
         Button::new("project-filter")
             .label(label)
+            // Advertise accessibility Press; the dropdown opens on mouse-down.
+            .on_click(|_, _, _| {})
             .dropdown_menu(move |mut menu, _, _| {
                 for (id, name) in &choices {
                     let id = id.clone();
@@ -1015,6 +1019,8 @@ impl Velvet {
         })
         .label(label)
         .disabled(mutation && (!self.can_write() || self.saving || self.detail_loading))
+        // Advertise accessibility Press; the dropdown opens on mouse-down.
+        .on_click(|_, _, _| {})
         .dropdown_menu(move |mut menu, _, _| {
             if !mutation {
                 let view = view.clone();
@@ -1205,10 +1211,11 @@ impl Velvet {
                             Button::new(("issue", index))
                                 .ghost()
                                 .accessibility_label(format!(
-                                    "{}: {}, {}",
+                                    "{}: {}, {}{}",
                                     issue.key,
                                     issue.title,
-                                    status_label(&issue.status)
+                                    status_label(&issue.status),
+                                    if selected { ", selected" } else { "" }
                                 ))
                                 .w_full()
                                 .h(px(96.))
@@ -1464,28 +1471,48 @@ impl Velvet {
                                 h_flex()
                                     .justify_between()
                                     .gap_2()
-                                    .child(comment.author.name.clone())
+                                    .child(
+                                        div()
+                                            .id(("comment-author", index))
+                                            .role(Role::Paragraph)
+                                            .aria_label(comment.author.name.clone())
+                                            .test_support()
+                                            .child(comment.author.name.clone()),
+                                    )
                                     .child(self.label(
                                         comment.kind.clone().unwrap_or_else(|| "Comment".into()),
                                     )),
                             )
                             .child(
-                                TextView::markdown(
-                                    ("comment", index),
-                                    if comment.deleted_at.is_some() {
-                                        "Comment deleted.".into()
+                                div()
+                                    .id(("comment-body", index))
+                                    .role(Role::Paragraph)
+                                    .aria_label(if comment.deleted_at.is_some() {
+                                        "Comment deleted.".to_owned()
                                     } else {
                                         comment.body.clone()
-                                    },
-                                )
-                                .image_source(|_| {
-                                    ImageSource::from("velvet-preview-images-disabled")
-                                })
-                                .on_link_click(|url, _, _, cx| {
-                                    if let Some(url) = state::safe_external_url(url) {
-                                        cx.open_url(&url);
-                                    }
-                                }),
+                                    })
+                                    .test_support()
+                                    .child(
+                                        TextView::markdown(
+                                            ("comment", index),
+                                            if comment.deleted_at.is_some() {
+                                                "Comment deleted.".into()
+                                            } else {
+                                                comment.body.clone()
+                                            },
+                                        )
+                                        .image_source(|_| {
+                                            ImageSource::from("velvet-preview-images-disabled")
+                                        })
+                                        .on_link_click(
+                                            |url, _, _, cx| {
+                                                if let Some(url) = state::safe_external_url(url) {
+                                                    cx.open_url(&url);
+                                                }
+                                            },
+                                        ),
+                                    ),
                             )
                     }))
                     .when(self.can_write(), |v| {
@@ -1558,6 +1585,7 @@ impl Velvet {
             } else {
                 "Commands"
             })
+            .test_support()
             .track_focus(&self.modal_focus)
             .w(px(540.))
             .max_w_full()
@@ -1581,11 +1609,23 @@ impl Velvet {
                 .child(Button::new("confirm-logout").danger().label(if self.saving{"Signing out…"}else{"Revoke access and sign out"}).disabled(self.saving).on_click(cx.listener(|this,_,window,cx|this.logout(window,cx))));
         } else if self.editing {
             body = body
-                .child(div().text_size(px(24.)).child(if self.edit_key.is_some() {
-                    "Edit issue"
-                } else {
-                    "New issue"
-                }))
+                .child(
+                    div()
+                        .id("overlay-heading")
+                        .role(Role::Heading)
+                        .aria_label(if self.edit_key.is_some() {
+                            "Edit issue"
+                        } else {
+                            "New issue"
+                        })
+                        .test_support()
+                        .text_size(px(24.))
+                        .child(if self.edit_key.is_some() {
+                            "Edit issue"
+                        } else {
+                            "New issue"
+                        }),
+                )
                 .child(self.label(format!("Organisation: {}", self.slug().unwrap_or_default())))
                 .child("Title")
                 .child(
@@ -1692,6 +1732,10 @@ impl Render for Velvet {
         self.dark = Theme::global(cx).mode.is_dark();
         let p = Palette::new(self.dark);
         v_flex()
+            .id("velvet-workspace")
+            .role(Role::Main)
+            .aria_label("Velvet workspace")
+            .test_support()
             .relative()
             .size_full()
             .bg(p.paper)
@@ -1700,6 +1744,30 @@ impl Render for Velvet {
             .text_size(px(16.))
             .track_focus(&self.focus)
             .key_context("Velvet")
+            .capture_action(cx.listener(
+                |this, _: &gpui_kit::base::input::IndentInline, window, cx| {
+                    if this.composer.focus_handle(cx).is_focused(window)
+                        || this.description.focus_handle(cx).is_focused(window)
+                    {
+                        window.focus_next(cx);
+                        cx.stop_propagation();
+                    } else {
+                        cx.propagate();
+                    }
+                },
+            ))
+            .capture_action(cx.listener(
+                |this, _: &gpui_kit::base::input::OutdentInline, window, cx| {
+                    if this.composer.focus_handle(cx).is_focused(window)
+                        || this.description.focus_handle(cx).is_focused(window)
+                    {
+                        window.focus_prev(cx);
+                        cx.stop_propagation();
+                    } else {
+                        cx.propagate();
+                    }
+                },
+            ))
             .on_action(cx.listener(|this, _: &Quit, window, cx| this.request_quit(window, cx)))
             .on_action(cx.listener(|this, _: &Commands, window, cx| this.open_commands(window, cx)))
             .on_action(
