@@ -6,6 +6,11 @@
 #[allow(dead_code)]
 #[path = "../src/api.rs"]
 mod api;
+#[path = "../src/pages.rs"]
+mod pages;
+#[allow(dead_code)]
+#[path = "../src/state.rs"]
+mod state;
 
 use anyhow::{Context, Result, bail};
 use api::ApiClient;
@@ -227,6 +232,41 @@ fn connected_desktop_flow() -> Result<()> {
             .iter()
             .any(|item| item.body == comment.body && item.source == "human")
     );
+    // Every native page reads live endpoints with the desktop credential.
+    for nav in [
+        "", "projects", "reports", "feed", "mentions", "unlinked", "worklog",
+    ] {
+        let page = pages::Page::from_nav(nav).unwrap();
+        let responses = page
+            .requests()
+            .iter()
+            .map(|(segments, query)| {
+                let segments: Vec<&str> = segments
+                    .iter()
+                    .map(|s| {
+                        if *s == "{slug}" {
+                            fixture.slug.as_str()
+                        } else {
+                            s
+                        }
+                    })
+                    .collect();
+                client.get_json(&segments, query)
+            })
+            .collect::<Result<Vec<_>>>()
+            .with_context(|| format!("{} page", page.title()))?;
+        let sections = page.build(&responses);
+        assert!(!sections.is_empty(), "{}", page.title());
+        if matches!(page, pages::Page::Feed | pages::Page::Dashboard) {
+            let rows: Vec<_> = sections.iter().flat_map(|s| &s.rows).collect();
+            assert!(
+                rows.iter()
+                    .any(|r| r.issue_key.as_deref() == Some(issue.key.as_str())),
+                "{} shows the new issue",
+                page.title()
+            );
+        }
+    }
     client.revoke()?;
     let revoked = client.identity().unwrap_err();
     assert!(revoked.to_string().contains("401"));

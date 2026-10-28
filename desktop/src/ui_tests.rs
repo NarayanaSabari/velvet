@@ -618,3 +618,37 @@ fn update_banner_offers_download_then_restart(cx: &mut TestAppContext) {
         })
         .unwrap();
 }
+
+#[gpui_kit::test]
+fn every_sidebar_page_opens_natively(cx: &mut TestAppContext) {
+    let (window, view) = demo(cx, 1280.);
+    let pages = [
+        ("nav-", "Dashboard"),
+        ("nav-projects", "Projects"),
+        ("nav-reports", "Reports"),
+        ("nav-feed", "Team feed"),
+        ("nav-mentions", "Mentions"),
+        ("nav-unlinked", "Unlinked PRs"),
+        ("worklog", "My work log"),
+    ];
+    for (nav, title) in pages {
+        window
+            .update(cx, |_, window, cx| {
+                window.render_frame(cx);
+                window.click(nav, cx);
+                window.render_frame(cx);
+                assert_eq!(window.find("page-heading").label(), Some(title), "{nav}");
+                assert!(window.try_find(("issue", 0usize)).is_none(), "{nav}");
+            })
+            .unwrap();
+    }
+    window
+        .update(cx, |_, window, cx| {
+            window.click("nav-issues", cx);
+            window.render_frame(cx);
+            assert!(window.try_find("page-heading").is_none());
+            assert!(window.try_find(("issue", 0usize)).is_some());
+        })
+        .unwrap();
+    cx.update(|cx| assert!(view.read(cx).page.is_none()));
+}

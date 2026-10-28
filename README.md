@@ -11,7 +11,7 @@ Self-hosting is the point: the team owns the data and the deployment.
 
 [`desktop/`](desktop/README.md) contains an online-first Rust/GPUI Apple Silicon preview, not a webview wrapper.
 It provides a native issue workspace, browser-approved desktop sign-in, macOS Keychain storage, issue creation and editing, explicit status changes, and progress comments.
-Other workflows open in the web app. See the [parity and verification ledger](desktop/parity.md) for tested paths and remaining limitations.
+Dashboard, projects, sprints, reports, team feed, mentions, unlinked pull requests and the personal work log render natively from the same API. Write actions beyond issues and comments still open in the web app. See the [parity and verification ledger](desktop/parity.md) for tested paths and remaining limitations.
 Run `cargo run --locked --manifest-path desktop/Cargo.toml -- --demo` for read-only sample data.
 Local packaging is ad-hoc signed only, not notarized, and does not deploy the server or publish a release.
 

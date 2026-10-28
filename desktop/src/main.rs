@@ -1,6 +1,7 @@
 mod api;
 mod app;
 mod credentials;
+mod pages;
 mod state;
 mod theme;
 mod update;

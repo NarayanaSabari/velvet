@@ -1,6 +1,6 @@
 use crate::{
     api::{ApiClient, Comment, DeviceSession, Identity, Issue, Milestone, Project, Sprint},
-    credentials,
+    credentials, pages,
     state::{self, Revision, STATUSES, author_label, status_label},
     theme::{self, Palette},
     update,
@@ -71,6 +71,11 @@ pub struct Velvet {
     milestone: Option<String>,
     /// Issues of the expanded milestone; `None` while they load.
     milestone_issues: Option<Vec<Issue>>,
+    /// Native read-only page replacing the issue view, when set.
+    page: Option<pages::Page>,
+    page_sections: Vec<pages::Section>,
+    page_loading: bool,
+    page_revision: Revision,
     sprint_revision: Revision,
     milestone_revision: Revision,
     sprint_loading: bool,
@@ -175,6 +180,10 @@ impl Velvet {
             milestones: vec![],
             milestone: None,
             milestone_issues: None,
+            page: None,
+            page_sections: Vec::new(),
+            page_loading: false,
+            page_revision: Revision::default(),
             sprint_revision: Revision::default(),
             milestone_revision: Revision::default(),
             sprint_loading: false,
@@ -661,8 +670,93 @@ impl Velvet {
         self.milestone = None;
         self.milestone_issues = None;
         self.sprint_loading = false;
+        // Native pages belong to the workspace too, so every reset drops them.
+        self.page_revision.next();
+        self.page = None;
+        self.page_sections.clear();
+        self.page_loading = false;
+    }
+    fn show_page(&mut self, page: pages::Page, cx: &mut Context<Self>) {
+        self.commands = false;
+        self.sprints_view = false;
+        self.page = Some(page);
+        self.page_sections.clear();
+        self.error = None;
+        let revision = self.page_revision.next();
+        if self.demo {
+            self.page_sections = page.build(&[]);
+            cx.notify();
+            return;
+        }
+        let (Some(client), Some(slug)) = (self.client.clone(), self.slug()) else {
+            return;
+        };
+        let session = self.session_revision.current();
+        self.page_loading = true;
+        cx.notify();
+        cx.spawn(async move |view, cx| {
+            let result = smol::unblock(move || -> anyhow::Result<Vec<serde_json::Value>> {
+                page.requests()
+                    .iter()
+                    .map(|(segments, query)| {
+                        let segments: Vec<&str> = segments
+                            .iter()
+                            .map(|s| if *s == "{slug}" { slug.as_str() } else { s })
+                            .collect();
+                        client.get_json(&segments, query)
+                    })
+                    .collect()
+            })
+            .await;
+            let _ = view.update(cx, |this, cx| {
+                if !this.session_revision.accepts(session) || !this.page_revision.accepts(revision)
+                {
+                    return;
+                }
+                this.page_loading = false;
+                match result {
+                    Ok(responses) => this.page_sections = page.build(&responses),
+                    Err(error) => this.error = Some(error.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+    /// Opens an issue named on a native page, fetching it when not yet loaded.
+    fn open_issue_key(&mut self, key: String, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(issue) = self.issues.iter().find(|i| i.key == key).cloned() {
+            self.page = None;
+            self.open_issue(issue, window, cx);
+            return;
+        }
+        let (Some(client), Some(slug)) = (self.client.clone(), self.slug()) else {
+            return;
+        };
+        let session = self.session_revision.current();
+        let handle = window.window_handle();
+        cx.spawn(async move |view, cx| {
+            let result = smol::unblock(move || client.issue(&slug, &key)).await;
+            let _ = handle.update(cx, |_, window, cx| {
+                let _ = view.update(cx, |this, cx| {
+                    if !this.session_revision.accepts(session) {
+                        return;
+                    }
+                    match result {
+                        Ok(issue) => {
+                            this.page = None;
+                            this.open_issue(issue, window, cx);
+                        }
+                        Err(error) => this.error = Some(error.to_string()),
+                    }
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
     }
     fn show_sprints(&mut self, cx: &mut Context<Self>) {
+        self.page = None;
         self.commands = false;
         self.sprints_view = true;
         if self.sprints.is_empty() {
@@ -788,6 +882,7 @@ impl Velvet {
             return;
         }
         self.sprints_view = false;
+        self.page = None;
         let index = match self.issues.iter().position(|i| i.id == issue.id) {
             Some(index) => index,
             None => {
@@ -1454,7 +1549,6 @@ impl Velvet {
             .identity
             .as_ref()
             .and_then(|i| i.memberships.get(self.workspace));
-        let slug = self.slug().unwrap_or_default();
         // Grouped like the web shell: planning, activity, then work across organisations.
         let workspace_nav = [
             ("Dashboard", ""),
@@ -1469,31 +1563,28 @@ impl Velvet {
             ("Unlinked PRs", "unlinked"),
         ];
         let nav_button = |label: &'static str, path: &'static str| {
-            let slug = slug.clone();
-            let native = matches!(path, "issues" | "sprints");
-            let current = native && (path == "sprints") == self.sprints_view;
+            let page = pages::Page::from_nav(path);
+            let current = match path {
+                "issues" => !self.sprints_view && self.page.is_none(),
+                "sprints" => self.sprints_view,
+                _ => page.is_some() && self.page == page,
+            };
             self.nav_row(
                 SharedString::from(format!("nav-{path}")),
                 label,
-                !native,
+                false,
                 current,
             )
             .on_click(cx.listener(move |this, _, _, cx| {
                 if path == "issues" {
                     this.commands = false;
                     this.sprints_view = false;
+                    this.page = None;
                     cx.notify();
                 } else if path == "sprints" {
                     this.show_sprints(cx);
-                } else {
-                    this.open_web(
-                        &if path.is_empty() {
-                            format!("/w/{slug}")
-                        } else {
-                            format!("/w/{slug}/{path}")
-                        },
-                        cx,
-                    );
+                } else if let Some(page) = page {
+                    this.show_page(page, cx);
                 }
             }))
         };
@@ -1540,8 +1631,13 @@ impl Velvet {
             .children(activity_nav.map(|(label, path)| nav_button(label, path)))
             .child(self.section_label("Across organisations"))
             .child(
-                self.nav_row("worklog", "My work log", true, false)
-                    .on_click(cx.listener(|this, _, _, cx| this.open_web("/me/worklog", cx))),
+                self.nav_row(
+                    "worklog",
+                    "My work log",
+                    false,
+                    self.page == Some(pages::Page::Worklog),
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.show_page(pages::Page::Worklog, cx))),
             )
             .child(div().flex_1())
             .child(
@@ -1762,6 +1858,110 @@ impl Velvet {
                 )
             })
             .into_any_element()
+    }
+    /// Dashboard, projects, reports, feed, mentions, unlinked PRs and work log.
+    fn page_view(&self, page: pages::Page, cx: &Context<Self>) -> AnyElement {
+        let p = Palette::new(self.dark);
+        let mut body = v_flex()
+            .id("page")
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .overflow_y_scroll()
+            .p_6()
+            .gap_5()
+            .child(
+                h_flex()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        div()
+                            .id("page-heading")
+                            .role(Role::Heading)
+                            .aria_label(page.title())
+                            .test_support()
+                            .text_size(px(24.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(page.title()),
+                    )
+                    .child(
+                        Button::new("page-refresh")
+                            .ghost()
+                            .label(if self.page_loading {
+                                "Loading…"
+                            } else {
+                                "Refresh"
+                            })
+                            .disabled(self.page_loading)
+                            .on_click(cx.listener(move |this, _, _, cx| this.show_page(page, cx))),
+                    ),
+            );
+        if self.demo {
+            body = body.child(self.label("Sample mode has no server data for this page."));
+        }
+        let mut row_id = 0usize;
+        for section in &self.page_sections {
+            let mut list = v_flex().gap_1().child(
+                div()
+                    .text_size(px(14.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(p.secondary)
+                    .child(section.title.clone()),
+            );
+            if section.rows.is_empty() && !self.page_loading {
+                list = list.child(self.label(section.empty));
+            }
+            for row in &section.rows {
+                let label = if row.detail.is_empty() {
+                    row.title.clone()
+                } else {
+                    format!("{}, {}", row.title, row.detail)
+                };
+                let content = v_flex()
+                    .w_full()
+                    .min_w_0()
+                    .gap_0p5()
+                    .child(div().w_full().truncate().child(row.title.clone()))
+                    .when(!row.detail.is_empty(), |v| {
+                        v.child(
+                            div()
+                                .w_full()
+                                .truncate()
+                                .text_size(px(14.))
+                                .text_color(p.muted)
+                                .child(row.detail.clone()),
+                        )
+                    });
+                let action = row.issue_key.clone().map(Ok).or(row.url.clone().map(Err));
+                list = list.child(match action {
+                    Some(target) => Button::new(("page-row", row_id))
+                        .ghost()
+                        .accessibility_label(label)
+                        .w_full()
+                        .h_auto()
+                        .py_1p5()
+                        .px_2()
+                        .justify_start()
+                        .child(content)
+                        .on_click(cx.listener(move |this, _, window, cx| match &target {
+                            Ok(key) => this.open_issue_key(key.clone(), window, cx),
+                            Err(url) => cx.open_url(url),
+                        }))
+                        .into_any_element(),
+                    None => div()
+                        .id(("page-row", row_id))
+                        .aria_label(label)
+                        .w_full()
+                        .py_1p5()
+                        .px_2()
+                        .child(content)
+                        .into_any_element(),
+                });
+                row_id += 1;
+            }
+            body = body.child(list);
+        }
+        body.into_any_element()
     }
     fn sprint_list(&self, cx: &Context<Self>) -> AnyElement {
         let p = Palette::new(self.dark);
@@ -2631,10 +2831,11 @@ impl Render for Velvet {
                     .min_h_0()
                     .w_full()
                     .child(self.sidebar(cx))
-                    .when(self.sprints_view, |v| {
+                    .when_some(self.page, |v, page| v.child(self.page_view(page, cx)))
+                    .when(self.page.is_none() && self.sprints_view, |v| {
                         v.child(self.sprint_list(cx)).child(self.sprint_board(cx))
                     })
-                    .when(!self.sprints_view, |v| {
+                    .when(self.page.is_none() && !self.sprints_view, |v| {
                         v.child(self.issue_list(cx)).child(self.detail(window, cx))
                     })
                     .into_any_element()

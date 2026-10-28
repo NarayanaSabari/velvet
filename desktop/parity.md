@@ -9,7 +9,8 @@ Snapshot: October 27, 2026. This is a first native preview slice, not full web-f
 - Organisation/project selection, search over loaded issues, status filters, refresh and pagination.
 - Issue creation, title/description editing, explicit status changes and human-attributed progress comments.
 - Keyboard commands, modal focus handling, in-memory context-isolated drafts and draft-safe Quit confirmation.
-- Light/dark appearance and narrow-window layout. Other workflows explicitly open the web app.
+- Light/dark appearance and narrow-window layout.
+- Native read-only pages (added October 28, 0.3.0): dashboard, projects, reports, team feed, mentions, unlinked PRs and my work log replace the old browser hand-offs. Issue rows open the native issue view, and GitHub PR rows open GitHub. Verified by page unit tests, a sidebar navigation UI test, and the connected test reading every page's live endpoints on the disposable stack. Project, sprint and milestone editing, reports filters and admin settings still open the web app.
 - Read-only native sprints view (added October 27): sprints follow the project filter and open the active one, milestones show status, target date and done-of-total progress, and an expanded milestone lists its issues, which open in the native issue detail. Sprint transitions, milestone edits and milestone comments stay in the web app. Verified by unit, contract and native UI tests and by sample-data screenshots in both schemes. Not yet run against the live stack.
 - Locked dependencies, local ad-hoc app packaging and a separate read-only macOS check workflow.
 

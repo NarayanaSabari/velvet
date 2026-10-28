@@ -158,6 +158,12 @@ impl ApiClient {
         }
         Ok(identity)
     }
+    /// Authenticated read under `/api/v1` for the native read-only pages.
+    pub fn get_json(&self, segments: &[&str], query: &[(&str, &str)]) -> Result<Value> {
+        let mut path = vec!["api", "v1"];
+        path.extend_from_slice(segments);
+        Self::decode(self.request(Method::GET, &path, query, None, true)?)
+    }
     pub fn projects(&self, slug: &str) -> Result<Vec<Project>> {
         #[derive(Deserialize)]
         struct Envelope {
