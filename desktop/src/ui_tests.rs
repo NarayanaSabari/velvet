@@ -569,3 +569,52 @@ fn quitting_from_editor_keeps_draft_when_cancelled_and_blocks_during_save(cx: &m
         })
         .unwrap();
 }
+
+#[gpui_kit::test]
+fn update_banner_offers_download_then_restart(cx: &mut TestAppContext) {
+    let (window, view) = demo(cx, 1280.);
+    let manifest = crate::update::Manifest {
+        version: "9.9.9".into(),
+        url: String::new(),
+        sha256: String::new(),
+        notes: "Faster lists.".into(),
+        signature: String::new(),
+    };
+    cx.update(|cx| {
+        view.update(cx, |this, cx| {
+            this.available_update = Some(manifest);
+            this.auto_update = false;
+            cx.notify();
+        })
+    });
+    window
+        .update(cx, |_, window, cx| {
+            window.render_frame(cx);
+            assert_eq!(window.find("install-update").label(), Some("Update"));
+            assert_eq!(
+                window.find("auto-update").label(),
+                Some("Automatic updates: Off")
+            );
+        })
+        .unwrap();
+    cx.update(|cx| {
+        view.update(cx, |this, cx| {
+            this.staged_update = Some("/tmp/Velvet.app".into());
+            this.auto_update = true;
+            cx.notify();
+        })
+    });
+    window
+        .update(cx, |_, window, cx| {
+            window.render_frame(cx);
+            assert_eq!(window.find("install-update").label(), Some("Restart now"));
+            assert_eq!(
+                window.find("auto-update").label(),
+                Some("Automatic updates: On")
+            );
+            window.click("dismiss-update", cx);
+            window.render_frame(cx);
+            assert!(window.try_find("install-update").is_none());
+        })
+        .unwrap();
+}
