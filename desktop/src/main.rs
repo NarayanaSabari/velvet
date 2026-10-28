@@ -3,6 +3,7 @@ mod app;
 mod credentials;
 mod state;
 mod theme;
+mod update;
 
 use app::*;
 use gpui_kit::*;
@@ -23,7 +24,8 @@ fn main() {
             },
             "--help" | "-h" => {
                 println!(
-                    "Velvet for macOS\n\nUsage: velvet-desktop [--server URL] [--demo]\n\n--demo opens read-only sample data without network or Keychain access."
+                    "Velvet for macOS {}\n\nUsage: velvet-desktop [--server URL] [--demo]\n\n--demo opens read-only sample data without network or Keychain access.",
+                    update::CURRENT
                 );
                 return;
             }
@@ -55,7 +57,10 @@ fn main() {
                 KeyBinding::new("cmd-enter", PostUpdate, Some("Velvet")),
             ]);
             cx.set_menus(vec![
-                Menu::new("Velvet").items([MenuItem::action("Quit Velvet", Quit)]),
+                Menu::new("Velvet").items([
+                    MenuItem::action("Check for Updates…", CheckForUpdates),
+                    MenuItem::action("Quit Velvet", Quit),
+                ]),
                 Menu::new("File").items([
                     MenuItem::action("New issue", NewIssue),
                     MenuItem::action("Refresh", Refresh),

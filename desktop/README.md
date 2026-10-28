@@ -55,7 +55,25 @@ The script requires native Apple Silicon macOS and a native Rust toolchain. It b
 
 **This is ad-hoc signed only, NOT notarized.** The bundle's display name and included `Contents/Resources/PREVIEW.txt` say so. An ad-hoc signature is not an Apple Developer ID signature and does not establish a trusted publisher. Gatekeeper may block a downloaded preview. Do not disable Gatekeeper or remove quarantine globally to install it. Only run a local build whose source and origin you trust.
 
-Distribution is a direct, manually installed preview app or optional DMG. Updates are manual: quit the app, obtain a trusted replacement, and replace the installed preview. There is no automatic updater, update feed, offline database, offline write queue, migration engine or conflict resolution in this slice. No offline durability or successful background sync is promised.
+Distribution is a direct, manually installed preview app or optional DMG for the first install. There is no offline database, offline write queue, migration engine or conflict resolution in this slice. No offline durability or successful background sync is promised.
+
+## Versioned releases and self-update
+
+Each desktop release is a GitHub Release tagged `desktop-vX.Y.Z` on `NarayanaSabari/velvet`, separate from the CLI's `vX.Y.Z` tags. It carries `Velvet-X.Y.Z-arm64.zip` and a `latest.json` manifest holding the version, archive URL, SHA-256 and an ed25519 signature over `velvet-desktop:<version>:<sha256>`.
+
+A packaged app checks for updates at launch and from **Velvet > Check for Updates…**. It ignores drafts, prereleases and versions not newer than its own. It shows a banner only when the manifest signature matches the public key compiled from `update-public-key.hex`. **Restart to update** downloads the archive, checks its SHA-256, bundle identifier, version and code signature, then quits through the normal draft-safe Quit flow. A detached helper waits for the process to exit, swaps the bundle and relaunches it, restoring the old bundle if the swap fails. Background checks fail silently offline. `cargo run` builds never check.
+
+The app must sit in a folder the user can write to. `/Applications` works for admin users. Because the app is not notarized, the first install still needs the manual Gatekeeper approval. Updates downloaded by the app itself carry no quarantine flag.
+
+To release:
+
+```bash
+# 1. Bump version in desktop/Cargo.toml, run cargo check to refresh Cargo.lock, commit and push.
+# 2. Publish (builds, signs, tags, uploads):
+./desktop/release.sh 0.2.0 --notes "Sprints view and self-update"
+```
+
+The signing key defaults to `~/.config/velvet/desktop-update-key.hex` (override with `VELVET_UPDATE_KEY`). Never commit it. Back it up somewhere safe, because losing it means installed apps can no longer accept updates and need one manual reinstall with a new public key. Generate a replacement with `cargo run --example update_key -- generate <new-file>` and write its printed public key to `update-public-key.hex`.
 
 Developer ID signing, hardened-runtime and entitlement review, notarization, stapling, clean-machine launch verification and public distribution remain gated on separately supplied Apple credentials and explicit release approval. This script neither requests nor reads those credentials and never deploys anything.
 

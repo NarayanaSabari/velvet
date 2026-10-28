@@ -12,6 +12,8 @@ mod credentials;
 mod state;
 #[path = "../src/theme.rs"]
 mod theme;
+#[path = "../src/update.rs"]
+mod update;
 
 use gpui_kit::test::TestWindowExt;
 use gpui_kit::{

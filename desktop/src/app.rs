@@ -3,6 +3,7 @@ use crate::{
     credentials,
     state::{self, Revision, STATUSES, author_label, status_label},
     theme::{self, Palette},
+    update,
 };
 use gpui_kit::base::{FocusTrapElement, TestSupportExt, text::TextView};
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
@@ -33,7 +34,8 @@ actions!(
         NextIssue,
         PreviousIssue,
         Dismiss,
-        PostUpdate
+        PostUpdate,
+        CheckForUpdates
     ]
 );
 
@@ -87,6 +89,9 @@ pub struct Velvet {
     confirm_logout: bool,
     quit_prompt: bool,
     quitting: bool,
+    /// Verified newer release, offered in a banner.
+    available_update: Option<update::Manifest>,
+    updating: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -184,6 +189,8 @@ impl Velvet {
             confirm_logout: false,
             quit_prompt: false,
             quitting: false,
+            available_update: None,
+            updating: false,
             _subscriptions: subscriptions,
         };
         if demo {
@@ -191,7 +198,74 @@ impl Velvet {
         } else {
             this.restore(cx);
         }
+        // Only packaged apps can replace themselves, so dev runs skip the check.
+        if update::running_bundle().is_some() {
+            this.check_for_updates(false, cx);
+        }
         this
+    }
+
+    pub fn check_for_updates(&mut self, manual: bool, cx: &mut Context<Self>) {
+        if self.updating {
+            return;
+        }
+        cx.spawn(async move |view, cx| {
+            let result = smol::unblock(update::check).await;
+            let _ = view.update(cx, |this, cx| {
+                match result {
+                    Ok(Some(manifest)) => this.available_update = Some(manifest),
+                    Ok(None) if manual => {
+                        this.notice =
+                            Some(format!("Velvet {} is the latest version.", update::CURRENT))
+                    }
+                    // Background checks stay silent offline.
+                    Err(error) if manual => this.error = Some(error.to_string()),
+                    _ => {}
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn install_update(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(manifest) = self.available_update.clone() else {
+            return;
+        };
+        let Some(target) = update::running_bundle() else {
+            self.error = Some("Updates install only into a packaged Velvet app.".into());
+            cx.notify();
+            return;
+        };
+        self.updating = true;
+        self.error = None;
+        cx.notify();
+        let window_handle = window.window_handle();
+        cx.spawn(async move |view, cx| {
+            let result = smol::unblock(move || {
+                let staged = update::download(&manifest)?;
+                update::install_on_exit(&staged, &target)
+            })
+            .await;
+            let _ = window_handle.update(cx, |_, window, cx| {
+                let _ = view.update(cx, |this, cx| {
+                    this.updating = false;
+                    match result {
+                        // The helper swaps the bundle once this process exits.
+                        // Quit still asks before discarding unsent drafts.
+                        Ok(()) => {
+                            this.available_update = None;
+                            this.notice =
+                                Some("Update ready. It installs when Velvet quits.".into());
+                            this.request_quit(window, cx);
+                        }
+                        Err(error) => this.error = Some(error.to_string()),
+                    }
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
     }
 
     pub fn is_quitting(&self) -> bool {
@@ -2333,6 +2407,53 @@ impl Render for Velvet {
                 this.move_selection(-1, window, cx)
             }))
             .on_action(cx.listener(|this, _: &PostUpdate, window, cx| this.post(window, cx)))
+            .on_action(
+                cx.listener(|this, _: &CheckForUpdates, _, cx| this.check_for_updates(true, cx)),
+            )
+            .when_some(self.available_update.as_ref(), |v, manifest| {
+                let text = match manifest.notes.trim() {
+                    "" => format!("Velvet {} is available.", manifest.version),
+                    notes => format!("Velvet {} is available: {notes}", manifest.version),
+                };
+                v.child(
+                    h_flex()
+                        .px_4()
+                        .py_2()
+                        .gap_3()
+                        .bg(p.surface)
+                        .child(
+                            div()
+                                .id("update-message")
+                                .role(Role::Status)
+                                .aria_label(text.clone())
+                                .flex_1()
+                                .child(text),
+                        )
+                        .child(
+                            Button::new("install-update")
+                                .primary()
+                                .label(if self.updating {
+                                    "Downloading…"
+                                } else {
+                                    "Restart to update"
+                                })
+                                .disabled(self.updating)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.install_update(window, cx)
+                                })),
+                        )
+                        .child(
+                            Button::new("dismiss-update")
+                                .ghost()
+                                .label("Later")
+                                .disabled(self.updating)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.available_update = None;
+                                    cx.notify();
+                                })),
+                        ),
+                )
+            })
             .on_action(cx.listener(|this, _: &Dismiss, window, cx| this.close_overlay(window, cx)))
             .when(self.demo, |v| {
                 v.child(
