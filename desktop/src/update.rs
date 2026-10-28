@@ -15,7 +15,7 @@ use std::{
 pub const CURRENT: &str = env!("CARGO_PKG_VERSION");
 const RELEASES: &str = "https://api.github.com/repos/NarayanaSabari/velvet/releases?per_page=30";
 const TAG_PREFIX: &str = "desktop-v";
-const BUNDLE_ID: &str = "app.velvet.desktop.preview";
+const BUNDLE_ID: &str = "app.velvet.desktop";
 const MAX_ARCHIVE: u64 = 200 * 1024 * 1024;
 /// Public half of the release signing key. The private half stays outside the
 /// repository, by default in `~/.config/velvet/desktop-update-key.hex`.
@@ -179,9 +179,8 @@ pub fn download(manifest: &Manifest) -> Result<PathBuf> {
     Ok(app)
 }
 
-/// Swap the staged bundle in after this process exits, then relaunch it.
-/// The helper runs detached so the bundle is never replaced while in use.
-pub fn install_on_exit(staged: &Path, target: &Path) -> Result<()> {
+/// Fails early when the app folder is not writable, before any download.
+pub fn check_writable(target: &Path) -> Result<()> {
     let parent = target
         .parent()
         .ok_or_else(|| anyhow!("Invalid app location"))?;
@@ -193,9 +192,18 @@ pub fn install_on_exit(staged: &Path, target: &Path) -> Result<()> {
         )
     })?;
     let _ = std::fs::remove_file(probe);
+    Ok(())
+}
+
+/// Swap the staged bundle in after this process exits, optionally relaunching.
+/// The helper runs detached so the bundle is never replaced while in use.
+pub fn install_on_exit(staged: &Path, target: &Path, relaunch: bool) -> Result<()> {
+    check_writable(target)?;
     let script = r#"while kill -0 "$1" 2>/dev/null; do sleep 0.2; done
 old="$3.old-$$"
-mv "$3" "$old" && mv "$2" "$3" && rm -rf "$old" && open "$3" || { [ -e "$3" ] || mv "$old" "$3"; open "$3"; }"#;
+if mv "$3" "$old" && mv "$2" "$3"; then rm -rf "$old"; else [ -e "$3" ] || mv "$old" "$3"; fi
+[ "$4" = 1 ] && open "$3"
+exit 0"#;
     Command::new("/bin/sh")
         .args([
             "-c",
@@ -204,6 +212,7 @@ mv "$3" "$old" && mv "$2" "$3" && rm -rf "$old" && open "$3" || { [ -e "$3" ] ||
             &std::process::id().to_string(),
             path(staged)?,
             path(target)?,
+            if relaunch { "1" } else { "0" },
         ])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
@@ -234,6 +243,25 @@ pub fn decode_hex(s: &str) -> Result<Vec<u8>> {
         .step_by(2)
         .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|_| anyhow!("Invalid hex")))
         .collect()
+}
+
+fn prefs_file() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    Some(PathBuf::from(home).join("Library/Application Support/Velvet/auto-update"))
+}
+
+/// Automatic updates default on. Only an explicit "off" disables them.
+pub fn auto_update_enabled() -> bool {
+    prefs_file()
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .is_none_or(|v| v.trim() != "off")
+}
+
+pub fn set_auto_update(enabled: bool) -> Result<()> {
+    let file = prefs_file().ok_or_else(|| anyhow!("HOME is not set"))?;
+    std::fs::create_dir_all(file.parent().unwrap())?;
+    std::fs::write(file, if enabled { "on" } else { "off" })?;
+    Ok(())
 }
 
 #[cfg(test)]

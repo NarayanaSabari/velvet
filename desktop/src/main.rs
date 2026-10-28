@@ -59,6 +59,7 @@ fn main() {
             cx.set_menus(vec![
                 Menu::new("Velvet").items([
                     MenuItem::action("Check for Updates…", CheckForUpdates),
+                    MenuItem::action("Toggle Automatic Updates", ToggleAutoUpdate),
                     MenuItem::action("Quit Velvet", Quit),
                 ]),
                 Menu::new("File").items([

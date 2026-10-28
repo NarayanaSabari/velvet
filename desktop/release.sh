@@ -25,9 +25,10 @@ grep -q "^version = \"$version\"$" Cargo.toml || fail "Cargo.toml is not at $ver
 gh release view "$tag" -R "$repo" >/dev/null 2>&1 && fail "Release $tag already exists."
 
 archive="dist/Velvet-$version-arm64.zip"
-[[ -e "$archive" ]] && fail "Output exists: $archive. Move it aside before releasing."
-[[ -e "dist/Velvet Preview.app" ]] && mv "dist/Velvet Preview.app" "$(mktemp -d dist/.previous.XXXXXX)/"
-./package.sh
+[[ -e "$archive" || -e "dist/Velvet-$version-arm64.dmg" ]] && fail "Output for $version exists in dist/. Move it aside before releasing."
+[[ -e dist/Velvet.app ]] && mv dist/Velvet.app "$(mktemp -d dist/.previous.XXXXXX)/"
+./package.sh --dmg
+dmg="dist/Velvet-$version-arm64.dmg"
 
 sha="$(shasum -a 256 "$archive" | cut -d' ' -f1)"
 signature="$(cargo run -q --locked --example update_key -- sign "$key" "$version" "$sha")"
@@ -39,5 +40,5 @@ NOTES="$notes" VERSION="$version" URL="$url" SHA="$sha" SIG="$signature" \
 git tag -a "$tag" -m "Velvet desktop $version"
 git push origin "$tag"
 gh release create "$tag" -R "$repo" --title "Velvet desktop $version" --notes "$notes" \
-    "$archive" "$manifest"
+    "$archive" "$dmg" "$manifest"
 printf 'Published %s. Installed apps offer it on next launch.\n' "$tag"

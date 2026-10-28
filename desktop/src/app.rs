@@ -23,6 +23,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+const UPDATE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 pub const DEFAULT_SERVER: &str = "https://velvet.sabarinarayana.com";
 actions!(
     velvet,
@@ -35,7 +36,8 @@ actions!(
         PreviousIssue,
         Dismiss,
         PostUpdate,
-        CheckForUpdates
+        CheckForUpdates,
+        ToggleAutoUpdate
     ]
 );
 
@@ -91,6 +93,10 @@ pub struct Velvet {
     quitting: bool,
     /// Verified newer release, offered in a banner.
     available_update: Option<update::Manifest>,
+    /// Verified bundle waiting to replace this one at Quit.
+    staged_update: Option<std::path::PathBuf>,
+    auto_update: bool,
+    relaunch: bool,
     updating: bool,
     _subscriptions: Vec<Subscription>,
 }
@@ -190,6 +196,9 @@ impl Velvet {
             quit_prompt: false,
             quitting: false,
             available_update: None,
+            staged_update: None,
+            auto_update: update::auto_update_enabled(),
+            relaunch: false,
             updating: false,
             _subscriptions: subscriptions,
         };
@@ -200,20 +209,40 @@ impl Velvet {
         }
         // Only packaged apps can replace themselves, so dev runs skip the check.
         if update::running_bundle().is_some() {
-            this.check_for_updates(false, cx);
+            cx.spawn(async move |view, cx| {
+                loop {
+                    if view
+                        .update(cx, |this, cx| this.check_for_updates(false, cx))
+                        .is_err()
+                    {
+                        break;
+                    }
+                    smol::Timer::after(UPDATE_INTERVAL).await;
+                }
+            })
+            .detach();
         }
         this
     }
 
     pub fn check_for_updates(&mut self, manual: bool, cx: &mut Context<Self>) {
-        if self.updating {
+        if self.updating || self.staged_update.is_some() {
+            if manual {
+                self.notice = Some("An update is ready. Restart Velvet to finish.".into());
+                cx.notify();
+            }
             return;
         }
         cx.spawn(async move |view, cx| {
             let result = smol::unblock(update::check).await;
             let _ = view.update(cx, |this, cx| {
                 match result {
-                    Ok(Some(manifest)) => this.available_update = Some(manifest),
+                    Ok(Some(manifest)) => {
+                        this.available_update = Some(manifest);
+                        if this.auto_update {
+                            this.download_update(cx);
+                        }
+                    }
                     Ok(None) if manual => {
                         this.notice =
                             Some(format!("Velvet {} is the latest version.", update::CURRENT))
@@ -228,7 +257,8 @@ impl Velvet {
         .detach();
     }
 
-    fn install_update(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Download and verify in the background. The swap waits for Quit.
+    fn download_update(&mut self, cx: &mut Context<Self>) {
         let Some(manifest) = self.available_update.clone() else {
             return;
         };
@@ -237,35 +267,55 @@ impl Velvet {
             cx.notify();
             return;
         };
+        if self.updating {
+            return;
+        }
         self.updating = true;
-        self.error = None;
         cx.notify();
-        let window_handle = window.window_handle();
         cx.spawn(async move |view, cx| {
             let result = smol::unblock(move || {
-                let staged = update::download(&manifest)?;
-                update::install_on_exit(&staged, &target)
+                update::check_writable(&target)?;
+                update::download(&manifest)
             })
             .await;
-            let _ = window_handle.update(cx, |_, window, cx| {
-                let _ = view.update(cx, |this, cx| {
-                    this.updating = false;
-                    match result {
-                        // The helper swaps the bundle once this process exits.
-                        // Quit still asks before discarding unsent drafts.
-                        Ok(()) => {
-                            this.available_update = None;
-                            this.notice =
-                                Some("Update ready. It installs when Velvet quits.".into());
-                            this.request_quit(window, cx);
-                        }
-                        Err(error) => this.error = Some(error.to_string()),
-                    }
-                    cx.notify();
-                });
+            let _ = view.update(cx, |this, cx| {
+                this.updating = false;
+                match result {
+                    Ok(staged) => this.staged_update = Some(staged),
+                    Err(error) => this.error = Some(error.to_string()),
+                }
+                cx.notify();
             });
         })
         .detach();
+    }
+
+    fn restart_to_update(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.relaunch = true;
+        self.request_quit(window, cx);
+    }
+
+    /// Every quit path ends here, so a staged update always installs.
+    fn finish_quit(&mut self, cx: &mut Context<Self>) {
+        self.quitting = true;
+        if let (Some(staged), Some(target)) = (&self.staged_update, update::running_bundle()) {
+            let _ = update::install_on_exit(staged, &target, self.relaunch);
+        }
+        cx.quit();
+    }
+
+    fn toggle_auto_update(&mut self, cx: &mut Context<Self>) {
+        let enabled = !self.auto_update;
+        match update::set_auto_update(enabled) {
+            Ok(()) => {
+                self.auto_update = enabled;
+                if enabled && self.available_update.is_some() {
+                    self.download_update(cx);
+                }
+            }
+            Err(error) => self.error = Some(error.to_string()),
+        }
+        cx.notify();
     }
 
     pub fn is_quitting(&self) -> bool {
@@ -290,8 +340,7 @@ impl Velvet {
                 && (!self.title.read(cx).value().trim().is_empty()
                     || !self.description.read(cx).value().trim().is_empty()));
         if !dirty {
-            self.quitting = true;
-            cx.quit();
+            self.finish_quit(cx);
             return;
         }
         self.quit_prompt = true;
@@ -821,6 +870,7 @@ impl Velvet {
         }
         if self.quit_prompt {
             self.quit_prompt = false;
+            self.relaunch = false;
             if self.editing {
                 self.title.update(cx, |input, cx| input.focus(window, cx));
             } else {
@@ -1496,6 +1546,28 @@ impl Velvet {
             .child(div().flex_1())
             .child(
                 self.nav_row(
+                    "auto-update",
+                    if self.auto_update {
+                        "Automatic updates: On"
+                    } else {
+                        "Automatic updates: Off"
+                    },
+                    false,
+                    false,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_auto_update(cx))),
+            )
+            .child(
+                self.nav_row(
+                    "check-updates",
+                    &format!("Check for updates · v{}", update::CURRENT),
+                    false,
+                    false,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.check_for_updates(true, cx))),
+            )
+            .child(
+                self.nav_row(
                     "theme",
                     if self.dark {
                         "Light appearance"
@@ -1531,7 +1603,7 @@ impl Velvet {
                 self.nav_row(
                     "logout",
                     if self.demo {
-                        "Exit sample preview"
+                        "Exit sample workspace"
                     } else {
                         "Sign out…"
                     },
@@ -2194,7 +2266,7 @@ impl Velvet {
                 .when_some(self.login.as_ref(),|v,login|v.child(self.label("Compare this code in your browser:")).child(div().font_family("Menlo").text_size(px(24.)).child(login.user_code.clone())).child(self.label("Approve only if you started this sign-in. No repository credentials are reused.")))
                 .when(self.loading,|v|v.child(Button::new("cancel-login").label("Cancel sign-in").disabled(self.saving).on_click(cx.listener(|this,_,_,cx|{if !this.saving{this.session_revision.next();this.loading=false;this.login=None;cx.notify();}}))))
                 .child(Button::new("sample").ghost().label("Explore sample workspace").disabled(self.loading).on_click(cx.listener(|this,_,_,cx|{this.demo=true;this.seed_demo();cx.notify();})))
-                .child(self.label("Online-first preview · Credentials stay in macOS Keychain")))
+                .child(self.label(format!("Version {} · Credentials stay in macOS Keychain", update::CURRENT))))
             .into_any_element()
     }
     fn overlay(&self, cx: &Context<Self>) -> AnyElement {
@@ -2225,9 +2297,9 @@ impl Velvet {
             .rounded(px(8.));
         if self.quit_prompt {
             body = body.child(div().text_size(px(24.)).child("Discard unsent drafts and quit?"))
-                .child("Preview drafts stay in this window only. Posted work is already saved on the server.")
+                .child("Unsent drafts stay in this window only. Posted work is already saved on the server.")
                 .child(gpui_kit::base::Button::new("cancel-quit").track_focus(&self.cancel_focus).accessibility_label("Keep working").child("Keep working").h(px(32.)).px_3().flex().items_center().justify_center().border_1().border_color(p.border).rounded(px(6.)).focus_visible(|style| style.border_2().border_color(p.ink)).on_click(cx.listener(|this, _, window, cx| this.close_overlay(window, cx))))
-                .child(Button::new("confirm-quit").danger().label("Discard drafts and quit").on_click(cx.listener(|this, _, _, cx| { this.quitting = true; cx.quit(); })));
+                .child(Button::new("confirm-quit").danger().label("Discard drafts and quit").on_click(cx.listener(|this, _, _, cx| this.finish_quit(cx))));
         } else if self.confirm_logout {
             body=body.child(div().text_size(px(24.)).child("Sign out of Velvet?"))
                 .child("This revokes this desktop credential and clears this window’s private data and unsent drafts. Other clients remain signed in.")
@@ -2410,10 +2482,18 @@ impl Render for Velvet {
             .on_action(
                 cx.listener(|this, _: &CheckForUpdates, _, cx| this.check_for_updates(true, cx)),
             )
+            .on_action(cx.listener(|this, _: &ToggleAutoUpdate, _, cx| this.toggle_auto_update(cx)))
             .when_some(self.available_update.as_ref(), |v, manifest| {
-                let text = match manifest.notes.trim() {
-                    "" => format!("Velvet {} is available.", manifest.version),
-                    notes => format!("Velvet {} is available: {notes}", manifest.version),
+                let ready = self.staged_update.is_some();
+                let text = match (ready, manifest.notes.trim()) {
+                    (true, _) => format!(
+                        "Velvet {} is ready. It installs when you quit, or restart now.",
+                        manifest.version
+                    ),
+                    (false, "") => format!("Velvet {} is available.", manifest.version),
+                    (false, notes) => {
+                        format!("Velvet {} is available: {notes}", manifest.version)
+                    }
                 };
                 v.child(
                     h_flex()
@@ -2434,12 +2514,18 @@ impl Render for Velvet {
                                 .primary()
                                 .label(if self.updating {
                                     "Downloading…"
+                                } else if ready {
+                                    "Restart now"
                                 } else {
-                                    "Restart to update"
+                                    "Update"
                                 })
                                 .disabled(self.updating)
                                 .on_click(cx.listener(|this, _, window, cx| {
-                                    this.install_update(window, cx)
+                                    if this.staged_update.is_some() {
+                                        this.restart_to_update(window, cx)
+                                    } else {
+                                        this.download_update(cx)
+                                    }
                                 })),
                         )
                         .child(
@@ -2464,7 +2550,7 @@ impl Render for Velvet {
                         .justify_center()
                         .bg(p.surface)
                         .child(self.label(format!(
-                            "Design preview · Sample data · No server writes · v{}",
+                            "Sample data · No server writes · v{}",
                             update::CURRENT
                         ))),
                 )

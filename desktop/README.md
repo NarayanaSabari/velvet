@@ -31,8 +31,8 @@ cargo run --locked -- --demo
 The native binary accepts `--server URL`, `--demo`, and `--help`. Server URLs require HTTPS except for HTTP loopback during local development. `--demo` is read-only sample data, not proof of live server behavior. To pass arguments to a packaged preview:
 
 ```bash
-open 'desktop/dist/Velvet Preview.app' --args --server https://velvet.example.com
-open 'desktop/dist/Velvet Preview.app' --args --demo
+open desktop/dist/Velvet.app --args --server https://velvet.example.com
+open desktop/dist/Velvet.app --args --demo
 ```
 
 Quit any running preview before launching it with different arguments.
@@ -49,19 +49,21 @@ From the repository root:
 ./desktop/package.sh --dmg
 ```
 
-The script requires native Apple Silicon macOS and a native Rust toolchain. It builds release mode with `--locked`, an explicit `aarch64-apple-darwin` target, and a fixed `desktop/target` output directory. It validates `Info.plist`, assembles `desktop/dist/Velvet Preview.app`, and applies and verifies an ad-hoc signature. `desktop/dist` must remain ignored by Git. Existing destination apps or requested DMGs cause an error instead of being overwritten. Move prior output aside before another package run.
+The script requires native Apple Silicon macOS and a native Rust toolchain. It builds release mode with `--locked`, an explicit `aarch64-apple-darwin` target, and a fixed `desktop/target` output directory. It validates `Info.plist`, assembles `desktop/dist/Velvet.app`, stamps the `Cargo.toml` version into `Info.plist`, applies and verifies an ad-hoc signature, and writes the update zip. `desktop/dist` must remain ignored by Git. Existing destination apps or requested DMGs cause an error instead of being overwritten. Move prior output aside before another package run.
 
-`--dmg` additionally uses `hdiutil` to create `Velvet-0.1.0-preview-arm64-NOT-NOTARIZED.dmg`, containing the app and an Applications shortcut. Without that flag no disk image is created. Scratch staging directories are removed when the script exits. Failed disk-image creation can leave a partial output file, which must be inspected and moved aside before retrying.
+`--dmg` additionally uses `hdiutil` to create `Velvet-<version>-arm64.dmg`, containing the app and an Applications shortcut. Without that flag no disk image is created. Scratch staging directories are removed when the script exits. Failed disk-image creation can leave a partial output file, which must be inspected and moved aside before retrying.
 
-**This is ad-hoc signed only, NOT notarized.** The bundle's display name and included `Contents/Resources/PREVIEW.txt` say so. An ad-hoc signature is not an Apple Developer ID signature and does not establish a trusted publisher. Gatekeeper may block a downloaded preview. Do not disable Gatekeeper or remove quarantine globally to install it. Only run a local build whose source and origin you trust.
+**Velvet is ad-hoc signed, not notarized.** An ad-hoc signature is not an Apple Developer ID signature. On first install, macOS blocks the app once. Right-click Velvet in Applications, choose Open, then confirm, or allow it under System Settings > Privacy & Security. Do not disable Gatekeeper globally.
 
-Distribution is a direct, manually installed preview app or optional DMG for the first install. There is no offline database, offline write queue, migration engine or conflict resolution in this slice. No offline durability or successful background sync is promised.
+Install from the release DMG: drag Velvet to Applications. There is no offline database, offline write queue, migration engine or conflict resolution. No offline durability or successful background sync is promised.
 
 ## Versioned releases and self-update
 
 Each desktop release is a GitHub Release tagged `desktop-vX.Y.Z` on `NarayanaSabari/velvet`, separate from the CLI's `vX.Y.Z` tags. It carries `Velvet-X.Y.Z-arm64.zip` and a `latest.json` manifest holding the version, archive URL, SHA-256 and an ed25519 signature over `velvet-desktop:<version>:<sha256>`.
 
-A packaged app checks for updates at launch and from **Velvet > Check for Updates…**. It ignores drafts, prereleases and versions not newer than its own. It shows a banner only when the manifest signature matches the public key compiled from `update-public-key.hex`. **Restart to update** downloads the archive, checks its SHA-256, bundle identifier, version and code signature, then quits through the normal draft-safe Quit flow. A detached helper waits for the process to exit, swaps the bundle and relaunches it, restoring the old bundle if the swap fails. Background checks fail silently offline. `cargo run` builds never check.
+A packaged app checks for updates at launch, every 6 hours while open, and from **Velvet > Check for Updates…** or the sidebar. It ignores drafts, prereleases and versions not newer than its own, and trusts a manifest only when its signature matches the public key compiled from `update-public-key.hex`.
+
+**Automatic updates** (default on, toggled in the sidebar or the Velvet menu, stored in `~/Library/Application Support/Velvet/auto-update`) download and verify a new release in the background. It installs the next time Velvet quits, or immediately with **Restart now**. With automatic updates off, the banner offers **Update** to download first. Verification covers SHA-256, bundle identifier, version and code signature. Every quit path, including the draft-safe Quit prompt, hands the staged bundle to a detached helper that waits for exit, swaps the bundle, and restores the old one if the swap fails. Background checks fail silently offline. `cargo run` builds never check.
 
 The app must sit in a folder the user can write to. `/Applications` works for admin users. Because the app is not notarized, the first install still needs the manual Gatekeeper approval. Updates downloaded by the app itself carry no quarantine flag.
 
