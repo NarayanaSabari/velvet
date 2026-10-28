@@ -2463,7 +2463,10 @@ impl Render for Velvet {
                         .items_center()
                         .justify_center()
                         .bg(p.surface)
-                        .child(self.label("Design preview · Sample data · No server writes")),
+                        .child(self.label(format!(
+                            "Design preview · Sample data · No server writes · v{}",
+                            update::CURRENT
+                        ))),
                 )
             })
             .when_some(self.error.as_ref(), |v, error| {
