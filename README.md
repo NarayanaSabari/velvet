@@ -252,6 +252,9 @@ It only reads the database, but it does send those pull requests and open issues
 ```
 api/     Go: HTTP API, queue worker, migrations - one binary, three subcommands
 web/     React SPA (Vite, TanStack Query and Router, Tailwind)
+cli/     Go CLI with browser consent and repository-scoped credentials
+desktop/ Native Rust/GPUI Apple Silicon client and local packaging
+plugins/ Agent skills and manifests for the CLI
 e2e/     Playwright suite, run against the real Compose stack
 deploy/  Compose file, Caddyfile, backup script
 ```
@@ -283,6 +286,8 @@ curl -fsS http://localhost/api/v1/health   # {"status":"ok"}
 
 Migrations run as a one-shot `migrate` service that both `api` and `worker` wait on, so the schema applies exactly once instead of racing between two starting containers.
 Every required variable is referenced as `${VAR:?message}`, so a missing secret fails the deploy loudly at startup rather than producing a half-configured system.
+
+The remote deployment script pulls images before stopping the API and worker, then applies migrations before restarting them. This creates a maintenance window but prevents old writers from using a changed schema. For manual Compose upgrades, also stop `api` and `worker` before applying migrations, and start the new services only after migration succeeds. Migration `0020_repo_scoped_commits.sql` preserves existing commits while changing their identity to `(repo_id, sha)`; older worker binaries are incompatible with that schema. Before an approved rollout, take and verify a database backup. Do not roll back only the image after `0020`; restoring an older schema requires a separately approved restore and reconciliation of later writes. The migration cannot reconstruct repository copies previously discarded by the global SHA key; recovering those requires a separately scoped GitHub resync.
 
 For a real deployment set `SITE_ADDRESS` to a bare hostname such as `worklog.example.com` and Caddy provisions a Let's Encrypt certificate on its own.
 Set `SITE_ADDRESS=http://localhost` for local work, where there is nothing to certify.

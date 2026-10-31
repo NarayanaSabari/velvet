@@ -273,6 +273,7 @@ export interface Review {
 }
 
 export interface Commit {
+  repo_id: string
   sha: string
   issue_id: string | null
   branch: string

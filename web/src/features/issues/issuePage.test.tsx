@@ -3,10 +3,37 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { IssueEvidenceSection, IssuePageLayout, IssueTimeline } from './IssuePage'
+import { buildTimeline } from './issueTimeline'
 import { EvidenceCard } from '../evidence/EvidenceCard'
 import { StatusSelect } from './StatusSelect'
 
 describe('IssueTimeline', () => {
+  it('keeps same-SHA commits from different repositories as distinct rows', () => {
+    const sha = 'a'.repeat(40)
+    const entries = buildTimeline([], [], {
+      pull_requests: [], reviews: [],
+      commits: ['original', 'fork'].map((repo_id) => ({
+        repo_id, sha, issue_id: 'i1', branch: 'main', message: `${repo_id} work`,
+        author_login: 'sabari', html_url: '', committed_at: '2026-09-01T10:00:00Z',
+      })),
+    })
+    expect(entries.map((entry) => entry.id)).toEqual([`original:${sha}`, `fork:${sha}`])
+    const errors = vi.spyOn(console, 'error')
+    try {
+      const { rerender } = render(<IssueTimeline entries={entries} />)
+      expect(screen.getAllByRole('listitem')).toHaveLength(2)
+      expect(screen.getByText('sabari pushed original work')).toBeInTheDocument()
+      expect(screen.getByText('sabari pushed fork work')).toBeInTheDocument()
+      rerender(<IssueTimeline entries={entries.slice(1)} />)
+      expect(screen.getAllByRole('listitem')).toHaveLength(1)
+      expect(screen.queryByText('sabari pushed original work')).toBeNull()
+      expect(screen.getByText('sabari pushed fork work')).toBeInTheDocument()
+      expect(errors).not.toHaveBeenCalled()
+    } finally {
+      errors.mockRestore()
+    }
+  })
+
   it('interleaves comments, status changes, and PRs in time order', () => {
     render(<IssueTimeline entries={[
       { kind: 'comment', id: 'c1', at: '2026-09-01T10:00:00Z', body: 'Starting', author: null },

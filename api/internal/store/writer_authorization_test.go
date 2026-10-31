@@ -93,7 +93,7 @@ func TestUserWritersRejectRevokedAndNilActors(t *testing.T) {
 			return e
 		}},
 		{"evidence/commit", func(a uuid.UUID) error {
-			return f.Store.AttachEvidenceToIssue(ctx, ws, issue.ID, a, store.EvidenceRef{Kind: "commit", SHA: "synthetic"})
+			return f.Store.AttachEvidenceToIssue(ctx, ws, issue.ID, a, store.EvidenceRef{Kind: "commit", SHA: "synthetic", RepoID: repoID})
 		}},
 		{"evidence/pr", func(a uuid.UUID) error {
 			return f.Store.AttachEvidenceToIssue(ctx, ws, issue.ID, a, store.EvidenceRef{Kind: "pull_request", ID: pr.ID})
@@ -146,7 +146,7 @@ func TestUserWritersRejectRevokedAndNilActors(t *testing.T) {
 	require.Equal(t, 1, links)
 	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT count(*) FROM issue_label WHERE issue_id=$1`, issue.ID).Scan(&assignments))
 	var commitIssue *uuid.UUID
-	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT issue_id FROM commit_ref WHERE sha='synthetic'`).Scan(&commitIssue))
+	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT issue_id FROM commit_ref WHERE repo_id=$1 AND sha='synthetic'`, repoID).Scan(&commitIssue))
 	require.Nil(t, commitIssue)
 	require.Zero(t, assignments)
 }

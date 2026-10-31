@@ -140,3 +140,38 @@ func TestEmailIdentityUpgradePreflightRollsBack(t *testing.T) {
 		})
 	}
 }
+
+func TestRepoScopedCommitUpgradePreservesEvidence(t *testing.T) {
+	pool := legacyDatabase(t)
+	ctx := t.Context()
+	require.NoError(t, Migrate(ctx, pool))
+	require.NoError(t, Migrate(ctx, pool), "re-running migrations must be safe")
+	var message, issueKey string
+	require.NoError(t, pool.QueryRow(ctx, `SELECT c.message, i.key FROM commit_ref c JOIN issue i ON i.id=c.issue_id WHERE c.sha=repeat('a',40)`).Scan(&message, &issueKey))
+	require.Equal(t, "Legacy commit", message)
+	require.Equal(t, "ENG-1", issueKey)
+	_, err := pool.Exec(ctx, `
+		INSERT INTO repo(workspace_id,installation_id,github_id,owner,name)
+		VALUES ('00000000-0000-0000-0000-000000000001',99,101,'acme','fork');
+		INSERT INTO github_installation(id,account_login,workspace_id)
+		VALUES (100,'other','00000000-0000-0000-0000-000000000002');
+		INSERT INTO repo(workspace_id,installation_id,github_id,owner,name)
+		VALUES ('00000000-0000-0000-0000-000000000002',100,102,'other','fork');
+		INSERT INTO commit_ref(sha,workspace_id,repo_id,message,committed_at)
+		SELECT repeat('a',40),workspace_id,id,name,now() FROM repo WHERE github_id IN (101,102)`)
+	require.NoError(t, err, "the same SHA must be stored in each repository and workspace")
+	var count int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM commit_ref WHERE sha=repeat('a',40)`).Scan(&count))
+	require.Equal(t, 3, count)
+	_, err = pool.Exec(ctx, `INSERT INTO commit_ref(sha,workspace_id,repo_id,message,committed_at)
+		SELECT sha,workspace_id,repo_id,message,committed_at FROM commit_ref WHERE message='Legacy commit'`)
+	require.ErrorContains(t, err, "commit_ref_pkey", "duplicates in one repository must still be rejected")
+	_, err = pool.Exec(ctx, `DELETE FROM repo WHERE github_id=101;
+		DELETE FROM workspace WHERE id='00000000-0000-0000-0000-000000000002'`)
+	require.NoError(t, err)
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM commit_ref WHERE sha=repeat('a',40)`).Scan(&count))
+	require.Equal(t, 1, count, "deleting other repositories and workspaces must retain legacy evidence")
+	require.NoError(t, pool.QueryRow(ctx, `SELECT c.message, i.key FROM commit_ref c JOIN issue i ON i.id=c.issue_id`).Scan(&message, &issueKey))
+	require.Equal(t, "Legacy commit", message)
+	require.Equal(t, "ENG-1", issueKey)
+}

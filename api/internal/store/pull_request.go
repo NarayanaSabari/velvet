@@ -67,6 +67,7 @@ type Review struct {
 
 // Commit is one commit mirrored onto an issue timeline.
 type Commit struct {
+	RepoID      uuid.UUID  `json:"repo_id"`
 	SHA         string     `json:"sha"`
 	IssueID     *uuid.UUID `json:"issue_id"`
 	Branch      string     `json:"branch"`
@@ -359,7 +360,7 @@ func (s *Store) EvidenceForIssue(ctx context.Context, workspaceID, issueID uuid.
 	}
 
 	comRows, err := s.pool.Query(ctx, `
-		SELECT sha, issue_id, branch, message, author_login, html_url, committed_at
+		SELECT repo_id, sha, issue_id, branch, message, author_login, html_url, committed_at
 		FROM commit_ref
 		WHERE workspace_id = $1 AND issue_id = $2
 		ORDER BY committed_at DESC`, workspaceID, issueID)
@@ -369,7 +370,7 @@ func (s *Store) EvidenceForIssue(ctx context.Context, workspaceID, issueID uuid.
 	defer comRows.Close()
 	for comRows.Next() {
 		var c Commit
-		if err := comRows.Scan(&c.SHA, &c.IssueID, &c.Branch, &c.Message,
+		if err := comRows.Scan(&c.RepoID, &c.SHA, &c.IssueID, &c.Branch, &c.Message,
 			&c.AuthorLogin, &c.HTMLURL, &c.CommittedAt); err != nil {
 			return out, err
 		}
@@ -578,7 +579,7 @@ func UpsertCommitTx(ctx context.Context, tx pgx.Tx, in UpsertCommitInput) error 
 		INSERT INTO commit_ref (sha, workspace_id, repo_id, issue_id, branch,
 			message, author_login, html_url, committed_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		ON CONFLICT (sha) DO NOTHING`,
+		ON CONFLICT (repo_id, sha) DO NOTHING`,
 		in.SHA, in.WorkspaceID, in.RepoID, in.IssueID, in.Branch,
 		in.Message, in.AuthorLogin, in.HTMLURL, in.CommittedAt)
 	return err

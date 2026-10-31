@@ -19,6 +19,8 @@ type EvidenceRef struct {
 	ID   uuid.UUID `json:"id"`
 	SHA  string    `json:"sha,omitempty"`
 	URL  string    `json:"url,omitempty"`
+	// RepoID scopes commit identity internally; callers submit references, not IDs.
+	RepoID uuid.UUID `json:"-"`
 }
 
 var (
@@ -52,10 +54,10 @@ func (s *Store) ResolveEvidence(ctx context.Context, workspaceID uuid.UUID, refe
 		return s.pullRequestByNumber(ctx, workspaceID, m[1], m[2], m[3])
 	}
 	if m := commitURLRe.FindStringSubmatch(reference); m != nil {
-		return s.commitBySHA(ctx, workspaceID, m[3])
+		return s.commitBySHA(ctx, workspaceID, m[3], m[1], m[2])
 	}
 	if shaRe.MatchString(reference) {
-		return s.commitBySHA(ctx, workspaceID, reference)
+		return s.commitBySHA(ctx, workspaceID, reference, "", "")
 	}
 	return EvidenceRef{}, ErrNotFound
 }
@@ -78,11 +80,13 @@ func (s *Store) pullRequestByNumber(ctx context.Context, workspaceID uuid.UUID, 
 // commitBySHA accepts an abbreviated sha. An abbreviation that matches more
 // than one commit is rejected rather than resolved arbitrarily, because
 // attaching the wrong commit as proof of work is worse than attaching none.
-func (s *Store) commitBySHA(ctx context.Context, workspaceID uuid.UUID, sha string) (EvidenceRef, error) {
+func (s *Store) commitBySHA(ctx context.Context, workspaceID uuid.UUID, sha, owner, name string) (EvidenceRef, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT sha, html_url FROM commit_ref
-		WHERE workspace_id = $1 AND sha LIKE lower($2) || '%'
-		LIMIT 2`, workspaceID, sha)
+		SELECT c.repo_id, c.sha, c.html_url FROM commit_ref c
+		JOIN repo r ON r.id = c.repo_id
+		WHERE c.workspace_id = $1 AND c.sha LIKE lower($2) || '%'
+		  AND ($3 = '' OR (lower(r.owner) = lower($3) AND lower(r.name) = lower($4)))
+		LIMIT 2`, workspaceID, sha, owner, name)
 	if err != nil {
 		return EvidenceRef{}, err
 	}
@@ -91,7 +95,7 @@ func (s *Store) commitBySHA(ctx context.Context, workspaceID uuid.UUID, sha stri
 	var found []EvidenceRef
 	for rows.Next() {
 		var ref EvidenceRef
-		if err := rows.Scan(&ref.SHA, &ref.URL); err != nil {
+		if err := rows.Scan(&ref.RepoID, &ref.SHA, &ref.URL); err != nil {
 			return EvidenceRef{}, err
 		}
 		ref.Kind = "commit"
@@ -132,8 +136,8 @@ func (s *Store) AttachEvidenceToIssue(ctx context.Context, workspaceID, issueID,
 			}
 			tag, err := tx.Exec(ctx, `
 				UPDATE commit_ref SET issue_id = $3
-				WHERE workspace_id = $1 AND sha = $2 AND issue_id IS DISTINCT FROM $3`,
-				workspaceID, ref.SHA, issueID)
+				WHERE workspace_id = $1 AND sha = $2 AND repo_id = $4 AND issue_id IS DISTINCT FROM $3`,
+				workspaceID, ref.SHA, issueID, ref.RepoID)
 			if err != nil {
 				return err
 			}

@@ -9,6 +9,9 @@ This file describes repository structure, safe working practice, and verified co
 ## Repository map
 
 - `api/` contains the Go HTTP API, database migrations, authentication, stores, GitHub integration, and queue worker.
+- `cli/` contains the Go CLI, browser-consent setup, private repository bindings, and scoped command client.
+- `desktop/` contains the native Rust/GPUI Apple Silicon client, updater, packaging scripts, and parity ledger.
+- `plugins/velvet/` contains agent skills and manifests checked against the CLI command surface.
 - `web/` contains the React 19 and TypeScript SPA built with Vite, Tailwind, TanStack Router, and TanStack Query.
 - `web/src/app/Shell.tsx` owns the shared workspace shell and responsive navigation.
 - `web/src/index.css` owns the global palette, typography tokens, focus ring, radius tokens, and button motion contract.

@@ -96,7 +96,7 @@ func writeEvidenceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, store.ErrAmbiguousReference):
 		WriteError(w, http.StatusConflict, "ambiguous",
-			"that abbreviated sha matches more than one commit; use the full sha")
+			"that sha matches more than one repository commit; use a commit URL with the full sha")
 	case errors.Is(err, store.ErrNotFound):
 		WriteError(w, http.StatusNotFound, "not_found",
 			"no synced pull request or commit matches that reference")

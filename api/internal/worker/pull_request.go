@@ -72,7 +72,7 @@ func (w *Worker) syncPullRequest(ctx context.Context, repo store.Repo, pr github
 			return err
 		}
 
-		for _, match := range linker.Find(prefix, pr.HeadRef, pr.Title, pr.Body) {
+		for _, match := range linker.Find(prefix, stored.HeadRef, stored.Title, stored.Body) {
 			var issueID uuid.UUID
 			err := tx.QueryRow(ctx, `SELECT id FROM issue WHERE workspace_id=$1 AND key=$2`, repo.WorkspaceID, match.Key).Scan(&issueID)
 			if errors.Is(err, pgx.ErrNoRows) {

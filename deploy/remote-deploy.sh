@@ -56,6 +56,12 @@ fi
 echo "pulling $tag"
 IMAGE_TAG="$tag" compose pull --quiet migrate api worker web
 
+# Contract migrations can change keys used by the old writer binary (0020
+# scopes commit identity to a repository). Drain writers only after pulling
+# succeeds, and keep them stopped if migration fails rather than mixing schemas.
+echo "stopping writers before migration"
+compose stop api worker
+
 echo "starting $tag"
 IMAGE_TAG="$tag" compose up -d --no-build --remove-orphans
 

@@ -72,7 +72,7 @@ func TestACommitOnAKeylessBranchIsAttributableToItsProject(t *testing.T) {
 		SELECT c.issue_id::text, p.key
 		FROM commit_ref c JOIN repo r ON r.id = c.repo_id
 		JOIN project p ON p.id = r.project_id
-		WHERE c.sha = $1`, sha).Scan(&issueID, &projectKey))
+		WHERE c.repo_id = $1 AND c.sha = $2`, repo.ID, sha).Scan(&issueID, &projectKey))
 	require.Nil(t, issueID, "a keyless branch must not invent an issue")
 	require.Equal(t, "velvet", projectKey,
 		"the commit still has a home, through the repository's project")
@@ -139,6 +139,80 @@ func TestEvidenceAttachesByCommitSHA(t *testing.T) {
 	require.NoError(t, f.Pool.QueryRow(t.Context(),
 		`SELECT count(*) FROM activity WHERE verb = $1`, store.VerbAttachedCommit).Scan(&attaches))
 	require.Equal(t, 1, attaches)
+}
+
+func TestCommitEvidenceIsScopedToRepositoryAndWorkspace(t *testing.T) {
+	f := testutil.NewFixture(t)
+	ctx := t.Context()
+	firstIssue := createIssue(t, f, map[string]any{"title": "Original work"})
+	secondIssue := createIssue(t, f, map[string]any{"title": "Fork work"})
+	first := testutil.LinkRepo(t, f, 555, "acme", "widgets")
+	second := testutil.LinkRepo(t, f, 557, "acme", "fork")
+	foreignPR := testutil.InsertForeignPullRequest(t, f, 7, "Foreign work")
+	var foreign store.Repo
+	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT repo_id, workspace_id FROM pull_request WHERE id=$1`, foreignPR).
+		Scan(&foreign.ID, &foreign.WorkspaceID))
+	foreign.Owner, foreign.Name = "other", "repo"
+	sha := strings.Repeat("d", 40)
+	for _, repo := range []store.Repo{first, second, foreign} {
+		input := store.UpsertCommitInput{
+			SHA: sha, WorkspaceID: repo.WorkspaceID, RepoID: repo.ID,
+			Message: repo.Name, CommittedAt: time.Now().UTC(),
+			HTMLURL: "https://github.com/" + repo.Owner + "/" + repo.Name + "/commit/" + sha,
+		}
+		testutil.UpsertCommit(t, f, input)
+		testutil.UpsertCommit(t, f, input)
+	}
+	var count int
+	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT count(*) FROM commit_ref WHERE sha=$1`, sha).Scan(&count))
+	require.Equal(t, 3, count, "each repository retains its commit, and replays remain idempotent")
+	endpoint := "/api/v1/w/lab/issues/" + firstIssue.Key + "/evidence"
+	for _, reference := range []string{sha, sha[:7]} {
+		rec := f.Do(http.MethodPost, endpoint, map[string]any{"reference": reference})
+		require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+		require.Contains(t, rec.Body.String(), "commit URL")
+	}
+	for _, ownerRepo := range []string{"missing/repo", "acme/missing", "other/repo"} {
+		rec := f.Do(http.MethodPost, endpoint, map[string]any{"reference": "https://github.com/" + ownerRepo + "/commit/" + sha})
+		require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+	}
+	for _, reference := range []string{
+		"https://github.com/ACME/WIDGETS/commit/" + strings.ToUpper(sha),
+		"https://github.com/acme/widgets/commit/" + sha[:7],
+	} {
+		rec := f.Do(http.MethodPost, endpoint, map[string]any{"reference": reference})
+		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	}
+	rec := f.Do(http.MethodPost, "/api/v1/w/lab/issues/"+secondIssue.Key+"/evidence",
+		map[string]any{"reference": "https://github.com/acme/fork/commit/" + sha})
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	for _, tc := range []struct{ key, message string }{{firstIssue.Key, "widgets"}, {secondIssue.Key, "fork"}} {
+		rec := f.Do(http.MethodGet, "/api/v1/w/lab/issues/"+tc.key+"/evidence", nil)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var evidence store.Evidence
+		f.DecodeInto(rec, &evidence)
+		require.Len(t, evidence.Commits, 1)
+		require.Equal(t, tc.message, evidence.Commits[0].Message)
+	}
+	ref, err := f.Store.ResolveEvidence(ctx, foreign.WorkspaceID, sha)
+	require.NoError(t, err, "another workspace's copies must not make a local SHA ambiguous")
+	require.Equal(t, foreign.ID, ref.RepoID)
+	var foreignIssue *string
+	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT issue_id::text FROM commit_ref WHERE repo_id=$1 AND sha=$2`, foreign.ID, sha).Scan(&foreignIssue))
+	require.Nil(t, foreignIssue)
+	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT count(*) FROM activity WHERE verb=$1`, store.VerbAttachedCommit).Scan(&count))
+	require.Equal(t, 2, count, "repeat attachments must not duplicate activity")
+
+	// Both copies can share a timeline, so the API must expose their repository identity.
+	rec = f.Do(http.MethodPost, endpoint, map[string]any{"reference": "https://github.com/acme/fork/commit/" + sha})
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	rec = f.Do(http.MethodGet, endpoint, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var evidence store.Evidence
+	f.DecodeInto(rec, &evidence)
+	require.Len(t, evidence.Commits, 2)
+	require.ElementsMatch(t, []string{first.ID.String(), second.ID.String()},
+		[]string{evidence.Commits[0].RepoID.String(), evidence.Commits[1].RepoID.String()})
 }
 
 // Inventing a row for an unsynced PR would put unverified evidence into the
