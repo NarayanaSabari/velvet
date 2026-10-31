@@ -4,7 +4,7 @@ Native Rust/GPUI application, not a webview wrapper. This is an online-first App
 
 ## Toolchain and build requirements
 
-`Cargo.toml` names `velvet-desktop` version `0.1.0`, Rust edition 2024, with `gpui-kit` pinned to `=0.7.0`. Commit and use `Cargo.lock`; build commands below use `--locked`.
+`Cargo.toml` is the source of truth for the `velvet-desktop` version. It uses Rust edition 2024, with `gpui-kit` pinned to `=0.7.0`. Commit and use `Cargo.lock`; build commands below use `--locked`.
 
 Local inspection on October 26, 2026 found:
 
@@ -65,6 +65,8 @@ A packaged app checks for updates at launch, every 6 hours while open, and from 
 
 **Automatic updates** (default on, toggled in the sidebar or the Velvet menu, stored in `~/Library/Application Support/Velvet/auto-update`) download and verify a new release in the background. It installs the next time Velvet quits, or immediately with **Restart now**. With automatic updates off, the banner offers **Update** to download first. Verification covers SHA-256, bundle identifier, version and code signature. Every quit path, including the draft-safe Quit prompt, hands the staged bundle to a detached helper that waits for exit, swaps the bundle, and restores the old one if the swap fails. Background checks fail silently offline. `cargo run` builds never check.
 
+Update preparation now reserves private, unique staging and probe directories instead of overwriting fixed paths. Before quitting, Velvet copies the candidate beside the installed app and waits for the helper to acknowledge readiness. A preparation or helper-start failure leaves the app and its drafts open, shows the error, and allows another download or a normal quit. The helper retains a failure journal and any recovery bundle under `.velvet-update-*` beside the app. The next manual launch reports that failure and its recovery path. If automatic rollback itself fails, restore the retained `previous.app` manually rather than deleting the recovery directory. A successful update removes its transaction directory. These safeguards do not establish power-loss atomicity or notarization.
+
 The app must sit in a folder the user can write to. `/Applications` works for admin users. Because the app is not notarized, the first install still needs the manual Gatekeeper approval. Updates downloaded by the app itself carry no quarantine flag.
 
 To release:
@@ -87,6 +89,6 @@ plutil -lint desktop/Info.plist
 ./desktop/package.sh --help
 ```
 
-`.github/workflows/desktop.yml` runs only on manual dispatch and pull requests touching `desktop/**` or that workflow. It uses read-only repository permissions, Rust 1.97.1, and native macOS formatting, locked all-target checking with `ui-tests`, and serial native UI and client tests. It checks packaging syntax and metadata but intentionally avoids another release build or a DMG. It uploads no release artifact, uses no Apple credentials and has no production deployment step. Existing repository-wide workflows remain independent.
+`.github/workflows/desktop.yml` runs on manual dispatch, pull requests and pushes to `main` touching `desktop/**`, `api/**` or that workflow. API changes therefore run native client checks too. It uses read-only repository permissions, Rust 1.97.1, and native macOS formatting, locked all-target checking with `ui-tests`, and serial native UI and client tests. It checks packaging syntax and metadata but intentionally avoids another release build or a DMG. The opt-in connected test still requires a separately running disposable stack and is not part of this macOS job. It uploads no release artifact, uses no Apple credentials and has no production deployment step. Existing repository-wide workflows remain independent.
 
 A syntax check or plist validation is not evidence that the app, Keychain behavior, authentication, DMG, signature trust or native UI works. Record actual build, test and launch results in [parity.md](parity.md) as they become available.

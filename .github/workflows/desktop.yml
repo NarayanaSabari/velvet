@@ -1,9 +1,16 @@
 name: Desktop preview checks
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'api/**'
+      - '.github/workflows/desktop.yml'
   pull_request:
     paths:
       - 'desktop/**'
+      - 'api/**'
       - '.github/workflows/desktop.yml'
   workflow_dispatch:
 

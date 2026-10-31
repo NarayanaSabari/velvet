@@ -620,6 +620,35 @@ fn update_banner_offers_download_then_restart(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn update_startup_failure_keeps_app_and_drafts_open(cx: &mut TestAppContext) {
+    let (window, view) = demo(cx, 1280.);
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |this, cx| {
+                this.staged_update = Some(std::path::PathBuf::from("/missing/Velvet.app"));
+                let draft_key = ("workspace".into(), "keep".into());
+                this.drafts.insert(draft_key.clone(), "Unsent draft".into());
+                this.quit_prompt = true;
+                this.relaunch = true;
+                this.finish_quit(cx);
+                assert!(!this.quitting);
+                assert!(!this.quit_prompt);
+                assert!(!this.relaunch);
+                assert!(this.staged_update.is_none());
+                assert!(
+                    this.error
+                        .as_ref()
+                        .unwrap()
+                        .contains("Update could not start")
+                );
+                assert_eq!(this.drafts.get(&draft_key).unwrap(), "Unsent draft");
+            });
+            window.render_frame(cx);
+        })
+        .unwrap();
+}
+
+#[gpui_kit::test]
 fn every_sidebar_page_opens_natively(cx: &mut TestAppContext) {
     let (window, view) = demo(cx, 1280.);
     let pages = [

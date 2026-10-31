@@ -217,7 +217,14 @@ impl Velvet {
             this.restore(cx);
         }
         // Only packaged apps can replace themselves, so dev runs skip the check.
-        if update::running_bundle().is_some() {
+        if let Some(target) = update::running_bundle() {
+            match update::previous_failure(&target) {
+                Ok(Some(error)) => this.error = Some(error),
+                Err(error) => {
+                    this.error = Some(format!("Could not read update recovery status: {error}"))
+                }
+                Ok(None) => {}
+            }
             cx.spawn(async move |view, cx| {
                 loop {
                     if view
@@ -304,12 +311,23 @@ impl Velvet {
         self.request_quit(window, cx);
     }
 
-    /// Every quit path ends here, so a staged update always installs.
+    /// Every quit path prepares a staged update before permitting exit.
     fn finish_quit(&mut self, cx: &mut Context<Self>) {
-        self.quitting = true;
-        if let (Some(staged), Some(target)) = (&self.staged_update, update::running_bundle()) {
-            let _ = update::install_on_exit(staged, &target, self.relaunch);
+        if let Some(staged) = &self.staged_update {
+            let result = update::running_bundle()
+                .ok_or_else(|| anyhow::anyhow!("Could not locate the installed Velvet app."))
+                .and_then(|target| update::install_on_exit(staged, &target, self.relaunch));
+            if let Err(error) = result {
+                self.error = Some(format!("Update could not start: {error}"));
+                self.quit_prompt = false;
+                self.relaunch = false;
+                // Allow a later download or a normal quit instead of trapping the user.
+                self.staged_update = None;
+                cx.notify();
+                return;
+            }
         }
+        self.quitting = true;
         cx.quit();
     }
 
