@@ -1,6 +1,6 @@
 //! Real headless rendering and interaction checks. These inspect native elements, not pixel screenshots.
 use super::{DEFAULT_SERVER, Dismiss, PostUpdate, Quit, Velvet};
-use gpui_kit::test::TestWindowExt;
+use gpui_kit::test::{TestAppContextExt, TestWindowExt};
 use gpui_kit::{
     AnyWindowHandle, AppContext, Bounds, Entity, Focusable, KeyBinding, TestAppContext,
     WindowBounds, WindowOptions, point, px, size,
@@ -615,6 +615,61 @@ fn update_banner_offers_download_then_restart(cx: &mut TestAppContext) {
             window.click("dismiss-update", cx);
             window.render_frame(cx);
             assert!(window.try_find("install-update").is_none());
+        })
+        .unwrap();
+}
+
+#[gpui_kit::test]
+async fn update_recovery_notice_survives_startup_refresh(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+    let (window, view) = demo(cx, 1280.);
+    let recovery =
+        "Update could not install. Previous app restored. Recovery files: /private/test-update";
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |this, cx| {
+                this.show_update_recovery(Ok(Some(recovery.into())));
+                // Exercise the restored-session refresh path without Keychain or a real server.
+                this.demo = false;
+                this.client = Some(super::ApiClient::new("http://127.0.0.1:0", None).unwrap());
+                this.error = Some("Old request error".into());
+                this.refresh(false, cx);
+                assert!(this.loading);
+                assert!(this.error.is_none());
+                assert_eq!(this.notice.as_deref(), Some(recovery));
+            });
+            window.render_frame(cx);
+            assert_eq!(window.find("status-message").label(), Some(recovery));
+        })
+        .unwrap();
+    // Drain the real worker before GPUI destroys the test scheduler.
+    cx.wait_for(window, std::time::Duration::from_secs(5), |_, cx| {
+        !view.read(cx).loading
+    })
+    .await;
+    window
+        .update(cx, |_, window, cx| {
+            window.render_frame(cx);
+            assert_eq!(window.find("status-message").label(), Some(recovery));
+            view.update(cx, |this, cx| {
+                this.error = Some("Request failed".into());
+                cx.notify();
+            });
+            window.render_frame(cx);
+            assert_eq!(window.find("error-message").label(), Some("Request failed"));
+            assert_eq!(window.find("status-message").label(), Some(recovery));
+            window.click("dismiss-notice", cx);
+            window.render_frame(cx);
+            assert!(window.try_find("status-message").is_none());
+            assert_eq!(window.find("error-message").label(), Some("Request failed"));
+            view.update(cx, |this, _| {
+                this.show_update_recovery(Err(anyhow::anyhow!("permission denied")));
+                assert_eq!(this.error.as_deref(), Some("Request failed"));
+                assert_eq!(
+                    this.notice.as_deref(),
+                    Some("Could not read update recovery status: permission denied")
+                );
+            });
         })
         .unwrap();
 }

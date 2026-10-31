@@ -218,13 +218,7 @@ impl Velvet {
         }
         // Only packaged apps can replace themselves, so dev runs skip the check.
         if let Some(target) = update::running_bundle() {
-            match update::previous_failure(&target) {
-                Ok(Some(error)) => this.error = Some(error),
-                Err(error) => {
-                    this.error = Some(format!("Could not read update recovery status: {error}"))
-                }
-                Ok(None) => {}
-            }
+            this.show_update_recovery(update::previous_failure(&target));
             cx.spawn(async move |view, cx| {
                 loop {
                     if view
@@ -239,6 +233,17 @@ impl Velvet {
             .detach();
         }
         this
+    }
+
+    fn show_update_recovery(&mut self, result: anyhow::Result<Option<String>>) {
+        // Recovery survives request refreshes, which intentionally clear request errors.
+        match result {
+            Ok(Some(message)) => self.notice = Some(message),
+            Err(error) => {
+                self.notice = Some(format!("Could not read update recovery status: {error}"))
+            }
+            Ok(None) => {}
+        }
     }
 
     pub fn check_for_updates(&mut self, manual: bool, cx: &mut Context<Self>) {
@@ -2784,6 +2789,7 @@ impl Render for Velvet {
                         .child(
                             div()
                                 .id("error-message")
+                                .test_support()
                                 .role(Role::Alert)
                                 .aria_label(error.clone())
                                 .flex_1()
@@ -2810,6 +2816,7 @@ impl Render for Velvet {
                         .child(
                             div()
                                 .id("status-message")
+                                .test_support()
                                 .role(Role::Status)
                                 .aria_label(notice.clone())
                                 .flex_1()

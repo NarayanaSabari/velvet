@@ -19,7 +19,8 @@ Feature inventory reviewed October 31, 2026. This is an online-first native prev
 
 - Updater parsing rejects malformed Unicode and non-hex signatures without panicking.
 - Isolated updater tests cover private staging/probe collisions, unwritable destinations, missing candidates, helper startup and readiness failures, waiting for the parent to exit, successful swaps, failed swaps, rollback failures, relaunch failures and cleanup failures. Real shell-helper tests use disposable directories and substitute failing process boundaries; they never replace an installed user app.
-- A native UI regression verifies that update-start failure preserves unsent drafts and keeps Velvet open. The credential-free native suite passes; Keychain consent and the real release-key check remain opt-in.
+- Native UI regressions verify that update-start failure preserves unsent drafts and keeps Velvet open, and that startup refresh cannot clear a recovery notice. Recovery notices remain independently dismissible without hiding request errors. The credential-free native suite passes; Keychain consent and the real release-key check remain opt-in.
+- The October 31 connected native client test passed against the guarded disposable stack after the repository-scoped commit migration. It covered browser consent, project-scoped issue creation, edits and status, comments, native read-only page endpoints, and revocation without using Keychain. This is client/API acceptance, not a packaged or signed-upgrade test.
 - The native workflow now covers API changes and pushes to `main`, not only desktop pull requests. Its default tests still do not replace the separately gated connected-server check.
 - A real signed upgrade, exhaustive power-loss recovery and full VoiceOver acceptance remain unverified. Do not infer those outcomes from unit tests or helper simulations.
 
