@@ -120,12 +120,12 @@ func (w *Worker) ProcessOnce(ctx context.Context) (bool, error) {
 	}
 
 	if err := w.runJob(ctx, job); err != nil {
-		if failErr := w.store.FailJob(ctx, job.ID, err.Error()); failErr != nil {
+		if failErr := w.store.FailJob(ctx, job, err.Error()); failErr != nil {
 			return true, fmt.Errorf("fail job %d: %w", job.ID, failErr)
 		}
 		return true, err
 	}
-	return true, w.store.CompleteJob(ctx, job.ID)
+	return true, w.store.CompleteJob(ctx, job)
 }
 
 func (w *Worker) runJob(ctx context.Context, job store.Job) error {
