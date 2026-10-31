@@ -304,3 +304,80 @@ test('keeps the Issues page readable and contained on mobile', async ({ signedIn
   await page.screenshot({ path: 'test-results/issues-page-mobile-dark.png', fullPage: true })
   await page.emulateMedia({ colorScheme: 'light' })
 })
+
+test('bounds issue requests and rows while searching beyond the first page', async ({ signedIn: page, request }) => {
+  for (let index = 0; index < 55; index++) {
+    const result = await request.post('/api/v1/w/other/issues', {
+      data: { title: `Paged issue ${index}`, priority: index === 54 ? 0 : 2 },
+    })
+    expect(result.status()).toBe(201)
+  }
+  const issueRequests: URL[] = []
+  page.on('request', (req) => {
+    const url = new URL(req.url())
+    if (url.pathname === '/api/v1/w/other/issues') issueRequests.push(url)
+  })
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto('/w/other/issues')
+  await expect(page.locator('[data-testid^="issue-row-"]')).toHaveCount(50)
+  await expect(page.getByTestId('issues-count')).toHaveText('56 issues')
+  expect(issueRequests.every((url) => url.searchParams.get('limit') === '50' && !url.searchParams.has('cursor'))).toBe(true)
+  await page.getByRole('button', { name: 'Next page' }).click()
+  await expect(page.locator('[data-testid^="issue-row-"]')).toHaveCount(6)
+  await expect(page.getByText('Paged issue 54', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Next page' })).toBeDisabled()
+  await page.screenshot({ path: 'test-results/issues-pagination-desktop.png', fullPage: true })
+  await page.getByTestId('issues-search').fill('Paged issue 54')
+  await expect(page.locator('[data-testid^="issue-row-"]')).toHaveCount(1)
+  await expect(page.getByTestId('issues-count')).toHaveText('1 of 56 issues')
+  expect(issueRequests.at(-1)?.searchParams.has('cursor')).toBe(false)
+  await page.getByTestId('issues-priority-filter').selectOption('0')
+  await expect(page.getByText('Paged issue 54', { exact: true })).toBeVisible()
+  await page.getByTestId('issues-clear-filters').click()
+  await expect(page.locator('[data-testid^="issue-row-"]')).toHaveCount(50)
+  await expect(page.getByRole('button', { name: 'Previous page' })).toBeDisabled()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: 'Next page' }).click()
+  await expect(page.locator('[data-testid^="issue-row-"]')).toHaveCount(6)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.getByRole('button', { name: 'Previous page' }).focus()
+  await page.keyboard.press('Shift+Tab')
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: 'Previous page' })).toBeFocused()
+  expect(await page.getByRole('button', { name: 'Previous page' }).evaluate((button) => getComputedStyle(button).outlineWidth)).toBe('2px')
+  await page.screenshot({ path: 'test-results/issues-pagination-mobile.png', fullPage: true })
+  await page.keyboard.press('Enter')
+  await expect(page.locator('[data-testid^="issue-row-"]')).toHaveCount(50)
+})
+
+test('keeps one workspace stream across list, detail and sprint navigation and refreshes after reconnect', async ({ signedIn: page, request }) => {
+  let streamRequests = 0
+  page.on('request', (req) => {
+    if (new URL(req.url()).pathname === '/api/v1/w/lab/stream') streamRequests++
+  })
+  await page.goto('/w/lab/issues')
+  await expect(page.getByTestId('issues-list')).toBeVisible()
+  await expect.poll(() => streamRequests).toBe(1)
+  const created = await request.post('/api/v1/w/lab/issues', { data: { title: 'Live issue from agent' } })
+  expect(created.status()).toBe(201)
+  const issue = await created.json() as { key: string }
+  await page.getByText('Live issue from agent', { exact: true }).click()
+  await expect(page).toHaveURL(new RegExp(`/issues/${issue.key}$`))
+  await expect(page.getByRole('heading', { name: 'Live issue from agent', exact: true })).toBeVisible()
+  expect((await request.patch(`/api/v1/w/lab/issues/${issue.key}`, { data: { title: 'Live detail update' } })).status()).toBe(200)
+  await expect(page.getByText('Live detail update', { exact: true })).toBeVisible()
+  expect(streamRequests).toBe(1)
+  await page.context().setOffline(true)
+  expect((await request.patch(`/api/v1/w/lab/issues/${issue.key}`, { data: { title: 'Updated while disconnected' } })).status()).toBe(200)
+  await page.context().setOffline(false)
+  await expect(page.getByText('Updated while disconnected', { exact: true })).toBeVisible({ timeout: 20_000 })
+  const reconnectedRequests = streamRequests
+  await page.getByRole('navigation', { name: 'Workspace navigation' }).getByRole('link', { name: 'Sprints', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Sprints', exact: true })).toBeVisible()
+  const sprint = await request.post('/api/v1/w/lab/sprints', { data: {
+    project_id: sprintProject(), name: 'Live sprint from agent', starts_on: '2026-11-01', ends_on: '2026-11-30',
+  } })
+  expect(sprint.status()).toBe(201)
+  await expect(page.getByText('Live sprint from agent', { exact: true })).toBeVisible()
+  expect(streamRequests).toBe(reconnectedRequests)
+})

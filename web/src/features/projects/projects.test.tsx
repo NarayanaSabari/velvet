@@ -69,6 +69,7 @@ describe('ProjectsPage', () => {
 
     renderPage()
     await user.click(await screen.findByRole('button', { name: 'Archive' }))
+    expect(screen.getByRole('link', { name: '1 open' })).toHaveAttribute('href', '/w/lab/issues?project=velvet&status=open')
     await user.click(screen.getByRole('button', { name: 'Confirm archive Velvet worklog' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not archive project')

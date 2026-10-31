@@ -35,7 +35,7 @@ async function documentOverflows(page: import('@playwright/test').Page) {
   )
 }
 
-test('a project can be created, filed against, and archived', async ({ signedIn: page }) => {
+test('a project can be created, filed against, and archived', async ({ signedIn: page, request }) => {
   await page.goto('/w/lab/projects')
   await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible()
 
@@ -69,12 +69,18 @@ test('a project can be created, filed against, and archived', async ({ signedIn:
     WHERE title = 'Ship the recap'
       AND workspace_id = (SELECT id FROM workspace WHERE slug = 'lab')`)
 
+  const completed = await request.post('/api/v1/w/lab/issues', {
+    data: { title: 'Already shipped recap work', project: 'velvet', status: 'done' },
+  })
+  expect(completed.status()).toBe(201)
   await page.goto('/w/lab/projects')
   await expect(page.getByTestId('project-row-velvet').getByText('1 open')).toBeVisible()
   await page.getByTestId('project-row-velvet').getByRole('link', { name: '1 open' }).click()
-  await expect(page).toHaveURL(/\/w\/lab\/issues\?project=velvet$/)
+  await expect(page).toHaveURL(/\/w\/lab\/issues\?project=velvet&status=open$/)
   await expect(page.getByTestId('issues-project-filter')).toHaveValue('velvet')
+  await expect(page.getByTestId('issues-status-filter')).toHaveValue('open')
   await expect(page.getByText('Ship the recap')).toBeVisible()
+  await expect(page.getByText('Already shipped recap work')).toHaveCount(0)
 
   // Archiving hides it by default without deleting the work it holds.
   await page.goto('/w/lab/projects')

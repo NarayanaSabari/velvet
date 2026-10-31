@@ -170,6 +170,7 @@ func (s *Server) handleCreateSprint(w http.ResponseWriter, r *http.Request) {
 	if scoped, ok := scopedProject(r); ok && body.Project != nil && !s.scopedProjectKey(w, r, *body.Project, scoped) {
 		return
 	}
+	sinceID, _ := s.store.LatestActivityID(r.Context(), ws.WorkspaceID)
 	sprint, err := s.store.CreateSprint(r.Context(), store.CreateSprintInput{
 		WorkspaceID: ws.WorkspaceID, ProjectID: *projectID, ActorID: user.ID,
 		Name: body.Name, StartsOn: body.StartsOn, EndsOn: body.EndsOn,
@@ -186,6 +187,7 @@ func (s *Server) handleCreateSprint(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not create the sprint")
 		return
 	}
+	s.publishRecent(r.Context(), ws.WorkspaceID, sinceID)
 	WriteJSON(w, http.StatusCreated, sprint)
 }
 

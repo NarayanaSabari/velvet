@@ -87,6 +87,7 @@ func (s *Server) handleCreateMilestone(w http.ResponseWriter, r *http.Request) {
 	if targetDate != nil && *targetDate == "" {
 		targetDate = nil
 	}
+	sinceID, _ := s.store.LatestActivityID(r.Context(), ws.WorkspaceID)
 	milestone, err := s.store.CreateMilestone(r.Context(), store.CreateMilestoneInput{
 		WorkspaceID: ws.WorkspaceID, SprintID: sprintID, ActorID: user.ID,
 		Name: body.Name, Description: body.Description,
@@ -96,6 +97,7 @@ func (s *Server) handleCreateMilestone(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err, "sprint")
 		return
 	}
+	s.publishRecent(r.Context(), ws.WorkspaceID, sinceID)
 	WriteJSON(w, http.StatusCreated, milestone)
 }
 

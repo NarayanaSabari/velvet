@@ -187,6 +187,7 @@ func (s *Server) handleUpdateComment(w http.ResponseWriter, r *http.Request) {
 		writeCommentError(w, err)
 		return
 	}
+	s.broker.Refresh(ws.WorkspaceID)
 	WriteJSON(w, http.StatusOK, comment)
 }
 
@@ -202,6 +203,7 @@ func (s *Server) handleDeleteComment(w http.ResponseWriter, r *http.Request) {
 		writeCommentError(w, err)
 		return
 	}
+	s.broker.Refresh(ws.WorkspaceID)
 	WriteJSON(w, http.StatusNoContent, nil)
 }
 

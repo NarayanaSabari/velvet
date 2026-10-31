@@ -64,6 +64,7 @@ func (s *Server) handleDismissSuggestion(w http.ResponseWriter, r *http.Request)
 		writeSuggestionError(w, err)
 		return
 	}
+	s.broker.Refresh(ws.WorkspaceID)
 	WriteJSON(w, http.StatusNoContent, nil)
 }
 
@@ -102,6 +103,7 @@ func (s *Server) handleUpdateSuggestionSettings(w http.ResponseWriter, r *http.R
 		writeOrganisationError(w, err, "could not change the suggestion setting")
 		return
 	}
+	s.broker.Refresh(ws.WorkspaceID)
 	WriteJSON(w, http.StatusOK, suggestionSettings{Enabled: *body.Enabled, Available: s.cfg.TypeSafeConfigured})
 }
 

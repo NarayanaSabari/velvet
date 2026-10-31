@@ -9,7 +9,6 @@ import type {
   Issue,
   IssueStatus,
   Label,
-  User,
 } from '../../lib/types'
 import { Avatar } from '../../ui/Avatar'
 import { Markdown } from '../../ui/Markdown'
@@ -26,7 +25,7 @@ import { IssueMetadata, ReadOnlyIssueMetadata, type IssueMetadataPatch } from '.
 import { useSession } from '../auth/useSession'
 import { userLabel } from '../../lib/userLabel'
 import { IssueEditForm, IssueForm, type IssueInput } from '../work/CoreForms'
-import { useWorkLinks } from '../work/workLinks'
+import { membersQuery, useWorkLinks } from '../work/workLinks'
 import { Button } from '../../ui/Button'
 import { ErrorState, LoadingState, NotFoundState } from '../../ui/QueryState'
 import { NavLink } from '../../app/nav'
@@ -190,10 +189,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
     queryKey: ['labels', slug],
     queryFn: () => api.get<{ labels: Label[] }>(`/w/${slug}/labels`),
   })
-  const members = useQuery({
-    queryKey: ['members', slug],
-    queryFn: () => api.get<{ members: User[] }>(`/w/${slug}/members`),
-  })
+  const members = useQuery(membersQuery(slug))
   const links = useWorkLinks(slug, {
     projectId: issue.data?.project_id,
     milestoneId: issue.data?.milestone_id,

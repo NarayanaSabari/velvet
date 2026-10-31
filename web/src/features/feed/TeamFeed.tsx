@@ -1,6 +1,5 @@
 import { useState } from 'react'
 
-import { useStream } from '../../lib/useStream'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { PageHeader } from '../../ui/PageHeader'
@@ -31,7 +30,6 @@ const VERB_LABELS: Record<string, string> = {
 }
 
 export function TeamFeed({ slug }: { slug: string }) {
-  useStream(slug)
   const session = useSession(slug)
   const [filters, setFilters] = useState<ActivityFilters>({})
   const query = useActivity(slug, filters)

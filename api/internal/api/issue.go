@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -31,6 +32,30 @@ func (s *Server) handleListIssues(w http.ResponseWriter, r *http.Request) {
 	filter := store.IssueFilter{
 		Statuses: query["status"],
 		Cursor:   query.Get("cursor"),
+		Search:   strings.TrimSpace(query.Get("q")),
+	}
+	for _, flag := range []struct {
+		key string
+		dst *bool
+	}{
+		{"unassigned", &filter.Unassigned}, {"unfiled", &filter.Unfiled},
+	} {
+		if raw := query.Get(flag.key); raw != "" {
+			value, err := strconv.ParseBool(raw)
+			if err != nil {
+				WriteError(w, http.StatusBadRequest, "invalid_request", flag.key+" must be a boolean")
+				return
+			}
+			*flag.dst = value
+		}
+	}
+	if raw := query.Get("priority"); raw != "" {
+		priority, err := strconv.Atoi(raw)
+		if err != nil || priority < 0 || priority > 4 {
+			WriteError(w, http.StatusBadRequest, "invalid_request", "priority must be between 0 and 4")
+			return
+		}
+		filter.Priority = &priority
 	}
 	for _, f := range []struct {
 		key string
@@ -89,7 +114,21 @@ func (s *Server) handleListIssues(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not list issues")
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"issues": issues, "next_cursor": next})
+	result := map[string]any{"issues": issues, "next_cursor": next}
+	if query.Get("include_counts") == "true" {
+		var scope *uuid.UUID
+		if project, scoped := scopedProject(r); scoped {
+			scope = &project
+		}
+		matched, total, assignees, err := s.store.CountIssues(r.Context(), ws.WorkspaceID, filter, scope)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "internal", "could not count issues")
+			return
+		}
+		result["matched_count"], result["total_count"] = matched, total
+		result["assignee_ids"] = assignees
+	}
+	WriteJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {

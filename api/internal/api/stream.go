@@ -13,23 +13,28 @@ import (
 	"github.com/NarayanaSabari/velvet-otter-lab/api/internal/store"
 )
 
-// Broker fans activity out to connected browsers. It is intentionally
+// Broker fans activity and refresh signals out to connected browsers. It is intentionally
 // in-process: a dropped event costs a client one refresh, never data, so a
 // durable bus would be complexity without a matching risk.
 type Broker struct {
 	mu   sync.RWMutex
-	subs map[uuid.UUID]map[chan store.Activity]struct{}
+	subs map[uuid.UUID]map[chan streamEvent]struct{}
+}
+
+// A nil activity is a cache refresh signal, never a business activity record.
+type streamEvent struct {
+	activity *store.Activity
 }
 
 func NewBroker() *Broker {
-	return &Broker{subs: make(map[uuid.UUID]map[chan store.Activity]struct{})}
+	return &Broker{subs: make(map[uuid.UUID]map[chan streamEvent]struct{})}
 }
 
-func (b *Broker) Subscribe(workspaceID uuid.UUID) (<-chan store.Activity, func()) {
-	ch := make(chan store.Activity, 16)
+func (b *Broker) Subscribe(workspaceID uuid.UUID) (<-chan streamEvent, func()) {
+	ch := make(chan streamEvent, 16)
 	b.mu.Lock()
 	if b.subs[workspaceID] == nil {
-		b.subs[workspaceID] = make(map[chan store.Activity]struct{})
+		b.subs[workspaceID] = make(map[chan streamEvent]struct{})
 	}
 	b.subs[workspaceID][ch] = struct{}{}
 	b.mu.Unlock()
@@ -51,27 +56,42 @@ func (b *Broker) Subscribe(workspaceID uuid.UUID) (<-chan store.Activity, func()
 // Publish never blocks: a subscriber too slow to keep up drops the event
 // rather than stalling the request that produced it.
 func (b *Broker) Publish(workspaceID uuid.UUID, a store.Activity) {
+	b.publish(workspaceID, streamEvent{activity: &a})
+}
+
+func (b *Broker) Refresh(workspaceID uuid.UUID) {
+	b.publish(workspaceID, streamEvent{})
+}
+
+func (b *Broker) publish(workspaceID uuid.UUID, event streamEvent) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for ch := range b.subs[workspaceID] {
 		select {
-		case ch <- a:
+		case ch <- event:
 		default:
 		}
 	}
 }
 
 // publishRecent republishes the activity rows written above a known id, so a
-// handler only has to remember the id it saw before the mutation.
+// handler only has to remember the id it saw before the mutation. Mutations
+// without business activity still invalidate connected clients' caches.
 func (s *Server) publishRecent(ctx context.Context, workspaceID uuid.UUID, sinceID int64) {
 	rows, _, err := s.store.ListActivity(ctx, workspaceID, store.ActivityFilter{Limit: 10})
 	if err != nil {
+		s.broker.Refresh(workspaceID)
 		return
 	}
+	published := false
 	for i := len(rows) - 1; i >= 0; i-- {
 		if rows[i].ID > sinceID {
 			s.broker.Publish(workspaceID, rows[i])
+			published = true
 		}
+	}
+	if !published {
+		s.broker.Refresh(workspaceID)
 	}
 }
 
@@ -114,7 +134,12 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 			if _, err := s.store.MembershipForSlug(r.Context(), user.ID, ws.Slug); err != nil {
 				return
 			}
-			payload, err := json.Marshal(ev)
+			if ev.activity == nil {
+				fmt.Fprint(w, "event: refresh\ndata: {}\n\n")
+				flusher.Flush()
+				continue
+			}
+			payload, err := json.Marshal(ev.activity)
 			if err != nil {
 				continue
 			}

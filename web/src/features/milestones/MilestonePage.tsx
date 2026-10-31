@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 
 import { api, isNotFound } from '../../lib/api'
-import type { Comment, Issue, Milestone, MilestoneStatus, Sprint, User } from '../../lib/types'
+import type { Comment, Issue, Milestone, MilestoneStatus, Sprint } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
@@ -21,7 +21,7 @@ import {
   type IssueInput,
   type MilestoneInput,
 } from '../work/CoreForms'
-import { projectsQuery } from '../work/workLinks'
+import { membersQuery, projectsQuery } from '../work/workLinks'
 
 const MILESTONE_STATUS_DOTS: Record<MilestoneStatus, string> = {
   planned: 'bg-grey-300',
@@ -84,10 +84,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
     queryFn: () =>
       api.get<{ comments: Comment[] }>(`/w/${slug}/milestones/${milestoneId}/comments`),
   })
-  const members = useQuery({
-    queryKey: ['members', slug],
-    queryFn: () => api.get<{ members: User[] }>(`/w/${slug}/members`),
-  })
+  const members = useQuery(membersQuery(slug))
   const sprints = useQuery({
     queryKey: ['sprints', slug],
     queryFn: () => api.get<{ sprints: Sprint[] }>(`/w/${slug}/sprints`),

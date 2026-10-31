@@ -61,6 +61,7 @@ func (s *Server) handleCreateLabel(w http.ResponseWriter, r *http.Request) {
 		writeLabelError(w, err)
 		return
 	}
+	s.broker.Refresh(ws.WorkspaceID)
 	WriteJSON(w, http.StatusCreated, label)
 }
 
@@ -75,6 +76,7 @@ func (s *Server) handleDeleteLabel(w http.ResponseWriter, r *http.Request) {
 		writeLabelError(w, err)
 		return
 	}
+	s.broker.Refresh(ws.WorkspaceID)
 	WriteJSON(w, http.StatusNoContent, nil)
 }
 
@@ -107,6 +109,7 @@ func (s *Server) handleSetIssueLabels(w http.ResponseWriter, r *http.Request) {
 		writeLabelError(w, err)
 		return
 	}
+	s.broker.Refresh(ws.WorkspaceID)
 	WriteJSON(w, http.StatusOK, map[string]any{"labels": labels})
 }
 

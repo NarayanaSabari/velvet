@@ -159,6 +159,7 @@ func (s *Server) handleDetachPR(w http.ResponseWriter, r *http.Request) {
 		writePRError(w, err)
 		return
 	}
+	s.broker.Refresh(ws.WorkspaceID)
 	WriteJSON(w, http.StatusNoContent, nil)
 }
 

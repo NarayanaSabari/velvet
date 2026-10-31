@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { NavLink } from '../../app/nav'
 import { useSession } from '../auth/useSession'
-import { api, listAllWorkspaceIssues } from '../../lib/api'
+import { api } from '../../lib/api'
 import type { Issue, IssueStatus, Milestone, Project, User } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
@@ -11,17 +11,12 @@ import { EmptyState } from '../../ui/EmptyState'
 import { PageHeader, SectionHeader } from '../../ui/PageHeader'
 import { StatusBadge, STATUS_LABELS } from '../../ui/StatusBadge'
 import { IssueForm, type IssueInput } from '../work/CoreForms'
-import { useWorkLinks } from '../work/workLinks'
+import { membersQuery, projectsQuery, useWorkLinks } from '../work/workLinks'
 
 const ISSUE_STATUSES = Object.keys(STATUS_LABELS) as IssueStatus[]
+type StatusFilter = IssueStatus | 'open' | ''
 const ISSUE_PRIORITIES = [0, 1, 2, 3, 4] as const
 const controlClass = 'ui-control min-h-10 w-full px-2 py-1 text-sm leading-5 md:min-h-8'
-
-function issueMatchesSearch(issue: Issue, search: string) {
-  if (!search) return true
-  return [issue.key, issue.title, issue.description]
-    .some((value) => value.toLowerCase().includes(search))
-}
 
 function assigneeName(issue: Issue, members: Map<string, User>) {
   if (!issue.assignee_id) return 'Unassigned'
@@ -100,7 +95,7 @@ export function IssuesPage({ slug }: { slug: string }) {
   const { workspace } = useSession(slug)
   const canWrite = workspace?.role === 'admin' || workspace?.role === 'member'
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<IssueStatus | ''>('')
+  const [status, setStatus] = useState<StatusFilter>(() => new URLSearchParams(window.location.search).get('status') === 'open' ? 'open' : '')
   const [assignee, setAssignee] = useState('')
   const [priority, setPriority] = useState('')
   // The Projects page links here with ?project=<key>, so a project's open
@@ -110,29 +105,43 @@ export function IssuesPage({ slug }: { slug: string }) {
   )
   const [creatingIssue, setCreatingIssue] = useState(false)
 
+  const params = new URLSearchParams({ limit: '50', include_counts: 'true' })
+  if (search.trim()) params.set('q', search.trim())
+  if (status === 'open') {
+    for (const value of ISSUE_STATUSES) if (value !== 'done' && value !== 'cancelled') params.append('status', value)
+  } else if (status) params.set('status', status)
+  if (assignee === 'unassigned') params.set('unassigned', 'true')
+  else if (assignee) params.set('assignee_id', assignee)
+  if (priority) params.set('priority', priority)
+  if (project === 'unfiled') params.set('unfiled', 'true')
+  else if (project) params.set('project', project)
+  const filterKey = `${slug}?${params}`
+  const [pagination, setPagination] = useState({ filterKey, cursors: [''] })
+  if (pagination.filterKey !== filterKey) setPagination({ filterKey, cursors: [''] })
+  // A new filter always starts at page one, without fetching an old cursor first.
+  const cursors = pagination.filterKey === filterKey ? pagination.cursors : ['']
+  const cursor = cursors[cursors.length - 1]
+  if (cursor) params.set('cursor', cursor)
   const issues = useQuery({
-    queryKey: ['issues', slug],
-    queryFn: () => listAllWorkspaceIssues(slug),
+    queryKey: ['issues', slug, params.toString()],
+    queryFn: () => api.get<{ issues: Issue[]; next_cursor: string; matched_count: number; total_count: number; assignee_ids: string[] }>(`/w/${slug}/issues?${params}`),
   })
   const members = useQuery({
-    queryKey: ['members', slug],
-    queryFn: async () => (await api.get<{ members: User[] }>(`/w/${slug}/members`)).members,
+    ...membersQuery(slug),
+    select: (data) => data.members,
   })
   const milestones = useQuery({
     queryKey: ['milestones', slug, 'all'],
     queryFn: () => api.get<{ milestones: Milestone[] }>(`/w/${slug}/milestones`),
   })
-  const projects = useQuery({
-    queryKey: ['projects', slug, false],
-    queryFn: () => api.get<{ projects: Project[] }>(`/w/${slug}/projects`),
-  })
+  const projects = useQuery(projectsQuery(slug))
   const createIssue = useMutation({
     mutationFn: (input: IssueInput) => api.post<Issue>(`/w/${slug}/issues`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['issues', slug] }),
   })
   const links = useWorkLinks(slug)
 
-  const allIssues = useMemo(() => issues.data ?? [], [issues.data])
+  const allIssues = useMemo(() => issues.data?.issues ?? [], [issues.data])
   const membersById = useMemo(
     () => new Map((members.data ?? []).map((member) => [member.id, member])),
     [members.data],
@@ -144,36 +153,23 @@ export function IssuesPage({ slug }: { slug: string }) {
   const assigneeOptions = useMemo(() => {
     const options = new Map<string, string>()
     for (const member of members.data ?? []) options.set(member.id, userLabel(member))
+    for (const id of issues.data?.assignee_ids ?? []) {
+      if (!options.has(id)) options.set(id, `Assigned member (${id.slice(0, 8)})`)
+    }
     for (const issue of allIssues) {
       if (issue.assignee_id && !options.has(issue.assignee_id)) {
         options.set(issue.assignee_id, `Assigned member (${issue.assignee_id.slice(0, 8)})`)
       }
     }
+    if (assignee && assignee !== 'unassigned' && !options.has(assignee)) {
+      options.set(assignee, `Assigned member (${assignee.slice(0, 8)})`)
+    }
     return [...options.entries()].sort(([, a], [, b]) => a.localeCompare(b))
-  }, [allIssues, members.data])
-  const projectsById = useMemo(
-    () => new Map((projects.data?.projects ?? []).map((item) => [item.id, item])),
-    [projects.data],
-  )
-  const filteredIssues = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase()
-    return allIssues.filter((issue) => {
-      if (!issueMatchesSearch(issue, normalizedSearch)) return false
-      if (status && issue.status !== status) return false
-      if (assignee === 'unassigned' && issue.assignee_id !== null) return false
-      if (assignee && assignee !== 'unassigned' && issue.assignee_id !== assignee) return false
-      if (priority && issue.priority !== Number(priority)) return false
-      if (project === 'unfiled' && issue.project_id !== null) return false
-      if (project && project !== 'unfiled') {
-        if (!issue.project_id) return false
-        if (projectsById.get(issue.project_id)?.key !== project) return false
-      }
-      return true
-    })
-  }, [allIssues, assignee, priority, project, projectsById, search, status])
+  }, [allIssues, issues.data?.assignee_ids, members.data, assignee])
   const hasFilters = Boolean(search.trim() || status || assignee || priority || project)
 
   function clearFilters() {
+    setPagination({ filterKey: '', cursors: [''] })
     setSearch('')
     setStatus('')
     setAssignee('')
@@ -237,10 +233,11 @@ export function IssuesPage({ slug }: { slug: string }) {
             <select
               className={controlClass}
               value={status}
-              onChange={(event) => setStatus(event.target.value as IssueStatus | '')}
+              onChange={(event) => setStatus(event.target.value as StatusFilter)}
               data-testid="issues-status-filter"
             >
               <option value="">All statuses</option>
+              <option value="open">Open statuses</option>
               {ISSUE_STATUSES.map((value) => (
                 <option key={value} value={value}>{STATUS_LABELS[value]}</option>
               ))}
@@ -272,7 +269,7 @@ export function IssuesPage({ slug }: { slug: string }) {
               <option value="">All projects</option>
               <option value="unfiled">Unfiled</option>
               {(projects.data?.projects ?? []).map((item) => (
-                <option key={item.id} value={item.key}>{item.name}</option>
+                <option key={item.id} value={item.key}>{item.name}{item.status === 'archived' ? ' (archived)' : ''}</option>
               ))}
             </select>
           </label>
@@ -308,7 +305,7 @@ export function IssuesPage({ slug }: { slug: string }) {
           title="All issues"
           meta={!issues.isPending && !issues.error ? (
             <span data-testid="issues-count">
-              {hasFilters ? `${filteredIssues.length} of ${allIssues.length}` : allIssues.length} issues
+              {hasFilters ? `${issues.data?.matched_count} of ${issues.data?.total_count}` : issues.data?.total_count} issues
             </span>
           ) : undefined}
         />
@@ -320,7 +317,7 @@ export function IssuesPage({ slug }: { slug: string }) {
             <p className="text-sm text-blocked" role="alert">Could not load issues.</p>
             <Button className="mt-3" onClick={() => void issues.refetch()}>Try again</Button>
           </div>
-        ) : allIssues.length === 0 ? (
+        ) : issues.data?.total_count === 0 ? (
           <div data-testid="issues-empty">
             <EmptyState
               title="No issues yet"
@@ -328,12 +325,12 @@ export function IssuesPage({ slug }: { slug: string }) {
               action={canWrite && !creatingIssue ? <Button onClick={() => setCreatingIssue(true)}>New issue</Button> : undefined}
             />
           </div>
-        ) : filteredIssues.length === 0 ? (
+        ) : allIssues.length === 0 ? (
           <div data-testid="issues-no-results">
             <EmptyState
-              title="No matching issues"
-              message="Try a different search or clear the filters."
-              action={<Button onClick={clearFilters}>Clear filters</Button>}
+              title={cursor && issues.data?.matched_count ? 'No issues on this page' : 'No matching issues'}
+              message={cursor && issues.data?.matched_count ? 'Issues changed since you opened this page. Go back to the previous page.' : 'Try a different search or clear the filters.'}
+              action={cursor ? <Button onClick={() => setPagination({ filterKey, cursors: [''] })}>First page</Button> : <Button onClick={clearFilters}>Clear filters</Button>}
             />
           </div>
         ) : (
@@ -342,7 +339,7 @@ export function IssuesPage({ slug }: { slug: string }) {
             data-testid="issues-list"
             aria-labelledby="all-issues-heading"
           >
-            {filteredIssues.map((issue) => (
+            {allIssues.map((issue) => (
               <IssueRow
                 key={issue.id}
                 issue={issue}
@@ -354,6 +351,15 @@ export function IssuesPage({ slug }: { slug: string }) {
             ))}
           </ul>
         )}
+        {cursors.length > 1 || issues.data?.next_cursor ? (
+          <nav className="mt-4 flex flex-wrap items-center gap-3" aria-label="Issue pagination">
+            <Button disabled={cursors.length === 1 || issues.isFetching} onClick={() => setPagination({ filterKey, cursors: cursors.slice(0, -1) })}>Previous page</Button>
+            <span className="text-sm" role="status">Page {cursors.length}</span>
+            <Button disabled={!issues.data?.next_cursor || issues.isFetching || Boolean(issues.error)} onClick={() => {
+              if (issues.data?.next_cursor) setPagination({ filterKey, cursors: [...cursors, issues.data.next_cursor] })
+            }}>Next page</Button>
+          </nav>
+        ) : null}
       </section>
     </div>
   )

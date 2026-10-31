@@ -65,6 +65,10 @@ type IssuePatch struct {
 
 // IssueFilter narrows a list. An empty filter lists the whole workspace.
 type IssueFilter struct {
+	Unassigned  bool
+	Unfiled     bool
+	Search      string
+	Priority    *int
 	MilestoneID *uuid.UUID
 	SprintID    *uuid.UUID
 	ProjectID   *uuid.UUID
@@ -287,10 +291,15 @@ func (s *Store) ListIssues(ctx context.Context, workspaceID uuid.UUID, f IssueFi
 		  AND ($5::text[] IS NULL OR i.status::text = ANY($5))
 		  AND ($6::uuid IS NULL OR i.project_id = $6)
 		  AND ($7::text IS NULL OR (i.position, i.id) > ($7, $8::uuid))
+		  AND (NOT $10::boolean OR i.assignee_id IS NULL)
+		  AND (NOT $11::boolean OR i.project_id IS NULL)
+		  AND ($12::int IS NULL OR i.priority = $12)
+		  AND ($13::text = '' OR strpos(lower(i.key), lower($13)) > 0
+		       OR strpos(lower(i.title), lower($13)) > 0 OR strpos(lower(i.description), lower($13)) > 0)
 		ORDER BY i.position, i.id
 		LIMIT $9`,
 		workspaceID, f.MilestoneID, f.SprintID, f.AssigneeID, statuses,
-		f.ProjectID, cursorPosition, cursorID, limit)
+		f.ProjectID, cursorPosition, cursorID, limit+1, f.Unassigned, f.Unfiled, f.Priority, f.Search)
 	if err != nil {
 		return nil, "", err
 	}
@@ -308,14 +317,38 @@ func (s *Store) ListIssues(ctx context.Context, workspaceID uuid.UUID, f IssueFi
 		return nil, "", err
 	}
 
-	// A short page is the last page, so it carries no cursor and the client
-	// stops rather than making one more empty round trip.
+	// One lookahead row avoids advertising an empty page when the last page
+	// contains exactly limit rows.
 	next := ""
-	if len(out) == limit {
+	if len(out) > limit {
+		out = out[:limit]
 		last := out[len(out)-1]
 		next = encodeIssueCursor(last.Position, last.ID)
 	}
 	return out, next, nil
+}
+
+// CountIssues ignores the cursor so counts describe the entire filtered result.
+// Counts and assignee options stay inside the project scope of an API key.
+func (s *Store) CountIssues(ctx context.Context, workspaceID uuid.UUID, f IssueFilter, scope *uuid.UUID) (matched, total int, assignees []uuid.UUID, err error) {
+	err = s.pool.QueryRow(ctx, `
+		SELECT count(*) FILTER (WHERE
+		  ($2::uuid IS NULL OR i.milestone_id = $2)
+		  AND ($3::uuid IS NULL OR i.milestone_id IN (
+		    SELECT m.id FROM milestone m WHERE m.workspace_id = $1 AND m.sprint_id = $3))
+		  AND ($4::uuid IS NULL OR i.assignee_id = $4)
+		  AND ($5::text[] IS NULL OR i.status::text = ANY($5))
+		  AND ($6::uuid IS NULL OR i.project_id = $6)
+		  AND (NOT $7::boolean OR i.assignee_id IS NULL)
+		  AND (NOT $8::boolean OR i.project_id IS NULL)
+		  AND ($9::int IS NULL OR i.priority = $9)
+		  AND ($10::text = '' OR strpos(lower(i.key), lower($10)) > 0
+		       OR strpos(lower(i.title), lower($10)) > 0 OR strpos(lower(i.description), lower($10)) > 0)
+		), count(*), coalesce(array_agg(DISTINCT i.assignee_id) FILTER (WHERE i.assignee_id IS NOT NULL), '{}'::uuid[])
+		FROM issue i WHERE i.workspace_id = $1 AND ($11::uuid IS NULL OR i.project_id = $11)`,
+		workspaceID, f.MilestoneID, f.SprintID, f.AssigneeID, f.Statuses, f.ProjectID,
+		f.Unassigned, f.Unfiled, f.Priority, f.Search, scope).Scan(&matched, &total, &assignees)
+	return
 }
 
 func encodeIssueCursor(position string, id uuid.UUID) string {

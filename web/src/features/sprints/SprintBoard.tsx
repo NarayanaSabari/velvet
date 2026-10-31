@@ -15,7 +15,7 @@ import { RelativeTime } from '../../ui/RelativeTime'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
 import { useSession } from '../auth/useSession'
 import { MilestoneForm, type MilestoneInput } from '../work/CoreForms'
-import { projectsQuery } from '../work/workLinks'
+import { membersQuery, projectsQuery } from '../work/workLinks'
 import { issuesForSprint } from './sprintIssues'
 import { MoveToast, SprintKanban, type StatusMove } from './SprintKanban'
 
@@ -475,10 +475,7 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
     queryKey: ['issues', slug, { milestone_id: null }],
     queryFn: async () => ({ issues: await listAllWorkspaceIssues<SprintIssue>(slug) }),
   })
-  const members = useQuery({
-    queryKey: ['members', slug],
-    queryFn: () => api.get<{ members: User[] }>(`/w/${slug}/members`),
-  })
+  const members = useQuery(membersQuery(slug))
   const projects = useQuery(projectsQuery(slug))
 
   useEffect(() => {

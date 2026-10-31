@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { queryOptions, useQuery } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
-import type { Milestone, Project, Sprint, SprintState } from '../../lib/types'
+import type { Milestone, Project, Sprint, SprintState, User } from '../../lib/types'
 
 /**
  * A ticket links to a project and to a milestone, and the two always agree:
@@ -110,6 +110,16 @@ export function reconcileLinks(
     return { projectId: change.projectId, milestoneId: keep ? current.milestoneId : '' }
   }
   return current
+}
+
+/** Shared member response used by list, detail, milestone and sprint pages. */
+export function membersQuery(slug: string) {
+  // Keep the API envelope in shared cache. Consumers may select the array,
+  // but must not change the cached shape when navigating between pages.
+  return queryOptions({
+    queryKey: ['members', slug],
+    queryFn: () => api.get<{ members: User[] }>(`/w/${slug}/members`),
+  })
 }
 
 /** The project list including archived ones, so old links still have names. */

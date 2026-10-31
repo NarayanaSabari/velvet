@@ -1,4 +1,5 @@
 import {
+  lazyRouteComponent,
   createRootRouteWithContext,
   createRoute,
   createRouter,
@@ -17,26 +18,28 @@ import { Invite } from '../features/auth/Invite'
 import { landingWorkspace, sessionQueryOptions } from '../features/auth/useSession'
 import { NewOrganisation } from '../features/orgs/NewOrganisation'
 import { Onboarding } from '../features/onboarding/Onboarding'
-import { ProfileRoute } from '../features/profile/Profile'
 import { PROFILE_PAGES } from '../features/profile/profilePages'
 import { LandingPage } from '../features/landing/LandingPage'
 import { RootLayout, RootNotFound } from './root'
 import { PublicRecovery, PublicSessionPending, PublicSessionError } from '../features/auth/PublicRecovery'
 import { ApproveCLI } from '../features/auth/ApproveCLI'
-import { Dashboard } from '../features/dashboard/Dashboard'
-import { TeamFeed } from '../features/feed/TeamFeed'
-import { SprintList } from '../features/sprints/SprintList'
-import { SprintBoard } from '../features/sprints/SprintBoard'
-import { MilestonePage } from '../features/milestones/MilestonePage'
-import { IssuesPage } from '../features/issues/IssuesPage'
-import { ProjectsPage } from '../features/projects/ProjectsPage'
-import { Recap } from '../features/recap/Recap'
-import { IssuePage } from '../features/issues/IssuePage'
-import { UnlinkedPRs } from '../features/evidence/UnlinkedPRs'
-import { Reports } from '../features/reports/Reports'
-import { Admin } from '../features/admin/Admin'
 import { ADMIN_PAGE_IDS, type AdminPageId } from '../features/admin/adminPages'
-import { Mentions } from '../features/mentions/Mentions'
+import { LoadingState } from '../ui/QueryState'
+
+const ProfileRoute = lazyRouteComponent(() => import('../features/profile/Profile'), 'ProfileRoute')
+const Dashboard = lazyRouteComponent(() => import('../features/dashboard/Dashboard'), 'Dashboard')
+const TeamFeed = lazyRouteComponent(() => import('../features/feed/TeamFeed'), 'TeamFeed')
+const SprintList = lazyRouteComponent(() => import('../features/sprints/SprintList'), 'SprintList')
+const SprintBoard = lazyRouteComponent(() => import('../features/sprints/SprintBoard'), 'SprintBoard')
+const MilestonePage = lazyRouteComponent(() => import('../features/milestones/MilestonePage'), 'MilestonePage')
+const IssuesPage = lazyRouteComponent(() => import('../features/issues/IssuesPage'), 'IssuesPage')
+const ProjectsPage = lazyRouteComponent(() => import('../features/projects/ProjectsPage'), 'ProjectsPage')
+const Recap = lazyRouteComponent(() => import('../features/recap/Recap'), 'Recap')
+const IssuePage = lazyRouteComponent(() => import('../features/issues/IssuePage'), 'IssuePage')
+const UnlinkedPRs = lazyRouteComponent(() => import('../features/evidence/UnlinkedPRs'), 'UnlinkedPRs')
+const Reports = lazyRouteComponent(() => import('../features/reports/Reports'), 'Reports')
+const Admin = lazyRouteComponent(() => import('../features/admin/Admin'), 'Admin')
+const Mentions = lazyRouteComponent(() => import('../features/mentions/Mentions'), 'Mentions')
 
 const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: RootLayout, notFoundComponent: RootNotFound })
 
@@ -119,7 +122,7 @@ const issuesRoute = createRoute({
   path: '/w/$slug/issues',
   component: function IssuesRoute() {
     const { slug } = issuesRoute.useParams()
-    return <IssuesPage slug={slug} />
+    return <IssuesPage key={slug} slug={slug} />
   },
 })
 
@@ -280,7 +283,7 @@ const routes = [
 const routeTree = rootRoute.addChildren(routes)
 
 export function createAppRouter(history?: RouterHistory, client = queryClient) {
-  return createRouter({ routeTree, history, context: { queryClient: client } })
+  return createRouter({ routeTree, history, context: { queryClient: client }, defaultPendingComponent: LoadingState })
 }
 
 export const router = createAppRouter()

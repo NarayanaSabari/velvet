@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 import { useSession } from '../features/auth/useSession'
+import { useStream } from '../lib/useStream'
 import { SignIn } from '../features/auth/SignIn'
 import { Onboarding } from '../features/onboarding/Onboarding'
 import { LeaveOrganisation } from '../features/orgs/LeaveOrganisation'
@@ -390,6 +391,7 @@ export function Shell({
   const { user, memberships, workspace, isLoading, isSignedIn } =
     useSession(slug)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  useStream(isSignedIn && workspace && slug ? workspace.workspace_slug : undefined)
 
   // Rendering nothing session-dependent while loading is what stops the
   // sign-in prompt flashing on every refresh.

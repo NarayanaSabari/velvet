@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
 import type { DashboardPayload, Issue, Milestone } from '../../lib/types'
-import { useStream } from '../../lib/useStream'
 import { EmptyState } from '../../ui/EmptyState'
 import { Button } from '../../ui/Button'
 import { PageHeader, SectionHeader } from '../../ui/PageHeader'
@@ -70,7 +69,6 @@ function MilestoneSummary({ slug, milestone }: { slug: string; milestone: Milest
 }
 
 export function Dashboard({ slug }: { slug: string }) {
-  useStream(slug)
   const queryClient = useQueryClient()
   const { workspace } = useSession(slug)
   const canWrite = workspace?.role === 'admin' || workspace?.role === 'member'
