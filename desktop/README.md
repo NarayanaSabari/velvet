@@ -63,7 +63,7 @@ Each desktop release is a GitHub Release tagged `desktop-vX.Y.Z` on `NarayanaSab
 
 A packaged app checks for updates at launch, every 6 hours while open, and from **Velvet > Check for Updates…** or the sidebar. It ignores drafts, prereleases and versions not newer than its own, and trusts a manifest only when its signature matches the public key compiled from `update-public-key.hex`.
 
-**Automatic updates** (default on, toggled in the sidebar or the Velvet menu, stored in `~/Library/Application Support/Velvet/auto-update`) download and verify a new release in the background. It installs the next time Velvet quits, or immediately with **Restart now**. With automatic updates off, the banner offers **Update** to download first. Verification covers SHA-256, bundle identifier, version and code signature. Every quit path, including the draft-safe Quit prompt, hands the staged bundle to a detached helper that waits for exit, swaps the bundle, and restores the old one if the swap fails. Background checks fail silently offline. `cargo run` builds never check.
+**Automatic updates** (default on, toggled in the sidebar or the Velvet menu, stored in `~/Library/Application Support/Velvet/auto-update`) download and verify a new release in the background. It installs the next time Velvet quits, or immediately with **Restart now**. With automatic updates off, the banner offers **Update** to download first. Verification covers SHA-256, bundle identifier, version and code signature. Every quit path, including the draft-safe Quit prompt, hands the staged bundle to a detached helper that waits for exit, swaps the bundle, and attempts to restore the old one if the swap fails. Background checks fail silently offline. Unbundled `cargo run` builds skip automatic startup and periodic checks, but the manual menu action still calls GitHub through `check_for_updates`. Download/install preparation separately requires an app bundle and reports an error when none exists.
 
 Update preparation now reserves private, unique staging and probe directories instead of overwriting fixed paths. Before quitting, Velvet copies the candidate beside the installed app and waits for the helper to acknowledge readiness. A preparation or helper-start failure leaves the app and its drafts open, shows the error, and allows another download or a normal quit. The helper retains a failure journal and any recovery bundle under `.velvet-update-*` beside the app. The next manual launch reports that failure and its recovery path. If automatic rollback itself fails, restore the retained `previous.app` manually rather than deleting the recovery directory. A successful update removes its transaction directory. These safeguards do not establish power-loss atomicity or notarization.
 
@@ -92,3 +92,30 @@ plutil -lint desktop/Info.plist
 `.github/workflows/desktop.yml` runs on manual dispatch, pull requests and pushes to `main` touching `desktop/**`, `api/**` or that workflow. API changes therefore run native client checks too. It uses read-only repository permissions, Rust 1.97.1, and native macOS formatting, locked all-target checking with `ui-tests`, and serial native UI and client tests. It checks packaging syntax and metadata but intentionally avoids another release build or a DMG. The opt-in connected test still requires a separately running disposable stack and is not part of this macOS job. It uploads no release artifact, uses no Apple credentials and has no production deployment step. Existing repository-wide workflows remain independent.
 
 A syntax check or plist validation is not evidence that the app, Keychain behavior, authentication, DMG, signature trust or native UI works. Record actual build, test and launch results in [parity.md](parity.md) as they become available.
+
+## Subdirectories & System Boundaries
+
+- `src`: [./src/README.md](./src/README.md) - `velvet-desktop` binary: GPUI `Velvet` view, blocking `ApiClient`, Keychain `credentials`, page builders, state helpers, theme, and the signed self-updater with its `update_swap.sh` helper.
+- `examples`: [./examples/README.md](./examples/README.md) - Developer tools: demo-only `screenshots` (feature `ui-tests`) and the `update_key` ed25519 key generator and signer.
+- `tests`: integration tests (`native_api.rs`, `native_updater.rs`, `real_server.rs`). `real_server` is `#[ignore]` and needs the disposable e2e stack from [e2e/README.md](../e2e/README.md).
+
+## Global Invariants
+
+- Server URLs pass `api::normalize_server`: HTTPS only, except HTTP on loopback, with no credentials, query, or fragment.
+- Tokens live only in macOS Keychain under service `app.velvet.desktop`, never in the bundle, `dist`, or config files.
+- `--demo` seeds sample data (`app.rs:seed_demo`) instead of `restore`, so it skips Velvet server and Keychain access. A packaged app still runs the GitHub update check (`update::running_bundle`).
+- Updates are trusted only with a valid ed25519 signature from the key in `update-public-key.hex`. The private key is never committed.
+- No offline queue or local database exists. All data comes from the live server.
+
+## Global Side Effects
+
+- HTTPS calls to the configured Velvet server and to the GitHub Releases API for `NarayanaSabari/velvet`.
+- macOS Keychain reads and writes.
+- `~/Library/Application Support/Velvet/auto-update` preference file.
+- `.velvet-update-*` transaction directories and a detached swap helper beside the installed app.
+- `package.sh [--dmg]` builds `--locked` for `aarch64-apple-darwin` into `desktop/target`, ad-hoc signs, and writes `dist/Velvet.app`, `dist/Velvet-<version>-arm64.zip`, and optionally the `.dmg`. It refuses existing outputs and requires `dist` to be git-ignored.
+- `release.sh <X.Y.Z> [--notes text]` requires a clean desktop subtree excluding `dist` and `target`, not a clean whole repository, plus a matching `Cargo.toml` version and a readable `VELVET_UPDATE_KEY`. Before packaging, it moves an existing `dist/Velvet.app` into a fresh `dist/.previous.*` directory. The script does not clean up that retained directory, including after a later failure. It runs `package.sh --dmg`, signs via `update_key sign`, writes `dist/latest.json`, pushes tag `desktop-v<version>`, and creates the GitHub Release on `NarayanaSabari/velvet` with `gh`.
+
+## System Verification
+
+- Run: `cd desktop && cargo test --locked --features ui-tests -- --test-threads=1`

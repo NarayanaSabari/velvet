@@ -73,7 +73,7 @@ Credentials use the system keychain (macOS Keychain, Secret Service on Linux, Cr
 Without a keychain, they use a 0600 `credentials.json` in the OS user-config directory's `velvet` folder.
 On Linux this is normally `~/.config/velvet/credentials.json`.
 Set `VELVET_NO_KEYCHAIN=1` to force the private file store.
-Entry identifiers are hashed. Private directory bindings and cleanup metadata may include server and project names, but never go in repository YAML.
+Fallback-file entry identifiers are SHA-256 hashes of `account(p)`. System keychain entries use the unhashed `account(p)` identifier: `<server>|<organisation>|<project>` (with synthetic names for non-project entries). Private directory bindings and cleanup metadata may include server and project names, but never go in repository YAML.
 
 Each confirmed directory has a separate private binding to its canonical filesystem path and project.
 Editing YAML cannot switch to another cached credential, even when that credential exists.
@@ -151,7 +151,7 @@ velvet sprint ID activate --yes          Completes the previous active sprint
 velvet sprint ID complete --yes          Closes the sprint
 velvet milestone ID show
 velvet milestone ID edit [--name NAME] [--description TEXT] [--status STATUS]
-                         [--target-date DATE|""] [--after ID] [--before ID] [--yes]
+                         [--owner UUID|none] [--target-date DATE|""] [--after ID] [--before ID] [--yes]
 velvet images (KEY | --milestone ID)     List image metadata
 velvet image ID delete --yes            Delete one image attachment
 velvet admin --help                     Separately consented account management
@@ -176,6 +176,7 @@ Planning IDs are UUIDs and dates use `YYYY-MM-DD`.
 Plural `sprints edit ID` and `milestones edit ID` alias the singular edit commands.
 Milestone `--status` accepts `planned`, `in_progress`, `completed`, or `cancelled`.
 Completing or cancelling a milestone requires `--yes`. `--target-date ""` clears its date.
+Milestone `--owner UUID` sets `owner_id`; `--owner none` clears it. Omitting the flag leaves the owner unchanged.
 `--after` and `--before` reorder sibling milestones, not reassign them to another sprint.
 Sprint activation completes the previous active sprint, so activation and completion require approval and `--yes`.
 Image commands list metadata or delete a confirmed image, not download image bytes.
@@ -244,3 +245,29 @@ go vet ./... && go test ./...
 ```
 
 `e2e/tests/cli.spec.ts` builds this binary and drives login browser consent, terminal-only init, project creation, logging, scope refusal, logout cascading, and `install.sh` against the real stack.
+
+## Blueprint
+
+### Subdirectories & System Boundaries
+
+- cmd: [./cmd/README.md](./cmd/README.md) - binary entry points. [`cmd/velvet`](./cmd/velvet/README.md) holds command dispatch and flows.
+- internal: [./internal/README.md](./internal/README.md) - [`client`](./internal/client/README.md) for HTTP and [`config`](./internal/config/README.md) for YAML, credentials, and bindings.
+
+### Global Invariants
+
+- Project work commands (`cmd/velvet/main.go:loadEnv`) load a project key only after `config.Keys.CheckBinding` passes, and send work requests only after `projectIdentity` confirms via `/me` a project token with the exact scope. That `/me` call itself carries the key.
+- Login validates setup credentials through `setupIdentity`, without a directory binding check. Init checks existing and selected links with `CheckBinding` before loading setup credentials, except when `--relink` is explicitly confirmed (interactive confirmation or `--relink --yes`). It may reuse a stored project key after `projectIdentity` succeeds; otherwise it validates the setup credential through `setupIdentity`.
+- Contextual whoami (`where`/`me`) inside an initialized directory uses `loadEnv`, `CheckBinding`, and `projectIdentity`. Outside one, or with explicit `--server`/`--account`, it uses `setupIdentity` without a binding check. Logout loads the saved setup login, revokes it with `DELETE /me/token`, then performs local cleanup and returns before `setupIdentity`; it does not check bindings. Admin uses management credentials checked by `managementIdentity`, without `CheckBinding`.
+- HTTP redirects are never followed with credentials (`client.New`).
+- Configuration writes are atomic and roll back on failure.
+- Management credentials stay separate from setup and project credentials.
+
+### Global Side Effects
+
+- Network calls to one Velvet server per invocation.
+- OS keychain or 0600 `credentials.json` in the user config directory.
+- `velvet.yaml` in the invocation directory.
+
+### System Verification
+
+- Run: `go test ./...` from `cli/`.

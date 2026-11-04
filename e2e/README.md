@@ -1,6 +1,32 @@
 # Browser integration tests
 
-Run the production Compose services with a local GitHub provider:
+## Interface
+
+| File | Purpose |
+| --- | --- |
+| `stack-common.sh` | Defines `E2E_PROJECT`, `E2E_PORT`, `E2E_PROVIDER_PORT`, `docker_local`, and `compose` (layers `../deploy/docker-compose.yml` with `compose.yml`). Executed directly, it forwards arguments to `compose`. |
+| `stack-up.sh` | Generates env, builds and starts the stack, restarts stale Caddy, and polls `/api/v1/health` for up to 120 seconds. |
+| `stack-down.sh` | Lists labelled containers and volumes, then runs `compose down -v`. |
+| `stack-env.mjs` | Writes `.env.generated` (mode 0600) with disposable credentials and a fresh RSA App key. |
+| `github-stub.mjs` | Local GitHub and TypeSafe provider double with `GET /test/stats`, `POST /test/control`, and authenticated `POST /v1/systemone`. |
+| `compose.yml` | Test override for the production Compose file. |
+| `playwright.config.ts` | Chromium, `workers: 1`, `baseURL` on `E2E_PORT`, real-stack `webServer`. |
+| `tests/fixtures.ts` | `compose`, `sql`, `seedWorkspace`, `sprintProject`, `seedRepo`, `resetWorkspaceData`, `signWebhook`, `seededSessionToken`, `WEBHOOK_SECRET`, extended `test` with authenticated `request` and `signedIn`, `expect`. |
+| `tests/onboarding-helpers.ts` | `unique`, `providerURL`, `mailLink`, `requestSignIn`, `signup`, `createOrganisation`, `invite`, `control`, `deliver`. |
+| `tests/velvet-cli.ts` | `velvetBinary`, `linkedRepo`. |
+| `stack-safety.test.mjs` | `node --test` guard regressions for the shell and fixture Compose boundaries. |
+
+## Invariants
+
+- Any `E2E_PROJECT` other than `worklog-e2e-organisations` exits before Docker is called.
+- During environment generation, `stack-env.mjs` validates `E2E_PORT`, `E2E_PORT + 1` (HTTPS), and `E2E_PROVIDER_PORT` as integers between 1025 and 65535. Consequently the base `E2E_PORT` range is 1025 through 65534, while the provider port may reach 65535.
+- Tests importing the extended `test` from `tests/fixtures.ts` receive an authenticated `request` fixture even without requesting `signedIn`. It seeds a session and creates an API context with `Cookie: ticket_session=<token>`, `Origin: baseURL`, and `Content-Type: application/json`, then disposes the context after use.
+
+## Side effects
+
+- `stack-up.sh` builds images and writes `.env.generated`. `stack-down.sh` deletes the project's volumes.
+
+Run the production Compose services with a local GitHub and TypeSafe provider:
 
 ```bash
 cd e2e
@@ -41,6 +67,7 @@ This ignored file must never be committed.
 The Compose override routes authorization, token exchange, and REST calls to the local Node provider and disables Resend delivery.
 Emails appear in API logs; the onboarding helper selects links by unique recipient and action start time, preserving the fragment token.
 The provider validates authorization state, client credentials, PKCE, and separate user/installation token use.
+The same provider implements TypeSafe `POST /v1/systemone`, requiring `Authorization: Bearer e2e-typesafe-key`. It returns deterministic suggestion answers by matching words in work titles, bodies, and branches against candidate issue titles, with `none_of_these` when no words overlap. The Compose override sets API `TYPESAFE_CONFIGURED=true` and directs the worker to this local double with its test key, so suggestion workflows require no real TypeSafe credentials or external TypeSafe requests.
 Its synthetic controls and diagnostic counters are available at `http://127.0.0.1:18599/test/stats`.
 Tests inspect external GitHub settings links without following them.
 

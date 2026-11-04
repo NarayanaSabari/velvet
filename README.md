@@ -185,10 +185,12 @@ A new sprint starts `upcoming` rather than activating itself, because activating
 velvet recap --days 7
 ```
 
-`GET /api/v1/me/worklog` gathers the notes written, the tickets touched, and the pull requests and commits that prove it, from **every** organisation the caller belongs to, grouped by day and then by organisation.
+The CLI recap is limited to the repository's linked organisation and project: it sends both filters, and the server enforces the project key's scope.
+
+The account-wide web work log and unfiltered `GET /api/v1/me/worklog`, authenticated with a browser session or personal API token, gather the notes written, the tickets touched, and the pull requests and commits that prove it, from **every** organisation the caller belongs to, grouped by day and then by organisation.
 `.md` returns the same record as prose, because the question usually arrives as a message and the answer has to be pasteable into one.
 
-Membership is the only scope, so a recap never shows another person's work and drops an organisation the moment someone leaves it.
+Membership bounds that account-wide view, so a recap never shows another person's work and drops an organisation the moment someone leaves it.
 
 ## One person, one GitHub account per organisation
 
@@ -247,10 +249,52 @@ To check that threshold against your own history, run `ticket eval-suggestions` 
 It replays up to 100 pull requests already linked by branch name, hides the branch, and prints how many suggestions each threshold would show and how many are right.
 It only reads the database, but it does send those pull requests and open issues to TypeSafe.
 
+## Repository Blueprint
+
+### System Overview
+
+The API owns persisted work and authentication. Web, CLI, and desktop clients use that API. The contracts below supplement the product model and operational guidance in this README.
+
+### Interface
+
+- [API](./api/README.md): HTTP server, migrations, worker, and internal packages.
+- [Web](./web/README.md): React workspace SPA.
+- [CLI](./cli/README.md): commands, repository bindings, and credentials.
+- [Desktop](./desktop/README.md): native macOS client, updater, and packaging.
+- [Plugins](./plugins/README.md): agent manifests and CLI skills.
+- [Deployment](./deploy/README.md): Compose, Caddy, backups, and rollout scripts.
+- [Browser verification](./e2e/README.md): Playwright and guarded disposable stack.
+
+### Invariants
+
+- Component contracts below own their detailed invariants and source references.
+- Repository binding and separate management consent follow the [CLI contract](./cli/README.md).
+- The [disposable browser stack](./e2e/README.md) is not a production deployment target.
+
+### Side Effects
+
+- API and worker operations persist data and background work in Postgres. See the [API contract](./api/README.md).
+- Clients make API requests and may store credentials. See the CLI and desktop contracts for storage boundaries.
+- Deployment scripts can restart services, migrate data, and write backups. Documentation generation does not authorize those actions.
+
+### Verification
+
+Run from the repository root. These are entry points, not a claim that every suite ran during documentation generation.
+
+```bash
+(cd api && go test ./...)
+(cd cli && go test ./...)
+(cd web && npm run test && npm run build)
+(cd desktop && cargo test)
+node --test deploy/rollout.test.mjs e2e/stack-safety.test.mjs
+```
+
+Follow [browser setup and safety requirements](./e2e/README.md) before running Playwright. API integration tests require Docker.
+
 ## Layout
 
 ```
-api/     Go: HTTP API, queue worker, migrations - one binary, three subcommands
+api/     Go: HTTP API, queue worker, migrations - one binary, four subcommands
 web/     React SPA (Vite, TanStack Query and Router, Tailwind)
 cli/     Go CLI with browser consent and repository-scoped credentials
 desktop/ Native Rust/GPUI Apple Silicon client and local packaging
@@ -264,12 +308,13 @@ The `migrate` and `web` services are one-shot setup containers that apply the sc
 Caddy terminates TLS, serves the built SPA, and proxies `/api` and `/webhooks`, so the browser sees a single origin and the session cookie needs no cross-site handling.
 Postgres stores both domain data and the durable background-job queue.
 
-The binary has three subcommands:
+The binary has four subcommands:
 
 ```
-ticket migrate   apply schema migrations
-ticket serve     run the HTTP API
-ticket worker    run the queue consumer
+ticket migrate           apply schema migrations
+ticket serve             run the HTTP API
+ticket worker            run the queue consumer
+ticket eval-suggestions  evaluate suggestion thresholds against linked PRs
 ```
 
 ## Running it
@@ -450,6 +495,7 @@ Caddy's address is the only trusted source of forwarded client IPs, so updating 
 
 ```
 cd api  && go test ./...            # domain and integration, real Postgres via testcontainers
+cd cli  && go test ./...            # CLI, project scope, and plugin command coverage
 cd web  && npx vitest run           # components
 cd e2e  && env -u NO_COLOR npx playwright test  # the whole system, in a browser
 ```
@@ -465,14 +511,15 @@ Run deployment wiring and guarded entrypoint regressions from the repository roo
 
 ### CI
 
-`.github/workflows/ci.yml` runs all three suites on every push and pull request.
-The end-to-end job depends on the other two, so a broken unit test fails fast instead of paying to build the whole stack.
+`.github/workflows/ci.yml` runs four suites on main pushes, pull requests, and manual dispatch: API, web, CLI, and end-to-end.
+The end-to-end job depends on all three of `api`, `web`, and `cli`, so a broken unit test fails fast instead of paying to build the whole stack.
+For non-PR runs, `images` depends on `api` and `web`; `deploy` depends on both `images` and `e2e`, which also gates deployment on CLI success.
 Go vulnerability checks cover the API and the CLI, and web dependency audits also run in CI.
 See the [security remediation ledger](docs/security/2026-10-05-remediation.md) for per-finding fixes, authorization race regressions, and the unimported OpenPGP advisory classification.
 
 The gate was checked against a deliberate regression, not just a green tree: reintroducing the timestamp bug on a branch turned CI red in the Go job with the expected message and skipped end-to-end, then the branch was deleted.
 
-**`main` is not yet protected.** Branch protection and rulesets need GitHub Pro or a public repository, and this one is private on the free plan, so a red run reports but does not block a merge. Enable "Require status checks to pass" for `Go API`, `Web app`, and `End to end` once either applies.
+**`main` is not yet protected.** Branch protection and rulesets need GitHub Pro or a public repository, and this one is private on the free plan, so a red run reports but does not block a merge. Enable "Require status checks to pass" for `Go API`, `Web app`, `CLI`, and `End to end` once either applies.
 
 ## Backup and restore
 
@@ -525,12 +572,16 @@ command="/home/ubuntu/worklog-deploy-entry.sh",no-port-forwarding,no-X11-forward
 The repository holds three secrets: `DEPLOY_SSH_KEY`, the private half of that key; `DEPLOY_HOST`; and `DEPLOY_KNOWN_HOSTS`, the host's public key from `ssh-keyscan`, so the job refuses to talk to an impostor.
 The registry credential is the job's own short-lived token, passed to the host on stdin, so nothing that can pull the private images is stored on the host.
 
-A host that can build for itself can still upgrade by hand:
+A host that can build for itself can still upgrade by hand, only after operator approval and a fresh, verified compatible database backup as described above. Keep the same Compose project and environment throughout. Build the target images while old writers still run, then stop writers and require an explicit one-shot migration to succeed before starting new writers:
 
 ```bash
 cd deploy
-git pull
-docker compose --env-file .env.local up -d --build
+git pull &&
+docker compose --env-file .env.local build migrate api worker web &&
+docker compose --env-file .env.local stop api worker &&
+docker compose --env-file .env.local run --rm migrate &&
+docker compose --env-file .env.local up -d --no-build
 ```
 
-The `migrate` service applies any new migrations before `api` and `worker` restart.
+For prebuilt images, replace the `build migrate api worker web` command with `pull migrate api worker web`, pinning the approved `IMAGE_TAG` consistently for every command. Never stop writers until the build or pull succeeds.
+The `&&` chain leaves writers stopped if the one-shot migration fails. Investigate before retrying; do not start old or new writers against a failed migration. The final `up` retains Compose's successful-migration dependency gate for `api` and `worker`; it is not a substitute for the explicit migration success check. Migration `0020` makes old worker binaries incompatible, so application-only rollback is unsafe. No deployment is authorized by reading or editing these instructions.
