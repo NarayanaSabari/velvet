@@ -62,6 +62,14 @@ func TestSetIssueLabelsReplacesTheSet(t *testing.T) {
 	f.DecodeInto(rec, &got)
 	require.Len(t, got.Labels, 1)
 	require.Equal(t, "chore", got.Labels[0].Name)
+
+	// The list carries labels too, so clients need no per-row fetch.
+	rec = f.Do(http.MethodGet, "/api/v1/w/lab/issues", nil)
+	var page struct{ Issues []store.Issue }
+	f.DecodeInto(rec, &page)
+	require.Len(t, page.Issues, 1)
+	require.Len(t, page.Issues[0].Labels, 1)
+	require.Equal(t, "chore", page.Issues[0].Labels[0].Name)
 }
 
 func TestLabelFromAnotherWorkspaceCannotBeAttached(t *testing.T) {

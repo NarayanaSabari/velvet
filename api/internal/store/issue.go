@@ -316,6 +316,9 @@ func (s *Store) ListIssues(ctx context.Context, workspaceID uuid.UUID, f IssueFi
 	if err := rows.Err(); err != nil {
 		return nil, "", err
 	}
+	if err := attachLabels(ctx, s.pool, workspaceID, out); err != nil {
+		return nil, "", err
+	}
 
 	// One lookahead row avoids advertising an empty page when the last page
 	// contains exactly limit rows.

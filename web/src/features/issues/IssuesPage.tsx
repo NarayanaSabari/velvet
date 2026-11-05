@@ -10,6 +10,7 @@ import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { PageHeader, SectionHeader } from '../../ui/PageHeader'
 import { StatusBadge, STATUS_LABELS } from '../../ui/StatusBadge'
+import { RelativeTime } from '../../ui/RelativeTime'
 import { IssueForm, type IssueInput } from '../work/CoreForms'
 import { membersQuery, projectsQuery, useWorkLinks } from '../work/workLinks'
 
@@ -50,7 +51,7 @@ function IssueRow({
         to={`/w/${slug}/issues/${issue.key}`}
         className="block px-2 py-3 hover:bg-grey-100 focus-visible:bg-grey-100"
       >
-        <div className="grid min-w-0 gap-2 md:grid-cols-[5rem_minmax(0,1fr)] md:items-center xl:grid-cols-[5rem_minmax(0,1fr)_8rem_4rem_12rem_14rem] xl:gap-x-4">
+        <div className="grid min-w-0 gap-2 md:grid-cols-[5rem_minmax(0,1fr)] md:items-center xl:grid-cols-[5rem_minmax(0,1fr)_8rem_3rem_11rem_12rem_minmax(0,10rem)_5rem] xl:gap-x-4">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 md:contents">
             <span className="shrink-0 font-mono text-xs text-grey-500" data-testid={`issue-key-${issue.id}`}>
               {issue.key}
@@ -82,6 +83,20 @@ function IssueRow({
             >
               {project ? <span className="text-grey-700">{project.key} · </span> : null}
               {milestone}
+            </span>
+            <span
+              className="flex min-w-0 flex-wrap gap-1"
+              aria-label={issue.labels?.length ? `Labels: ${issue.labels.map((label) => label.name).join(', ')}` : undefined}
+              data-testid={`issue-labels-${issue.id}`}
+            >
+              {issue.labels?.map((label) => (
+                <span key={label.id} className="border border-grey-200 px-1 leading-4 text-grey-700">
+                  {label.name}
+                </span>
+              ))}
+            </span>
+            <span className="shrink-0" data-testid={`issue-updated-${issue.id}`}>
+              <RelativeTime iso={issue.updated_at} />
             </span>
           </div>
         </div>

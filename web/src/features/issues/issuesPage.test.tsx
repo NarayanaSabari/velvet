@@ -127,6 +127,20 @@ beforeEach(() => {
 })
 
 describe('IssuesPage', () => {
+  it('shows labels and relative age on each row', async () => {
+    const stale = new Date(Date.now() - 3 * 86400 * 1000).toISOString()
+    setupFetch([
+      issue({
+        updated_at: stale,
+        labels: [{ id: 'l1', workspace_id: 'w1', name: 'bug', color: '#111111' }],
+      }),
+    ])
+    renderPage(new QueryClient({ defaultOptions: { queries: { retry: false } } }))
+    expect(await screen.findByTestId('issue-labels-i1')).toHaveTextContent('bug')
+    expect(screen.getByTestId('issue-labels-i1')).toHaveAttribute('aria-label', 'Labels: bug')
+    expect(screen.getByTestId('issue-updated-i1')).toHaveTextContent('3 days ago')
+  })
+
   it.each([false, true])('preserves the canonical members cache before and after list navigation (seeded: %s)', async (seeded) => {
     const fetchMock = setupFetch([issue({ assignee_id: member.id })])
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })

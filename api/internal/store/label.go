@@ -148,6 +148,41 @@ func labelsForIssue(ctx context.Context, q querier, workspaceID, issueID uuid.UU
 	return out, rows.Err()
 }
 
+// attachLabels fills Labels for every issue in one query, so a list page costs
+// two round trips instead of one per row.
+func attachLabels(ctx context.Context, q querier, workspaceID uuid.UUID, issues []Issue) error {
+	if len(issues) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, len(issues))
+	byID := make(map[uuid.UUID]int, len(issues))
+	for i := range issues {
+		ids[i] = issues[i].ID
+		byID[issues[i].ID] = i
+		issues[i].Labels = []Label{}
+	}
+	rows, err := q.Query(ctx, `
+		SELECT il.issue_id, l.id, l.workspace_id, l.name, l.color
+		FROM label l JOIN issue_label il ON il.label_id = l.id
+		WHERE l.workspace_id = $1 AND il.issue_id = ANY($2::uuid[])
+		ORDER BY l.name`, workspaceID, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var issueID uuid.UUID
+		var l Label
+		if err := rows.Scan(&issueID, &l.ID, &l.WorkspaceID, &l.Name, &l.Color); err != nil {
+			return err
+		}
+		if i, ok := byID[issueID]; ok {
+			issues[i].Labels = append(issues[i].Labels, l)
+		}
+	}
+	return rows.Err()
+}
+
 func distinctUUIDs(ids []uuid.UUID) []uuid.UUID {
 	seen := make(map[uuid.UUID]bool, len(ids))
 	out := make([]uuid.UUID, 0, len(ids))
