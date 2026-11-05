@@ -254,6 +254,30 @@ impl ApiClient {
             true,
         )?)
     }
+    pub fn members(&self, slug: &str) -> Result<Vec<Member>> {
+        #[derive(Deserialize)]
+        struct Envelope {
+            #[serde(default, deserialize_with = "null_vec")]
+            members: Vec<Member>,
+        }
+        let result: Envelope = Self::decode(self.request(
+            Method::GET,
+            &["api", "v1", "w", slug, "members"],
+            &[],
+            None,
+            true,
+        )?)?;
+        Ok(result.members)
+    }
+    pub fn evidence(&self, slug: &str, key: &str) -> Result<Evidence> {
+        Self::decode(self.request(
+            Method::GET,
+            &["api", "v1", "w", slug, "issues", key, "evidence"],
+            &[],
+            None,
+            true,
+        )?)
+    }
     pub fn comments(&self, slug: &str, key: &str) -> Result<Vec<Comment>> {
         #[derive(Deserialize)]
         struct Envelope {
@@ -417,6 +441,42 @@ pub struct Issue {
     pub project_id: Option<String>,
     #[serde(default)]
     pub milestone_id: Option<String>,
+    #[serde(default)]
+    pub assignee_id: Option<String>,
+    #[serde(default)]
+    pub updated_at: String,
+    #[serde(default, deserialize_with = "null_vec")]
+    pub labels: Vec<Label>,
+}
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct Label {
+    pub id: String,
+    pub name: String,
+}
+/// A workspace member, keyed by user id so issues can name their assignee.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Member {
+    pub id: String,
+    #[serde(flatten)]
+    pub user: User,
+}
+/// GitHub evidence attached to an issue. Only pull requests are shown natively.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Evidence {
+    #[serde(default, deserialize_with = "null_vec")]
+    pub pull_requests: Vec<PullRequest>,
+}
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct PullRequest {
+    pub number: i64,
+    pub title: String,
+    pub state: String,
+    #[serde(default)]
+    pub draft: bool,
+    #[serde(default)]
+    pub html_url: String,
+    #[serde(default)]
+    pub merged_at: Option<String>,
 }
 #[derive(Clone, Debug, Deserialize)]
 pub struct Sprint {

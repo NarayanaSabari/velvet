@@ -699,6 +699,30 @@ fn update_startup_failure_keeps_app_and_drafts_open(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn rows_and_rail_name_assignee_labels_and_evidence(cx: &mut TestAppContext) {
+    let (window, view) = demo(cx, 1280.);
+    window
+        .update(cx, |_, window, cx| {
+            window.render_frame(cx);
+            let row = window.find(("issue", 0usize)).label().unwrap().to_owned();
+            assert!(row.contains("Sabari"), "{row}");
+            assert!(row.contains("labels desktop, ux"), "{row}");
+            let unassigned = window.find(("issue", 2usize)).label().unwrap().to_owned();
+            assert!(unassigned.contains("unassigned"), "{unassigned}");
+            assert_eq!(
+                window.find("issue-labels").label(),
+                Some("Labels: desktop, ux")
+            );
+            assert_eq!(
+                window.find(("evidence", 0usize)).label(),
+                Some("Pull request 42 feat: native shell scaffolding, merged")
+            );
+            assert_eq!(view.read(cx).evidence.pull_requests.len(), 2);
+        })
+        .unwrap();
+}
+
+#[gpui_kit::test]
 fn single_key_shortcuts_follow_group_order_and_respect_text_fields(cx: &mut TestAppContext) {
     let (window, view) = demo(cx, 1280.);
     window

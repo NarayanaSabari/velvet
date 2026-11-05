@@ -150,9 +150,107 @@ pub fn safe_external_url(value: &str) -> Option<String> {
     Some(url.into())
 }
 
+/// Seconds since the Unix epoch for an RFC 3339 UTC timestamp such as
+/// `2026-11-05T19:28:52Z` or with a fractional second. Offsets other than `Z`
+/// are applied. Returns `None` for anything else.
+// shortcut: no leap-second or calendar validation; swap for `time` if timestamps gain variety.
+pub fn parse_rfc3339(value: &str) -> Option<i64> {
+    let value = value.trim();
+    if value.len() < 19 {
+        return None;
+    }
+    let num = |s: &str| s.parse::<i64>().ok();
+    let (y, m, d) = (num(&value[0..4])?, num(&value[5..7])?, num(&value[8..10])?);
+    let (hh, mm, ss) = (
+        num(&value[11..13])?,
+        num(&value[14..16])?,
+        num(&value[17..19])?,
+    );
+    let rest = &value[19..];
+    let rest = rest
+        .find(|c| c == 'Z' || c == '+' || c == '-')
+        .map_or("", |i| &rest[i..]);
+    let offset = match rest.as_bytes().first() {
+        None | Some(b'Z') => 0,
+        Some(sign) => {
+            let sign = if *sign == b'-' { -1 } else { 1 };
+            let (oh, om) = (num(rest.get(1..3)?)?, num(rest.get(4..6)?)?);
+            sign * (oh * 3600 + om * 60)
+        }
+    };
+    // Days from civil, Howard Hinnant's algorithm.
+    let (y, m) = if m <= 2 { (y - 1, m + 9) } else { (y, m - 3) };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * m + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(days * 86_400 + hh * 3600 + mm * 60 + ss - offset)
+}
+
+/// RFC 3339 UTC text for Unix seconds; the inverse of `parse_rfc3339`.
+pub fn format_rfc3339(t: i64) -> String {
+    let (days, secs) = (t.div_euclid(86_400), t.rem_euclid(86_400));
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        secs / 3600,
+        secs % 3600 / 60,
+        secs % 60
+    )
+}
+
+/// Short age like `2d` or `3w` for list rows, from an RFC 3339 timestamp.
+pub fn short_age(value: &str, now: i64) -> Option<String> {
+    let seconds = (now - parse_rfc3339(value)?).max(0);
+    Some(match seconds {
+        s if s < 60 => "now".into(),
+        s if s < 3600 => format!("{}m", s / 60),
+        s if s < 86_400 => format!("{}h", s / 3600),
+        s if s < 7 * 86_400 => format!("{}d", s / 86_400),
+        s if s < 30 * 86_400 => format!("{}w", s / (7 * 86_400)),
+        s if s < 365 * 86_400 => format!("{}mo", s / (30 * 86_400)),
+        s => format!("{}y", s / (365 * 86_400)),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn parses_rfc3339_and_shortens_age() {
+        assert_eq!(parse_rfc3339("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_rfc3339("2026-11-05T19:28:52Z"), Some(1_793_906_932));
+        assert_eq!(
+            parse_rfc3339("2026-11-05T19:28:52.123456+05:30"),
+            Some(1_793_906_932 - 5 * 3600 - 30 * 60)
+        );
+        assert_eq!(parse_rfc3339(""), None);
+        assert_eq!(format_rfc3339(1_793_906_932), "2026-11-05T19:28:52Z");
+        assert_eq!(format_rfc3339(0), "1970-01-01T00:00:00Z");
+        let now = 1_793_906_932;
+        assert_eq!(
+            short_age("2026-11-05T19:28:00Z", now).as_deref(),
+            Some("now")
+        );
+        assert_eq!(
+            short_age("2026-11-03T19:28:52Z", now).as_deref(),
+            Some("2d")
+        );
+        assert_eq!(
+            short_age("2026-10-20T19:28:52Z", now).as_deref(),
+            Some("2w")
+        );
+        assert_eq!(short_age("bogus", now), None);
+    }
     #[test]
     fn combines_search_project_and_status_without_hiding_identity() {
         let issues = vec![

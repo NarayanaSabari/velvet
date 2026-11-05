@@ -1,5 +1,8 @@
 use crate::{
-    api::{ApiClient, Comment, DeviceSession, Identity, Issue, Milestone, Project, Sprint},
+    api::{
+        ApiClient, Comment, DeviceSession, Evidence, Identity, Issue, Member, Milestone, Project,
+        Sprint,
+    },
     credentials, pages,
     state::{self, Revision, STATUSES, author_label, status_label},
     theme::{self, Palette},
@@ -106,11 +109,13 @@ pub struct Velvet {
     identity: Option<Identity>,
     workspace: usize,
     projects: Vec<Project>,
+    members: Vec<Member>,
     project: Option<String>,
     status: Option<String>,
     issues: Vec<Issue>,
     selected: Option<Issue>,
     comments: Vec<Comment>,
+    evidence: Evidence,
     next_cursor: Option<String>,
     sprints_view: bool,
     sprints: Vec<Sprint>,
@@ -227,11 +232,13 @@ impl Velvet {
             identity: None,
             workspace: 0,
             projects: vec![],
+            members: vec![],
             project: None,
             status: None,
             issues: vec![],
             selected: None,
             comments: vec![],
+            evidence: Evidence::default(),
             next_cursor: None,
             sprints_view: false,
             sprints: vec![],
@@ -655,6 +662,7 @@ impl Velvet {
             let result = smol::unblock(move || -> anyhow::Result<_> {
                 Ok((
                     client.projects(&slug)?,
+                    client.members(&slug)?,
                     client.issues_page(&slug, None, None, cursor.as_deref())?,
                 ))
             })
@@ -666,8 +674,9 @@ impl Velvet {
                 }
                 this.loading = false;
                 match result {
-                    Ok((projects, page)) => {
+                    Ok((projects, members, page)) => {
                         this.projects = projects;
+                        this.members = members;
                         this.next_cursor = page.next_cursor;
                         if more {
                             for issue in page.issues {
@@ -706,6 +715,7 @@ impl Velvet {
         self.composer
             .update(cx, |s, cx| s.set_value(draft, window, cx));
         self.comments.clear();
+        self.evidence = Evidence::default();
         self.error = None;
         let revision = self.detail_revision.next();
         let session = self.session_revision.current();
@@ -722,6 +732,8 @@ impl Velvet {
                 Ok((
                     client.issue(&slug, &issue.key)?,
                     client.comments(&slug, &issue.key)?,
+                    // Evidence is optional context; a failure must not hide the issue.
+                    client.evidence(&slug, &issue.key).unwrap_or_default(),
                 ))
             })
             .await;
@@ -733,9 +745,10 @@ impl Velvet {
                 }
                 this.detail_loading = false;
                 match result {
-                    Ok((issue, comments)) => {
+                    Ok((issue, comments, evidence)) => {
                         this.selected = Some(issue);
                         this.comments = comments;
+                        this.evidence = evidence;
                     }
                     Err(e) => this.error = Some(e.to_string()),
                 }
@@ -997,8 +1010,10 @@ impl Velvet {
         self.status = None;
         self.issues.clear();
         self.projects.clear();
+        self.members.clear();
         self.selected = None;
         self.comments.clear();
+        self.evidence = Evidence::default();
         self.next_cursor = None;
         self.detail_loading = false;
         self.clear_sprints();
@@ -1398,8 +1413,10 @@ impl Velvet {
                         this.identity = None;
                         this.issues.clear();
                         this.projects.clear();
+                        this.members.clear();
                         this.selected = None;
                         this.comments.clear();
+                        this.evidence = Evidence::default();
                         this.drafts.clear();
                         this.form_drafts.clear();
                         this.project = None;
@@ -1505,8 +1522,23 @@ impl Velvet {
             serde_json::json!([{"id":"sample-project-id","key":"desktop","name":"Desktop"}]),
         )
         .unwrap_or_default();
-        self.issues=[("Build the native workspace shell","in_progress"),("Add browser sign-in","todo"),("Connect issue details","todo"),("Write a work log","backlog"),("Add keyboard navigation","todo"),("Package the macOS app","done")].into_iter().enumerate().map(|(i,(title,status))|Issue{id:format!("sample-{i}"),key:format!("VEL-{}",142+i),title:title.into(),description:"Bring issues, project context, and work logs into one native workspace.\n\nKeep the interface fast, quiet, and keyboard-first.\n\n### Checklist\n- [x] Workspace switcher\n- [x] Issue list and detail\n- [ ] Command palette\n\nThis is **sample data**, not your project’s current work.".into(),status:status.into(),priority:2,project_id:Some("sample-project-id".into()),milestone_id:Some(if i < 3 {"sample-shell"} else {"sample-release"}.into())}).collect();
+        self.members = serde_json::from_value(serde_json::json!([
+            {"id":"sample-user","name":"Sabari","email":"sample@example.com"},
+            {"id":"sample-agent","name":"Agent","email":"agent@example.com"}
+        ]))
+        .unwrap_or_default();
+        let days_ago = |d: i64| state::format_rfc3339(Self::now() - d * 86_400);
+        let label = |id: &str, name: &str| crate::api::Label {
+            id: id.into(),
+            name: name.into(),
+        };
+        self.issues=[("Build the native workspace shell","in_progress",2,Some("sample-user"),vec![label("l-desktop","desktop"),label("l-ux","ux")],2),("Add browser sign-in","todo",1,Some("sample-user"),vec![label("l-auth","auth")],3),("Connect issue details","todo",2,None,vec![label("l-desktop","desktop")],5),("Write a work log","backlog",3,None,vec![],14),("Add keyboard navigation","todo",0,Some("sample-agent"),vec![label("l-ux","ux")],7),("Package the macOS app","done",2,Some("sample-user"),vec![label("l-release","release")],21)].into_iter().enumerate().map(|(i,(title,status,priority,assignee,labels,age))|Issue{id:format!("sample-{i}"),key:format!("VEL-{}",142+i),title:title.into(),description:"Bring issues, project context, and work logs into one native workspace.\n\nKeep the interface fast, quiet, and keyboard-first.\n\n### Checklist\n- [x] Workspace switcher\n- [x] Issue list and detail\n- [ ] Command palette\n\nThis is **sample data**, not your project’s current work.".into(),status:status.into(),priority,project_id:Some("sample-project-id".into()),milestone_id:Some(if i < 3 {"sample-shell"} else {"sample-release"}.into()),assignee_id:assignee.map(Into::into),updated_at:days_ago(age),labels}).collect();
         self.selected = self.issues.first().cloned();
+        self.evidence = serde_json::from_value(serde_json::json!({"pull_requests":[
+            {"number":42,"title":"feat: native shell scaffolding","state":"closed","merged_at":"2026-11-04T10:00:00Z","html_url":""},
+            {"number":47,"title":"Searchable command palette","state":"open","draft":true,"html_url":""}
+        ]}))
+        .unwrap_or_default();
         self.sprints = serde_json::from_value(serde_json::json!([{"id":"sample-sprint","project_id":"sample-project-id","name":"October","starts_on":"2026-10-01","ends_on":"2026-10-31","state":"active"}])).unwrap_or_default();
         self.sprint = Some("sample-sprint".into());
         self.milestones = serde_json::from_value(serde_json::json!([
@@ -1981,14 +2013,26 @@ impl Velvet {
         let issue = &self.issues[index];
         let selected = self.selected.as_ref().is_some_and(|s| s.id == issue.id);
         let done = matches!(issue.status.as_str(), "done" | "cancelled");
+        let assignee = self.assignee_name(issue);
+        let labels = issue
+            .labels
+            .iter()
+            .map(|l| l.name.clone())
+            .collect::<Vec<_>>();
         Button::new(("issue", index))
             .ghost()
             .accessibility_label(format!(
-                "{}: {}, {}, priority {}{}",
+                "{}: {}, {}, priority {}, {}{}{}",
                 issue.key,
                 issue.title,
                 status_label(&issue.status),
                 issue.priority,
+                assignee.as_deref().unwrap_or("unassigned"),
+                if labels.is_empty() {
+                    String::new()
+                } else {
+                    format!(", labels {}", labels.join(", "))
+                },
                 if selected { ", selected" } else { "" }
             ))
             .w_full()
@@ -2033,7 +2077,27 @@ impl Velvet {
                             .text_size(px(13.))
                             .text_color(p.secondary)
                             .child(format!("P{}", issue.priority)),
-                    ),
+                    )
+                    .child(
+                        div()
+                            .w(px(28.))
+                            .flex_shrink_0()
+                            .text_size(px(12.))
+                            .text_color(p.muted)
+                            .child(
+                                state::short_age(&issue.updated_at, Self::now())
+                                    .unwrap_or_default(),
+                            ),
+                    )
+                    .child(match self.assignee_name(issue) {
+                        Some(name) => Avatar::new().name(name).xsmall().into_any_element(),
+                        None => div()
+                            .size(px(20.))
+                            .rounded_full()
+                            .border_1()
+                            .border_color(p.border)
+                            .into_any_element(),
+                    }),
             )
             .on_click(cx.listener(move |this, _, window, cx| this.select_issue(index, window, cx)))
     }
@@ -2582,6 +2646,114 @@ impl Velvet {
             .when_some(milestone, |v, name| {
                 v.child(field("Milestone", plain(name, Some(Lucide::Milestone))))
             })
+            .child(field(
+                "Assignee",
+                match self.assignee_name(issue) {
+                    Some(name) => h_flex()
+                        .gap_1p5()
+                        .text_size(px(14.))
+                        .child(Avatar::new().name(name.clone()).xsmall())
+                        .child(div().truncate().child(name))
+                        .into_any_element(),
+                    None => div()
+                        .text_size(px(14.))
+                        .text_color(p.secondary)
+                        .child("Unassigned")
+                        .into_any_element(),
+                },
+            ))
+            .child(field(
+                "Labels",
+                if issue.labels.is_empty() {
+                    div()
+                        .text_size(px(14.))
+                        .text_color(p.secondary)
+                        .child("None")
+                        .into_any_element()
+                } else {
+                    h_flex()
+                        .id("issue-labels")
+                        .test_support()
+                        .aria_label(format!(
+                            "Labels: {}",
+                            issue
+                                .labels
+                                .iter()
+                                .map(|l| l.name.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ))
+                        .flex_wrap()
+                        .gap_1()
+                        .children(issue.labels.iter().map(|l| {
+                            div()
+                                .h(px(20.))
+                                .px_1p5()
+                                .flex()
+                                .items_center()
+                                .rounded(px(4.))
+                                .border_1()
+                                .border_color(p.border)
+                                .bg(p.paper)
+                                .text_size(px(12.))
+                                .child(l.name.clone())
+                        }))
+                        .into_any_element()
+                },
+            ))
+            .child(div().h(px(1.)).my_2().bg(p.border))
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .text_color(p.secondary)
+                    .child("Evidence"),
+            )
+            .when(self.evidence.pull_requests.is_empty(), |v| {
+                v.child(
+                    div()
+                        .text_size(px(13.))
+                        .text_color(p.muted)
+                        .child("No linked pull requests."),
+                )
+            })
+            .children(self.evidence.pull_requests.iter().enumerate().map(|(i, pr)| {
+                let state = if pr.merged_at.is_some() {
+                    "merged"
+                } else if pr.draft {
+                    "draft"
+                } else {
+                    pr.state.as_str()
+                };
+                let url = pr.html_url.clone();
+                Button::new(("evidence", i))
+                    .ghost()
+                    .small()
+                    .w_full()
+                    .justify_start()
+                    .px_1()
+                    .accessibility_label(format!("Pull request {} {}, {state}", pr.number, pr.title))
+                    .disabled(url.is_empty())
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .min_w_0()
+                            .gap_1p5()
+                            .text_size(px(13.))
+                            .child(
+                                Icon::new(Lucide::GitPullRequest)
+                                    .size(px(14.))
+                                    .text_color(p.secondary),
+                            )
+                            .child(div().flex_shrink_0().text_color(p.secondary).child(format!("#{}", pr.number)))
+                            .child(div().flex_1().min_w_0().truncate().child(pr.title.clone()))
+                            .child(div().flex_shrink_0().text_color(if state == "merged" { p.done } else { p.muted }).child(state.to_owned())),
+                    )
+                    .on_click(move |_, _, cx| {
+                        if let Some(url) = state::safe_external_url(&url) {
+                            cx.open_url(&url);
+                        }
+                    })
+            }))
             .child(div().h(px(1.)).my_2().bg(p.border))
             .child(
                 div()
@@ -2591,7 +2763,7 @@ impl Velvet {
                     .child(if self.demo {
                         "Sample data. Nothing is written to a server."
                     } else {
-                        "GitHub evidence never changes status. Labels, assignee and evidence are in the web app."
+                        "Evidence never changes status. Assignee and labels are edited in the web app."
                     }),
             )
             .child(
@@ -2801,6 +2973,24 @@ impl Velvet {
             .and_then(|id| self.projects.iter().find(|p| &p.id == id))
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "Unfiled".into())
+    }
+    /// Display name for the assignee, or `None` when unassigned. An id the member
+    /// list does not know still shows, abbreviated, like the web app.
+    fn assignee_name(&self, issue: &Issue) -> Option<String> {
+        let id = issue.assignee_id.as_ref()?;
+        Some(
+            self.members
+                .iter()
+                .find(|m| &m.id == id)
+                .map(|m| m.user.label())
+                .unwrap_or_else(|| format!("Member {}", &id[..id.len().min(8)])),
+        )
+    }
+    fn now() -> i64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0)
     }
     /// Three segments aligned with the panes below: sidebar, list actions, detail actions.
     fn toolbar(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
