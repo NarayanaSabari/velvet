@@ -17,4 +17,4 @@ Shared create and edit forms for sprints, milestones, and issues, plus project/m
 - `api.get` reads in `workLinks.ts` only.
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/work`
+- Run: `cd web && pnpm exec vitest run src/features/work`

@@ -15,4 +15,4 @@ Keyboard command palette for navigation and quick issue creation.
 - Quick creation fetches workspace milestones directly. While open, nonempty searches that are not issue keys wait 150 ms, then call `listAllWorkspaceIssues` to fetch every cursor page (200 rows per request, not one bounded result page). These reads bypass TanStack Query. Failed reads clear milestone/search results instead of showing a query error (`CommandPalette.tsx`, `../../lib/api.ts`).
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/palette`
+- Run: `cd web && pnpm exec vitest run src/features/palette`

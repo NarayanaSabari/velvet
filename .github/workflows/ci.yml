@@ -57,31 +57,35 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Install
         working-directory: web
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Audit dependencies
         working-directory: web
-        run: npm audit --audit-level=low
+        run: pnpm audit --audit-level=low
 
       - name: Typecheck
         working-directory: web
-        run: npx tsc --noEmit
+        run: pnpm exec tsc --noEmit
 
       - name: Test
         working-directory: web
-        run: npx vitest run
+        run: pnpm exec vitest run
 
       - name: Build
         working-directory: web
-        run: npm run build
+        run: pnpm run build
 
   cli:
     name: CLI
@@ -135,11 +139,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: e2e/package.json
+
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: e2e/package-lock.json
+          cache: pnpm
+          cache-dependency-path: e2e/pnpm-lock.yaml
 
       # cli.spec.ts builds the velvet binary and drives it against the stack.
       - uses: actions/setup-go@v7
@@ -149,18 +157,18 @@ jobs:
 
       - name: Install
         working-directory: e2e
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Install Chromium
         working-directory: e2e
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
 
       # Playwright's webServer brings up the real Compose stack: this suite
       # covers the deployment as well as the code, which is where several of
       # this project's worst bugs actually lived.
       - name: Test
         working-directory: e2e
-        run: npx playwright test
+        run: pnpm exec playwright test
 
       - name: Tear down
         if: always()

@@ -13,4 +13,4 @@ Workspace reports: person activity, milestone completion, closed per sprint, and
 - `api.get` only.
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/reports`
+- Run: `cd web && pnpm exec vitest run src/features/reports`

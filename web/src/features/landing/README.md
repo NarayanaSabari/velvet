@@ -15,4 +15,4 @@ Public marketing landing page and the shared public page layout.
 - `PublicPageLayout` sets `document.title` to `${title} · Velvet` and restores the previous title on cleanup. Links to `/signin`.
 
 ## Verification
-- Run: `cd web && npm run test`
+- Run: `cd web && pnpm run test`

@@ -21,4 +21,4 @@ Personal settings: profile, GitHub identities, API tokens, and agent configurati
 - GitHub linking clears private caches before full-page navigation. Removing a GitHub account refreshes private queries globally (`GitHubAccountsTable.tsx`).
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/profile`
+- Run: `cd web && pnpm exec vitest run src/features/profile`

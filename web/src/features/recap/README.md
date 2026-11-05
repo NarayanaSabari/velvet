@@ -13,4 +13,4 @@ Personal work log recap at `/me/worklog`.
 - `api.get` work log. Markdown export link `/api/v1/me/worklog.md?days={days}`.
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/recap`
+- Run: `cd web && pnpm exec vitest run src/features/recap`

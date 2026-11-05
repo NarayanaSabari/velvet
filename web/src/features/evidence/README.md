@@ -19,4 +19,4 @@ Pull request evidence cards, link suggestions, and the unlinked pull request que
 - `SuggestionLine` treats HTTP 409 as already handled elsewhere: refreshes caller-supplied query keys and activity instead of showing a new error. Other mutation errors remain visible. Successful accept/dismiss uses the same refresh path.
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/evidence`
+- Run: `cd web && pnpm exec vitest run src/features/evidence`

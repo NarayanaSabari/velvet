@@ -25,4 +25,4 @@ Workspace administration pages: general settings, members, invitations, reposito
 - GitHub connection polling runs every two seconds while `syncing`, or while `suspended` without an error; it stops in other states (`GitHubPanel.tsx`).
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/admin`
+- Run: `cd web && pnpm exec vitest run src/features/admin`

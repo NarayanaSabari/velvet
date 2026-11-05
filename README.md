@@ -284,7 +284,7 @@ Run from the repository root. These are entry points, not a claim that every sui
 ```bash
 (cd api && go test ./...)
 (cd cli && go test ./...)
-(cd web && npm run test && npm run build)
+(cd web && pnpm run test && pnpm run build)
 (cd desktop && cargo test)
 node --test deploy/rollout.test.mjs e2e/stack-safety.test.mjs
 ```
@@ -346,13 +346,13 @@ DATABASE_URL=postgres://... go run ./cmd/ticket migrate
 DATABASE_URL=postgres://... BASE_URL=http://localhost:5173 go run ./cmd/ticket serve
 
 # SPA at localhost:5173, proxying /api to localhost:8080
-cd web && npm install && npm run dev
+cd web && pnpm install && pnpm run dev
 ```
 
 `BASE_URL` must match the browser's origin for mail links and same-origin mutation checks.
 Vite reserves port 5173 and exits if it is occupied; stop the conflicting process before starting the SPA.
 
-Tests: `cd api && go test ./...` and `cd web && npx vitest run && npx tsc --noEmit`.
+Tests: `cd api && go test ./...` and `cd web && pnpm exec vitest run && pnpm exec tsc --noEmit`.
 The Go tests use testcontainers, so Docker must be running for them.
 
 ## Accounts and organisations
@@ -496,8 +496,8 @@ Caddy's address is the only trusted source of forwarded client IPs, so updating 
 ```
 cd api  && go test ./...            # domain and integration, real Postgres via testcontainers
 cd cli  && go test ./...            # CLI, project scope, and plugin command coverage
-cd web  && npx vitest run           # components
-cd e2e  && env -u NO_COLOR npx playwright test  # the whole system, in a browser
+cd web  && pnpm exec vitest run           # components
+cd e2e  && env -u NO_COLOR pnpm exec playwright test  # the whole system, in a browser
 ```
 
 The Playwright suite starts or reuses the disposable `worklog-e2e-organisations` Compose stack on port 18399, with the local provider on 18599, and leaves it running.

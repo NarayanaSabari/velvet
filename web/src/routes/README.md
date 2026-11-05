@@ -19,4 +19,4 @@ TanStack Router tree mapping public and workspace paths to feature components.
 - `RootLayout` uses the workspace shell for product paths and the public outlet otherwise. It updates product-path `document.title` using `productPageTitle` (`root.tsx`).
 
 ## Verification
-- Run: `cd web && npx vitest run src/routes`
+- Run: `cd web && pnpm exec vitest run src/routes`

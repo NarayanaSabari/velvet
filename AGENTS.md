@@ -66,19 +66,19 @@ The web package scripts are defined in [web/package.json](web/package.json).
 
 ```bash
 cd web
-npm ci
-npm run dev
-npm run build
-npm run lint
-npm run test
-npx tsc -b
+pnpm install --frozen-lockfile
+pnpm run dev
+pnpm run build
+pnpm run lint
+pnpm run test
+pnpm exec tsc -b
 ```
 
-`npm run dev` uses Vite on port 5173 and proxies `/api` and `/webhooks` to `http://localhost:8080`.
+`pnpm run dev` uses Vite on port 5173 and proxies `/api` and `/webhooks` to `http://localhost:8080`.
 
-`npm run build` runs `tsc -b` and then `vite build`.
+`pnpm run build` runs `tsc -b` and then `vite build`.
 
-`npm run test` runs `vitest run` in the jsdom configuration from `web/vite.config.ts`.
+`pnpm run test` runs `vitest run` in the jsdom configuration from `web/vite.config.ts`.
 
 ### API
 
@@ -99,7 +99,7 @@ DATABASE_URL=<postgres-url> go run ./cmd/ticket migrate
 DATABASE_URL=<postgres-url> BASE_URL=http://localhost:5173 go run ./cmd/ticket serve
 ```
 
-The SPA can then run from `web/` with `npm run dev`.
+The SPA can then run from `web/` with `pnpm run dev`.
 
 ### Compose development
 
@@ -123,10 +123,10 @@ The standard e2e setup is documented in [e2e/README.md](e2e/README.md).
 
 ```bash
 cd e2e
-npm ci
-npx playwright install chromium
-env -u NO_COLOR npx playwright test
-env -u NO_COLOR npx playwright test tests/onboarding.spec.ts
+pnpm install --frozen-lockfile
+pnpm exec playwright install chromium
+env -u NO_COLOR pnpm exec playwright test
+env -u NO_COLOR pnpm exec playwright test tests/onboarding.spec.ts
 ```
 
 The Playwright suite uses Chromium, one worker, a shared disposable database, and the real Compose stack started by `./stack-up.sh`.

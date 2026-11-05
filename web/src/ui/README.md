@@ -21,4 +21,4 @@ Shared presentational primitives. Reuse these instead of creating parallel conve
 - Mermaid renders SVG client-side, subscribes to system color-scheme changes with cleanup, and writes source text to the clipboard on explicit copy actions. Copy failures expose source for manual copying (`MermaidDiagram.tsx`).
 
 ## Verification
-- Run: `cd web && npx vitest run src/ui`
+- Run: `cd web && pnpm exec vitest run src/ui`

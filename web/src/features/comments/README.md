@@ -14,4 +14,4 @@ Presentational comment thread and composer shared by issue and milestone pages.
 - None.
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/comments`
+- Run: `cd web && pnpm exec vitest run src/features/comments`

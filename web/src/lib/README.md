@@ -21,4 +21,4 @@ Shared API client, query client, domain types, and live update stream.
 - `useStream` opens `EventSource('/api/v1/w/{slug}/stream')` and listens to `activity`, `refresh`, `open`, and window `online`.
 
 ## Verification
-- Run: `cd web && npx vitest run src/lib`
+- Run: `cd web && pnpm exec vitest run src/lib`

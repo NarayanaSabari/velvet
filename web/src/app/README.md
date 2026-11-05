@@ -16,4 +16,4 @@ Shared workspace shell and responsive navigation.
 - Starts workspace SSE through `useStream` only for a signed-in session with an accessible workspace and a supplied slug.
 
 ## Verification
-- Run: `cd web && npx vitest run src/app`
+- Run: `cd web && pnpm exec vitest run src/app`

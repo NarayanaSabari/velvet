@@ -13,4 +13,4 @@ Team activity feed page.
 - Reads activity through `useActivity` (`../activity/useActivity.ts`) and session through `useSession`.
 
 ## Verification
-- Run: `cd web && npm run test`
+- Run: `cd web && pnpm run test`

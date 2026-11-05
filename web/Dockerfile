@@ -1,9 +1,10 @@
 FROM node:22-alpine AS build
 WORKDIR /src
-COPY web/package*.json ./
-RUN npm ci
+RUN npm install -g pnpm@12.16.1
+COPY web/package.json web/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 COPY web/ ./
-RUN npm run build
+RUN pnpm run build
 
 # The velvet CLI is served as plain files next to the SPA, so `install.sh`
 # can download it from the same origin people already sign in to.

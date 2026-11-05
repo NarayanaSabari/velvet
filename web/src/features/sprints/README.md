@@ -18,4 +18,4 @@ Sprint list, sprint board with milestones, kanban status moves, and sprint close
 - `api.get/post/patch` for sprints, milestones, and issue status. Invalidates `['issues', slug]` and `['sprints', slug]`. `SprintList` navigates to `/w/{slug}/sprints/{id}`, and `SprintBoard` opens issues at `/w/{slug}/issues/{key}`.
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/sprints`
+- Run: `cd web && pnpm exec vitest run src/features/sprints`

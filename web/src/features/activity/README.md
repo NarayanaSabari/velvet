@@ -15,4 +15,4 @@ Reads and renders the workspace activity log.
 - `api.get` network read only.
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/activity`
+- Run: `cd web && pnpm exec vitest run src/features/activity`

@@ -22,4 +22,4 @@ Public sign-in, magic-link confirmation, invitation acceptance, CLI approval, re
 - `clearPrivateQueries` / `refreshPrivateQueries` reset the query cache on session change.
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/auth`
+- Run: `cd web && pnpm exec vitest run src/features/auth`

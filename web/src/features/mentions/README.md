@@ -13,4 +13,4 @@ Inbox of mentions for the current user in a workspace.
 - `api.get` mentions, `api.post` `/w/{slug}/mentions/read`, invalidates `['dashboard', slug]`.
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/mentions`
+- Run: `cd web && pnpm exec vitest run src/features/mentions`

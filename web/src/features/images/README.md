@@ -17,4 +17,4 @@ Image attachments for issues and milestones.
 - Successful deletion immediately removes the image from the cached response, then invalidates that image query.
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/images`
+- Run: `cd web && pnpm exec vitest run src/features/images`

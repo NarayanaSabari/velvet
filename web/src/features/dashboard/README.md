@@ -13,4 +13,4 @@ Workspace home dashboard.
 - `api.get` dashboard payload, `api.post` issue creation (`/w/{slug}/issues`) that invalidates the dashboard query.
 
 ## Verification
-- Run: `cd web && npm run test`
+- Run: `cd web && pnpm run test`

@@ -20,4 +20,4 @@ React 19 SPA source. `main.tsx` mounts `RouterProvider` inside `QueryClientProvi
 - Renders into the DOM.
 
 ## Verification
-- Run: `cd web && npm run test`
+- Run: `cd web && pnpm run test`

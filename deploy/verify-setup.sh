@@ -5,4 +5,4 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../e2e/stack-common.sh"
 cd "$root/e2e"
-exec env -u NO_COLOR npx --no-install playwright test tests/onboarding.spec.ts "$@"
+exec env -u NO_COLOR pnpm exec playwright test tests/onboarding.spec.ts "$@"

@@ -23,4 +23,4 @@ First-run flow, repository setup, and agent/CLI connection instructions.
 - `CopyField` writes its value to the clipboard on request. Copy failure shows a manual-selection/copy message (`AgentSetup.tsx`).
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/onboarding`
+- Run: `cd web && pnpm exec vitest run src/features/onboarding`

@@ -46,9 +46,9 @@ flowchart LR
 ```
 
 ### Local Interface & Invariants
-- `npm run dev`: Vite on port 5173, proxies `/api` and `/webhooks` to `http://localhost:8080` (`vite.config.ts`).
-- `npm run build`: `tsc -b` then `vite build` into `dist/`.
-- `npm run test`: `vitest run` in jsdom.
+- `pnpm run dev`: Vite on port 5173, proxies `/api` and `/webhooks` to `http://localhost:8080` (`vite.config.ts`).
+- `pnpm run build`: `tsc -b` then `vite build` into `dist/`.
+- `pnpm run test`: `vitest run` in jsdom.
 
 ### Subdirectories & System Boundaries
 - src: [./src/README.md](./src/README.md) - application source (app, features, lib, routes, ui).
@@ -65,4 +65,4 @@ flowchart LR
 - Explicit copy actions write to the clipboard, including Mermaid source (`src/ui/MermaidDiagram.tsx`). Sprint view selection updates browser history with `replaceState` (`src/features/sprints/SprintBoard.tsx`). Routes and loaded detail pages update `document.title` (`src/routes/root.tsx`).
 
 ### System Verification
-- Run: `cd web && npm run test`
+- Run: `cd web && pnpm run test`

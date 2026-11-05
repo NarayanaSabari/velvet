@@ -21,4 +21,4 @@ Issue list, filters, creation, and the issue detail page with timeline, metadata
 - Initial `status` and `project` filters are read from `window.location.search`.
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/issues`
+- Run: `cd web && pnpm exec vitest run src/features/issues`

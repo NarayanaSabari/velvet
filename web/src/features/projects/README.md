@@ -13,4 +13,4 @@ Workspace project list with create and archive.
 - `api.get/post/patch`, invalidates `['projects', slug]`.
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/projects`
+- Run: `cd web && pnpm exec vitest run src/features/projects`

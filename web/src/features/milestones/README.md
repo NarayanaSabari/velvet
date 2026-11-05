@@ -15,4 +15,4 @@ Milestone detail page with its issues, comments, and metadata.
 - Invalidates `['activity', slug]`, `['issues', slug]`, `['milestones', slug]`. Navigates to `/w/{slug}/issues/{key}` after issue create or open.
 
 ## Verification
-- Run: `cd web && npx vitest run src/features/milestones`
+- Run: `cd web && pnpm exec vitest run src/features/milestones`

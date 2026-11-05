@@ -30,21 +30,21 @@ Run the production Compose services with a local GitHub and TypeSafe provider:
 
 ```bash
 cd e2e
-npm ci
-npx playwright install chromium
-env -u NO_COLOR npx playwright test
+pnpm install --frozen-lockfile
+pnpm exec playwright install chromium
+env -u NO_COLOR pnpm exec playwright test
 ```
 
 For the complete organisation signup, invitation, and installation journeys only:
 
 ```bash
-env -u NO_COLOR npx playwright test tests/onboarding.spec.ts
+env -u NO_COLOR pnpm exec playwright test tests/onboarding.spec.ts
 ```
 
 For the login, terminal repository setup, scoped-command, and onboarding journeys:
 
 ```bash
-env -u NO_COLOR npx playwright test tests/cli.spec.ts tests/agent-onboarding.spec.ts
+env -u NO_COLOR pnpm exec playwright test tests/cli.spec.ts tests/agent-onboarding.spec.ts
 ```
 
 The CLI suite builds the real binary and isolates credentials with `VELVET_NO_KEYCHAIN=1` in a private temporary directory.

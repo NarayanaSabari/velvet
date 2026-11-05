@@ -14,4 +14,4 @@ Create and leave organisations (workspaces).
 - `api.get` `['session']` and `['my-invites']`, `api.post` `/orgs`, `/me/invites/{id}/accept`, or `/w/{slug}/leave`. Creation and invitation acceptance clear private caches before entering `/w/{slug}`. Leaving also runs `clearPrivateQueries` before navigation to `/`. Invitation acceptance HTTP 410 navigates to `/expired` (`NewOrganisation.tsx`).
 
 ## Verification
-- Run: `cd web && npm run test`
+- Run: `cd web && pnpm run test`
