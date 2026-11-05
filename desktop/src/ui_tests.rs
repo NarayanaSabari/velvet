@@ -699,6 +699,39 @@ fn update_startup_failure_keeps_app_and_drafts_open(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn single_key_shortcuts_follow_group_order_and_respect_text_fields(cx: &mut TestAppContext) {
+    let (window, view) = demo(cx, 1280.);
+    window
+        .update(cx, |_, window, cx| {
+            window.render_frame(cx);
+            // Sample selection starts on VEL-142 (In progress). Groups run backlog → done,
+            // so `j` lands on the single Done issue and `k` returns.
+            assert_eq!(view.read(cx).selected.as_ref().unwrap().key, "VEL-142");
+            window.press("j", cx);
+            assert_eq!(view.read(cx).selected.as_ref().unwrap().key, "VEL-147");
+            window.press("k", cx);
+            assert_eq!(view.read(cx).selected.as_ref().unwrap().key, "VEL-142");
+            // `s` asks to advance status; sample mode answers with a read-only notice.
+            window.press("s", cx);
+            assert_eq!(
+                view.read(cx).notice.as_deref(),
+                Some("Sample mode is read-only.")
+            );
+            // `c` moves focus into the composer, where letters type instead of navigate.
+            window.press("c", cx);
+            assert!(view.read(cx).composer.focus_handle(cx).is_focused(window));
+            window.press("j", cx);
+            assert_eq!(view.read(cx).selected.as_ref().unwrap().key, "VEL-142");
+            assert_eq!(view.read(cx).composer.read(cx).value().as_ref(), "j");
+            // The toolbar exposes the same moves for the pointer.
+            window.click("next", cx);
+            assert_eq!(view.read(cx).selected.as_ref().unwrap().key, "VEL-147");
+            assert_eq!(window.find("view-heading").label(), Some("Issues"));
+        })
+        .unwrap();
+}
+
+#[gpui_kit::test]
 fn command_palette_filters_moves_and_opens_issue(cx: &mut TestAppContext) {
     let (window, view) = demo(cx, 1280.);
     window

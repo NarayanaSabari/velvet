@@ -1454,12 +1454,11 @@ impl Velvet {
         if self.editing || self.confirm_logout || self.quit_prompt || self.sprints_view {
             return;
         }
-        let indices = state::matching_indices(
-            &self.issues,
-            &self.search.read(cx).value(),
-            self.project.as_deref(),
-            self.status.as_deref(),
-        );
+        let indices = self
+            .visible_groups(cx)
+            .into_iter()
+            .flat_map(|(_, members)| members)
+            .collect::<Vec<_>>();
         if indices.is_empty() {
             return;
         }
@@ -1473,6 +1472,32 @@ impl Velvet {
             None => 0,
         };
         self.select_issue(indices[next], window, cx);
+    }
+    /// True when a bare letter should act on the list rather than type somewhere.
+    fn list_keys_active(&self, window: &Window, cx: &App) -> bool {
+        let overlay = self.commands || self.editing || self.confirm_logout || self.quit_prompt;
+        let typing = [&self.search, &self.palette, &self.title, &self.server_input]
+            .iter()
+            .any(|s| s.focus_handle(cx).is_focused(window))
+            || [&self.composer, &self.description]
+                .iter()
+                .any(|s| s.focus_handle(cx).is_focused(window));
+        !overlay && !typing && self.page.is_none() && !self.sprints_view
+    }
+    /// `s` advances the selected issue to the next workflow status.
+    fn cycle_status(&mut self, cx: &mut Context<Self>) {
+        if !self.can_write() || self.saving || self.detail_loading {
+            return;
+        }
+        let Some(current) = self.selected.as_ref().map(|i| i.status.clone()) else {
+            return;
+        };
+        let next = STATUSES
+            .iter()
+            .position(|s| *s == current)
+            .map(|i| STATUSES[(i + 1) % STATUSES.len()])
+            .unwrap_or(STATUSES[0]);
+        self.change_status(next.into(), cx);
     }
     fn seed_demo(&mut self) {
         self.identity=serde_json::from_value(serde_json::json!({"token_kind":"desktop","user":{"id":"sample","name":"Sabari","email":"Sample account"},"memberships":[{"id":"sample","workspace_id":"sample","workspace_slug":"velvet","workspace_name":"Velvet","issue_prefix":"VEL","role":"member"}]})).ok();
@@ -1515,6 +1540,7 @@ impl Velvet {
         label: &str,
         icon: Lucide,
         current: bool,
+        count: Option<String>,
     ) -> Button {
         let p = Palette::new(self.dark);
         Button::new(id)
@@ -1525,23 +1551,28 @@ impl Velvet {
                 label.to_owned()
             })
             .w_full()
-            .h(px(32.))
+            .h(px(28.))
             .px_2()
+            .text_size(px(14.))
             .when(current, |b| b.bg(p.paper).border_1().border_color(p.border))
             .child(
                 h_flex()
                     .w_full()
                     .gap_2()
-                    .child(Icon::new(icon).size(px(16.)).text_color(if current {
+                    .child(Icon::new(icon).size(px(15.)).text_color(if current {
                         p.ink
                     } else {
                         p.secondary
                     }))
                     .child(
                         div()
+                            .flex_1()
                             .when(current, |d| d.font_weight(FontWeight::MEDIUM))
                             .child(label.to_owned()),
-                    ),
+                    )
+                    .when_some(count, |r, count| {
+                        r.child(div().text_size(px(12.)).text_color(p.muted).child(count))
+                    }),
             )
     }
     /// Dense two-line list row, with a 2px ink rule marking the selection so it never
@@ -1562,12 +1593,13 @@ impl Velvet {
     }
     fn section_label(&self, text: &'static str) -> Div {
         div()
-            .mt_4()
+            .mt_3()
             .mb_1()
             .px_2()
-            .text_size(px(14.))
+            .text_size(px(11.))
+            .font_weight(FontWeight::MEDIUM)
             .text_color(Palette::new(self.dark).secondary)
-            .child(text)
+            .child(text.to_uppercase())
     }
     fn workspace_menu(&self, cx: &Context<Self>) -> AnyElement {
         let memberships = self
@@ -1599,7 +1631,8 @@ impl Velvet {
             )
             .px_2()
             .w_full()
-            .h(px(44.))
+            .h(px(36.))
+            .text_size(px(14.))
             .disabled(self.saving)
             // Advertise accessibility Press; the dropdown opens on mouse-down.
             .on_click(|_, _, _| {})
@@ -1748,7 +1781,17 @@ impl Velvet {
             } else {
                 SharedString::from(format!("nav-{path}"))
             };
-            self.nav_row(id, label, icon, current)
+            // Counts show only what this window already knows: loaded issues, active sprint.
+            let count = match path {
+                "issues" if !self.issues.is_empty() => Some(self.issues.len().to_string()),
+                "sprints" => self
+                    .sprints
+                    .iter()
+                    .find(|s| s.state == "active")
+                    .map(|s| s.name.clone()),
+                _ => None,
+            };
+            self.nav_row(id, label, icon, current, count)
                 .on_click(cx.listener(move |this, _, _, cx| this.go(path, cx)))
         };
         let nav = |range: std::ops::Range<usize>| {
@@ -1760,8 +1803,9 @@ impl Velvet {
             .w(px(240.))
             .h_full()
             .flex_shrink_0()
-            .p_3()
-            .gap_1()
+            .px_2()
+            .pt_2()
+            .gap_0p5()
             .bg(p.surface)
             .border_r_1()
             .border_color(p.border)
@@ -1770,13 +1814,16 @@ impl Velvet {
                 Button::new("commands")
                     .accessibility_label("Search commands, Command K")
                     .w_full()
+                    .h(px(28.))
                     .px_2()
+                    .mt_1()
                     .bg(p.paper)
                     .child(
                         h_flex()
                             .w_full()
                             .gap_2()
-                            .child(Icon::new(Lucide::Search).size(px(16.)).text_color(p.muted))
+                            .text_size(px(14.))
+                            .child(Icon::new(Lucide::Search).size(px(15.)).text_color(p.muted))
                             .child(div().flex_1().text_color(p.secondary).child("Search"))
                             .child(Kbd::new(Keystroke::parse("cmd-k").unwrap()).outline()),
                     )
@@ -1816,9 +1863,11 @@ impl Velvet {
             .h(px(48.))
             .px_2()
             .mt_1()
+            .mx_0()
             .border_t_1()
             .border_color(p.border)
             .rounded_none()
+            .text_size(px(14.))
             .child(
                 h_flex()
                     .w_full()
@@ -1837,7 +1886,7 @@ impl Velvet {
                                     .font_weight(FontWeight::MEDIUM)
                                     .child(name),
                             )
-                            .child(div().text_size(px(14.)).text_color(p.secondary).child(role)),
+                            .child(div().text_size(px(12.)).text_color(p.secondary).child(role)),
                     )
                     .child(
                         Icon::new(Lucide::ChevronsUpDown)
@@ -1903,135 +1952,156 @@ impl Velvet {
         }
         cx.notify();
     }
-    fn issue_list(&self, cx: &Context<Self>) -> AnyElement {
-        let p = Palette::new(self.dark);
+    /// Filtered issues grouped by status in workflow order, as the list draws them.
+    // shortcut: every row is drawn, not virtualised; move to uniform_list past ~500 loaded issues.
+    fn visible_groups(&self, cx: &App) -> Vec<(&'static str, Vec<usize>)> {
         let indices = state::matching_indices(
             &self.issues,
             &self.search.read(cx).value(),
             self.project.as_deref(),
             self.status.as_deref(),
         );
-        let view = cx.entity().downgrade();
-        let count = indices.len();
-        let rows = uniform_list("issue-list", count, move |range, _, cx| {
-            view.update(cx, |this, cx| {
-                range
-                    .map(|row| {
-                        let index = indices[row];
-                        let issue = this.issues[index].clone();
-                        let p = Palette::new(this.dark);
-                        let selected = this.selected.as_ref().is_some_and(|s| s.id == issue.id);
-                        Button::new(("issue", index))
-                            .ghost()
-                            .accessibility_label(format!(
-                                "{}: {}, {}, priority {}{}",
-                                issue.key,
-                                issue.title,
-                                status_label(&issue.status),
-                                issue.priority,
-                                if selected { ", selected" } else { "" }
-                            ))
-                            .w_full()
-                            .h(px(44.))
-                            .justify_start()
-                            .pl_2()
-                            .pr_3()
-                            .rounded_none()
-                            .when(selected, |b| b.bg(p.surface))
-                            .border_b_1()
-                            .border_color(p.border)
-                            .child(
-                                this.row_content(
-                                    selected,
-                                    h_flex()
-                                        .w_full()
-                                        .min_w_0()
-                                        .gap_2()
-                                        .child(status_icon(&issue.status, p))
-                                        .child(
-                                            div()
-                                                .flex_shrink_0()
-                                                .text_size(px(14.))
-                                                .text_color(p.muted)
-                                                .child(issue.key),
-                                        )
-                                        .child(Self::row_title(issue.title).flex_1().min_w_0())
-                                        .child(
-                                            div()
-                                                .flex_shrink_0()
-                                                .text_size(px(14.))
-                                                .text_color(p.secondary)
-                                                .child(format!("P{}", issue.priority)),
-                                        ),
-                                    div(),
-                                ),
-                            )
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.select_issue(index, window, cx)
-                            }))
-                    })
-                    .collect::<Vec<_>>()
+        STATUSES
+            .iter()
+            .map(|status| {
+                let members = indices
+                    .iter()
+                    .copied()
+                    .filter(|i| self.issues[*i].status == *status)
+                    .collect::<Vec<_>>();
+                (*status, members)
             })
-            .unwrap_or_default()
-        })
-        .h_full()
-        .w_full();
+            .filter(|(_, members)| !members.is_empty())
+            .collect()
+    }
+    /// One 34px row: status shape, key, title, priority. The 2px ink rule marks the
+    /// selection so it never depends on the background colour alone.
+    fn issue_row(&self, index: usize, cx: &Context<Self>) -> Button {
+        let p = Palette::new(self.dark);
+        let issue = &self.issues[index];
+        let selected = self.selected.as_ref().is_some_and(|s| s.id == issue.id);
+        let done = matches!(issue.status.as_str(), "done" | "cancelled");
+        Button::new(("issue", index))
+            .ghost()
+            .accessibility_label(format!(
+                "{}: {}, {}, priority {}{}",
+                issue.key,
+                issue.title,
+                status_label(&issue.status),
+                issue.priority,
+                if selected { ", selected" } else { "" }
+            ))
+            .w_full()
+            .h(px(34.))
+            .justify_start()
+            .pl_0()
+            .pr_3()
+            .rounded_none()
+            .when(selected, |b| b.bg(p.surface))
+            .border_b_1()
+            .border_color(p.border)
+            .child(
+                h_flex()
+                    .w_full()
+                    .min_w_0()
+                    .h_full()
+                    .gap_2()
+                    .pl_2()
+                    .border_l_2()
+                    .border_color(if selected { p.ink } else { transparent_black() })
+                    .child(status_icon(&issue.status, p))
+                    .child(
+                        div()
+                            .w(px(64.))
+                            .flex_shrink_0()
+                            .text_size(px(13.))
+                            .text_color(p.muted)
+                            .child(issue.key.clone()),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(px(14.))
+                            .when(done, |d| d.text_color(p.secondary))
+                            .child(issue.title.clone()),
+                    )
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .text_size(px(13.))
+                            .text_color(p.secondary)
+                            .child(format!("P{}", issue.priority)),
+                    ),
+            )
+            .on_click(cx.listener(move |this, _, window, cx| this.select_issue(index, window, cx)))
+    }
+    fn issue_list(&self, cx: &Context<Self>) -> AnyElement {
+        let p = Palette::new(self.dark);
+        let visible = self.visible_groups(cx);
+        let count = visible.iter().map(|(_, m)| m.len()).sum::<usize>();
+        let mut groups = v_flex()
+            .id("issue-list")
+            .w_full()
+            .h_full()
+            .overflow_y_scroll();
+        for (status, members) in visible {
+            groups = groups.child(
+                h_flex()
+                    .id(SharedString::from(format!("group-{status}")))
+                    .role(Role::Heading)
+                    .aria_label(format!(
+                        "{}, {} issues",
+                        status_label(status),
+                        members.len()
+                    ))
+                    .h(px(28.))
+                    .px_3()
+                    .gap_2()
+                    .bg(p.surface)
+                    .border_b_1()
+                    .border_color(p.border)
+                    .text_size(px(13.))
+                    .child(status_icon(status, p).size(px(13.)))
+                    .child(
+                        div()
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(p.secondary)
+                            .child(status_label(status).to_owned()),
+                    )
+                    .child(
+                        div()
+                            .text_color(p.muted)
+                            .child(format!("· {}", members.len())),
+                    ),
+            );
+            groups = groups.children(members.into_iter().map(|i| self.issue_row(i, cx)));
+        }
+        let hint = |keys: &str, text: &'static str| {
+            h_flex()
+                .gap_1()
+                .child(Kbd::new(Keystroke::parse(keys).unwrap()).outline())
+                .child(div().text_color(p.muted).child(text))
+        };
         v_flex()
-            .w(px(340.))
+            .w(px(400.))
             .h_full()
             .flex_shrink_0()
             .border_r_1()
             .border_color(p.border)
             .child(
                 v_flex()
-                    .p_4()
-                    .gap_3()
-                    .child(
-                        h_flex()
-                            .justify_between()
-                            .child(
-                                div()
-                                    .text_size(px(24.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child("Issues"),
-                            )
-                            .child(
-                                Button::new("new")
-                                    .primary()
-                                    .icon(Icon::new(Lucide::Plus))
-                                    .label("New")
-                                    .tooltip("New issue (⌘N)")
-                                    .disabled(!self.can_write() || self.saving)
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.open_form(false, window, cx)
-                                    })),
-                            ),
-                    )
+                    .p_2()
+                    .gap_2()
+                    .border_b_1()
+                    .border_color(p.border)
                     .child(Input::new(&self.search).aria_label("Search loaded issues"))
                     .child(
                         h_flex()
                             .gap_2()
-                            .child(self.project_menu(cx))
+                            .child(self.project_menu(cx).into_any_element())
                             .child(self.status_menu(false, cx)),
-                    )
-                    .child(
-                        h_flex()
-                            .justify_between()
-                            .child(
-                                self.label(format!("{count} shown · {} loaded", self.issues.len())),
-                            )
-                            .child(
-                                Button::new("refresh")
-                                    .ghost()
-                                    .small()
-                                    .icon(Icon::new(Lucide::RefreshCw))
-                                    .tooltip("Refresh (⌘R)")
-                                    .accessibility_label("Refresh issues")
-                                    .disabled(self.loading)
-                                    .on_click(
-                                        cx.listener(|this, _, _, cx| this.refresh(false, cx)),
-                                    ),
-                            ),
                     ),
             )
             .when(self.loading, |v| {
@@ -2041,7 +2111,7 @@ impl Velvet {
                 div()
                     .flex_1()
                     .min_h_0()
-                    .when(count > 0, |v| v.child(rows))
+                    .when(count > 0, |v| v.child(groups))
                     .when(count == 0 && !self.loading, |v| {
                         v.child(div().p_4().child(if self.issues.is_empty() {
                             "No issues yet. Create your first issue."
@@ -2056,9 +2126,31 @@ impl Velvet {
                         .label("Load more issues")
                         .disabled(self.loading)
                         .w_full()
+                        .rounded_none()
                         .on_click(cx.listener(|this, _, _, cx| this.refresh(true, cx))),
                 )
             })
+            .child(
+                h_flex()
+                    .h(px(32.))
+                    .px_3()
+                    .justify_between()
+                    .border_t_1()
+                    .border_color(p.border)
+                    .text_size(px(13.))
+                    .child(
+                        div()
+                            .text_color(p.muted)
+                            .child(format!("{count} of {} loaded", self.issues.len())),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_3()
+                            .child(hint("j", "next"))
+                            .child(hint("k", "previous"))
+                            .child(hint("e", "edit")),
+                    ),
+            )
             .into_any_element()
     }
     /// Dashboard, projects, reports, feed, mentions, unlinked PRs and work log.
@@ -2429,191 +2521,206 @@ impl Velvet {
                 .flex_1()
                 .p_6()
                 .gap_3()
-                .child(div().text_size(px(24.)).child("Your work, in focus."))
+                .child(div().text_size(px(20.)).child("Your work, in focus."))
                 .child(self.label("Choose an issue to see its description and updates."))
                 .into_any_element();
         };
-        let slug = self.slug().unwrap_or_default();
-        let key = issue.key.clone();
         let narrow = window.viewport_size().width < px(1200.);
-        let project = issue
-            .project_id
+        let project = self.project_name(issue);
+        let milestone = issue
+            .milestone_id
             .as_ref()
-            .and_then(|id| self.projects.iter().find(|p| &p.id == id))
-            .map(|p| p.name.clone())
-            .unwrap_or_else(|| "Unfiled".into());
-        // The design's 272px metadata rail, beside the narrative on wide windows.
+            .and_then(|id| self.milestones.iter().find(|m| &m.id == id))
+            .map(|m| m.name.clone());
+        // Label/value grid on the grey rail, like the web's 272px metadata column.
         let field = |label: &'static str, value: AnyElement| {
-            v_flex()
-                .gap_1()
-                .pb_3()
-                .border_b_1()
-                .border_color(p.border)
-                .child(self.label(label))
-                .child(value)
+            h_flex()
+                .min_h(px(30.))
+                .gap_2()
+                .items_center()
+                .child(
+                    div()
+                        .w(px(76.))
+                        .flex_shrink_0()
+                        .text_size(px(13.))
+                        .text_color(p.secondary)
+                        .child(label),
+                )
+                .child(div().flex_1().min_w_0().child(value))
         };
-        let metadata = v_flex()
-            .w(if narrow { px(0.) } else { px(272.) })
+        let plain = |text: String, icon: Option<Lucide>| {
+            h_flex()
+                .gap_1p5()
+                .text_size(px(14.))
+                .when_some(icon, |r, icon| {
+                    r.child(Icon::new(icon).size(px(14.)).text_color(p.secondary))
+                })
+                .child(div().truncate().child(text))
+                .into_any_element()
+        };
+        let hint = |keys: &str, text: &'static str| {
+            h_flex()
+                .gap_2()
+                .child(Kbd::new(Keystroke::parse(keys).unwrap()).outline())
+                .child(div().text_size(px(13.)).text_color(p.muted).child(text))
+        };
+        let rail = v_flex()
+            .w(px(260.))
             .h_full()
             .flex_shrink_0()
-            .when(!narrow, |v| {
-                v.p_4().border_l_1().border_color(p.border).bg(p.surface)
+            .p_4()
+            .gap_1()
+            .border_l_1()
+            .border_color(p.border)
+            .bg(p.surface)
+            .child(field("Status", self.status_menu(true, cx)))
+            .child(field(
+                "Priority",
+                plain(format!("P{}", issue.priority), Some(Lucide::SignalHigh)),
+            ))
+            .child(field("Project", plain(project.clone(), Some(Lucide::Folder))))
+            .when_some(milestone, |v, name| {
+                v.child(field("Milestone", plain(name, Some(Lucide::Milestone))))
             })
-            .gap_3()
-            .when(!narrow, |v| {
-                v.child(field("Status", self.status_menu(true, cx)))
-                    .child(field(
-                        "Priority",
-                        div()
-                            .child(format!("P{}", issue.priority))
-                            .into_any_element(),
-                    ))
-                    .child(field(
-                        "Project",
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Icon::new(Lucide::Folder)
-                                    .size(px(16.))
-                                    .text_color(p.secondary),
-                            )
-                            .child(project.clone())
-                            .into_any_element(),
-                    ))
-                    .child(
-                        div()
-                            .text_size(px(14.))
-                            .text_color(p.secondary)
-                            .child("Labels, assignee and evidence are in the web app."),
-                    )
-            });
-        let description = TextView::markdown("description", issue.description.clone())
-            // shortcut: image previews stay in the web app until authenticated native image loading lands.
-            .image_source(|_| ImageSource::from("velvet-preview-images-disabled"))
-            .on_link_click(|url, _, _, cx| {
-                if let Some(url) = state::safe_external_url(url) {
-                    cx.open_url(&url);
-                }
-            });
-        h_flex()
-            .flex_1()
-            .min_w_0()
-            .h_full()
-            .items_start()
+            .child(div().h(px(1.)).my_2().bg(p.border))
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .text_color(p.secondary)
+                    .line_height(relative(1.5))
+                    .child(if self.demo {
+                        "Sample data. Nothing is written to a server."
+                    } else {
+                        "GitHub evidence never changes status. Labels, assignee and evidence are in the web app."
+                    }),
+            )
             .child(
                 v_flex()
-                    .id("detail-scroll")
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .overflow_y_scroll()
-                    .p_6()
-                    .gap_4()
+                    .mt_3()
+                    .gap_1()
+                    .child(hint("e", "edit"))
+                    .child(hint("s", "status"))
+                    .child(hint("c", "comment"))
+                    .child(hint("cmd-k", "commands")),
+            );
+        let markdown = |id: ElementId, text: String| {
+            TextView::markdown(id, text)
+                // shortcut: image previews stay in the web app until authenticated native image loading lands.
+                .image_source(|_| ImageSource::from("velvet-preview-images-disabled"))
+                .on_link_click(|url, _, _, cx| {
+                    if let Some(url) = state::safe_external_url(url) {
+                        cx.open_url(&url);
+                    }
+                })
+        };
+        let narrative = v_flex()
+            .id("detail-scroll")
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll()
+            .px_6()
+            .py_5()
+            .gap_3()
+            .child(
+                h_flex()
+                    .gap_2()
+                    .text_size(px(13.))
+                    .text_color(p.secondary)
+                    .child(issue.key.clone())
+                    .child("·")
+                    .child(project),
+            )
+            .child(
+                div()
+                    .id("issue-heading")
+                    .role(Role::Heading)
+                    .aria_label(issue.title.clone())
+                    .text_size(px(20.))
+                    .line_height(relative(1.25))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(issue.title.clone()),
+            )
+            .when(narrow, |v| {
+                v.child(
+                    h_flex()
+                        .flex_wrap()
+                        .items_center()
+                        .gap_2()
+                        .child(self.status_menu(true, cx))
+                        .child(self.label(format!(
+                            "P{} · {}",
+                            issue.priority,
+                            self.project_name(issue)
+                        ))),
+                )
+            })
+            .child(
+                div()
+                    .id("issue-description")
+                    .role(Role::Paragraph)
+                    .aria_label(issue.description.clone())
+                    // Readable measure, matching the web's 46rem Markdown width.
+                    .max_w(px(640.))
+                    .text_size(px(14.))
+                    .child(markdown("description".into(), issue.description.clone())),
+            )
+            .child(
+                h_flex()
+                    .id("activity-heading")
+                    .role(Role::Heading)
+                    .aria_label("Activity")
+                    .max_w(px(640.))
+                    .mt_3()
+                    .pt_4()
+                    .gap_2()
+                    .items_baseline()
+                    .border_t_1()
+                    .border_color(p.border)
+                    .child(div().font_weight(FontWeight::SEMIBOLD).child("Activity"))
+                    .child(div().text_size(px(13.)).text_color(p.muted).child(format!(
+                        "{} update{}",
+                        self.comments.len(),
+                        if self.comments.len() == 1 { "" } else { "s" }
+                    ))),
+            )
+            .when(self.detail_loading, |v| {
+                v.child(self.label("Loading updates…"))
+            })
+            .when(self.comments.is_empty() && !self.detail_loading, |v| {
+                v.child(self.label("No updates yet. Record your progress below."))
+            })
+            .children(self.comments.iter().enumerate().map(|(index, comment)| {
+                let body = if comment.deleted_at.is_some() {
+                    "Comment deleted.".to_owned()
+                } else {
+                    comment.body.clone()
+                };
+                h_flex()
+                    .max_w(px(640.))
+                    .gap_2p5()
+                    .py_2()
+                    .items_start()
+                    .child(Avatar::new().name(author_label(comment)).xsmall())
                     .child(
-                        h_flex()
-                            .justify_between()
-                            .gap_2()
-                            .child(self.label(format!("{} · {project}", issue.key)))
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .child(
-                                        Button::new("edit")
-                                            .ghost()
-                                            .small()
-                                            .icon(Icon::new(Lucide::SquarePen))
-                                            .label("Edit")
-                                            .disabled(!self.can_write() || self.saving)
-                                            .on_click(cx.listener(|this, _, window, cx| {
-                                                this.open_form(true, window, cx)
-                                            })),
-                                    )
-                                    .child(
-                                        Button::new("open-web")
-                                            .ghost()
-                                            .small()
-                                            .icon(Icon::new(Lucide::ExternalLink))
-                                            .label("Open in web")
-                                            .when(self.demo, |b| {
-                                                b.tooltip("Not available for sample data")
-                                            })
-                                            .disabled(self.demo)
-                                            .on_click(cx.listener(move |this, _, _, cx| {
-                                                this.open_web(
-                                                    &format!("/w/{slug}/issues/{key}"),
-                                                    cx,
-                                                )
-                                            })),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .id("issue-heading")
-                            .role(Role::Heading)
-                            .aria_label(issue.title.clone())
-                            .text_size(px(24.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(issue.title.clone()),
-                    )
-                    .when(narrow, |v| {
-                        v.child(
-                            h_flex()
-                                .flex_wrap()
-                                .items_center()
-                                .gap_2()
-                                .child(self.label("Status"))
-                                .child(self.status_menu(true, cx))
-                                .child(self.label(format!("Priority P{}", issue.priority))),
-                        )
-                    })
-                    .child(
-                        div()
-                            .id("issue-description")
-                            .role(Role::Paragraph)
-                            .aria_label(issue.description.clone())
-                            // Readable measure, matching the web's 46rem Markdown width.
-                            .max_w(px(736.))
-                            .child(description),
-                    )
-                    .child(
-                        div()
-                            .id("activity-heading")
-                            .role(Role::Heading)
-                            .aria_label("Activity")
-                            .max_w(px(736.))
-                            .mt_2()
-                            .border_t_1()
-                            .border_color(p.border)
-                            .pt_6()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child("Activity"),
-                    )
-                    .when(self.detail_loading, |v| {
-                        v.child(self.label("Loading updates…"))
-                    })
-                    .when(self.comments.is_empty() && !self.detail_loading, |v| {
-                        v.child(self.label("No updates yet. Record your progress below."))
-                    })
-                    .children(self.comments.iter().enumerate().map(|(index, comment)| {
                         v_flex()
-                            .gap_2()
-                            .py_3()
-                            .border_b_1()
-                            .border_color(p.border)
+                            .flex_1()
+                            .min_w_0()
+                            .gap_0p5()
                             .child(
                                 h_flex()
-                                    .justify_between()
                                     .gap_2()
+                                    .items_baseline()
                                     .child(
                                         div()
                                             .id(("comment-author", index))
                                             .role(Role::Paragraph)
                                             .aria_label(author_label(comment))
                                             .test_support()
+                                            .text_size(px(14.))
+                                            .font_weight(FontWeight::MEDIUM)
                                             .child(author_label(comment)),
                                     )
-                                    .child(self.label(
+                                    .child(div().text_size(px(13.)).text_color(p.muted).child(
                                         comment.kind.clone().unwrap_or_else(|| "Comment".into()),
                                     )),
                             )
@@ -2621,78 +2728,245 @@ impl Velvet {
                                 div()
                                     .id(("comment-body", index))
                                     .role(Role::Paragraph)
-                                    .aria_label(if comment.deleted_at.is_some() {
-                                        "Comment deleted.".to_owned()
-                                    } else {
-                                        comment.body.clone()
-                                    })
+                                    .aria_label(body.clone())
                                     .test_support()
-                                    .child(
-                                        TextView::markdown(
-                                            ("comment", index),
-                                            if comment.deleted_at.is_some() {
-                                                "Comment deleted.".into()
-                                            } else {
-                                                comment.body.clone()
-                                            },
-                                        )
-                                        .image_source(|_| {
-                                            ImageSource::from("velvet-preview-images-disabled")
-                                        })
-                                        .on_link_click(
-                                            |url, _, _, cx| {
-                                                if let Some(url) = state::safe_external_url(url) {
-                                                    cx.open_url(&url);
-                                                }
-                                            },
-                                        ),
-                                    ),
-                            )
-                    }))
-                    .when(self.can_write(), |v| {
-                        v.child(
-                            v_flex()
-                                .gap_2()
-                                .mt_4()
-                                .child(self.label("Progress update"))
-                                .child(
-                                    Textarea::new(&self.composer)
-                                        .aria_label("Progress update")
-                                        .disabled(self.saving)
-                                        .h(px(80.)),
-                                )
-                                .child(
-                                    h_flex()
-                                        .justify_between()
-                                        .child(self.label("Markdown · ⌘Enter to post"))
-                                        .child(
-                                            Button::new("post")
-                                                .primary()
-                                                .label(if self.saving {
-                                                    "Saving…"
-                                                } else {
-                                                    "Post update"
-                                                })
-                                                .disabled(self.saving || self.detail_loading)
-                                                .on_click(cx.listener(|this, _, window, cx| {
-                                                    this.post(window, cx)
-                                                })),
-                                        ),
-                                ),
+                                    .text_size(px(14.))
+                                    .child(markdown(("comment", index).into(), body)),
+                            ),
+                    )
+            }));
+        // The composer stays pinned under the narrative so posting never needs a scroll.
+        let composer = self.can_write().then(|| {
+            v_flex()
+                .flex_shrink_0()
+                .border_t_1()
+                .border_color(p.border)
+                .child(
+                    Textarea::new(&self.composer)
+                        .appearance(false)
+                        .aria_label("Progress update")
+                        .disabled(self.saving)
+                        .px_3()
+                        .py_2()
+                        .h(px(72.)),
+                )
+                .child(
+                    h_flex()
+                        .h(px(40.))
+                        .px_3()
+                        .justify_between()
+                        .bg(p.surface)
+                        .child(
+                            h_flex()
+                                .gap_1p5()
+                                .text_size(px(13.))
+                                .text_color(p.muted)
+                                .child("Markdown ·")
+                                .child(Kbd::new(Keystroke::parse("cmd-enter").unwrap()).outline())
+                                .child("to post"),
                         )
-                    })
-                    .child(self.label(if self.demo {
-                        "Sample data · Read-only design preview"
-                    } else {
-                        "GitHub evidence never changes issue status automatically."
-                    })),
+                        .child(
+                            Button::new("post")
+                                .primary()
+                                .small()
+                                .label(if self.saving {
+                                    "Saving…"
+                                } else {
+                                    "Post update"
+                                })
+                                .disabled(self.saving || self.detail_loading)
+                                .on_click(cx.listener(|this, _, window, cx| this.post(window, cx))),
+                        ),
+                )
+        });
+        h_flex()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .child(narrative)
+                    .children(composer),
             )
-            .child(metadata)
+            .when(!narrow, |v| v.child(rail))
+            .into_any_element()
+    }
+    fn project_name(&self, issue: &Issue) -> String {
+        issue
+            .project_id
+            .as_ref()
+            .and_then(|id| self.projects.iter().find(|p| &p.id == id))
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| "Unfiled".into())
+    }
+    /// Three segments aligned with the panes below: sidebar, list actions, detail actions.
+    fn toolbar(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
+        let p = Palette::new(self.dark);
+        let narrow = window.viewport_size().width < px(1200.);
+        let slug = self.slug().unwrap_or_default();
+        let issue = (self.page.is_none() && !self.sprints_view)
+            .then_some(self.selected.as_ref())
+            .flatten();
+        let title = if let Some(page) = self.page {
+            page.title().to_owned()
+        } else if self.sprints_view {
+            "Sprints".to_owned()
+        } else {
+            "Issues".to_owned()
+        };
+        let icon_button = |id: &'static str, icon: Lucide, tip: &'static str| {
+            Button::new(id)
+                .ghost()
+                .small()
+                .icon(Icon::new(icon))
+                .tooltip(tip)
+                .accessibility_label(tip)
+        };
+        h_flex()
+            .id("toolbar")
+            .h(px(44.))
+            .flex_shrink_0()
+            .window_control_area(WindowControlArea::Drag)
+            .bg(p.surface)
+            .border_b_1()
+            .border_color(p.border)
+            .child(
+                // Traffic lights sit over this segment; the rest is a drag handle.
+                h_flex()
+                    .w(px(240.))
+                    .h_full()
+                    .flex_shrink_0()
+                    .border_r_1()
+                    .border_color(p.border),
+            )
+            .child(
+                h_flex()
+                    .w(px(400.))
+                    .h_full()
+                    .flex_shrink_0()
+                    .px_3()
+                    .gap_1()
+                    .border_r_1()
+                    .border_color(p.border)
+                    .child(
+                        div()
+                            .id("view-heading")
+                            .role(Role::Heading)
+                            .aria_label(title.clone())
+                            .test_support()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(title),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .text_color(p.muted)
+                            .child(format!("{}", self.issues.len())),
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        icon_button("refresh", Lucide::RefreshCw, "Refresh (⌘R)")
+                            .disabled(self.loading)
+                            .on_click(cx.listener(|this, _, _, cx| this.refresh(false, cx))),
+                    )
+                    .child(
+                        Button::new("new")
+                            .primary()
+                            .small()
+                            .icon(Icon::new(Lucide::Plus))
+                            .label("New")
+                            .tooltip("New issue (⌘N)")
+                            .disabled(!self.can_write() || self.saving)
+                            .on_click(
+                                cx.listener(|this, _, window, cx| {
+                                    this.open_form(false, window, cx)
+                                }),
+                            ),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .px_3()
+                    .gap_1()
+                    .when_some(issue, |bar, issue| {
+                        let key = issue.key.clone();
+                        let project = self.project_name(issue);
+                        bar.child(
+                            h_flex()
+                                .min_w_0()
+                                .gap_2()
+                                .text_size(px(14.))
+                                .child(div().text_color(p.secondary).child(project))
+                                .child(div().text_color(p.muted).child("/"))
+                                .child(div().font_weight(FontWeight::SEMIBOLD).child(key.clone()))
+                                .when(!narrow, |r| {
+                                    r.child(
+                                        h_flex()
+                                            .ml_1()
+                                            .h(px(22.))
+                                            .px_2()
+                                            .gap_1p5()
+                                            .rounded_full()
+                                            .border_1()
+                                            .border_color(p.border)
+                                            .bg(p.paper)
+                                            .text_size(px(13.))
+                                            .child(status_icon(&issue.status, p).size(px(13.)))
+                                            .child(status_label(&issue.status).to_owned()),
+                                    )
+                                }),
+                        )
+                        .child(div().flex_1())
+                        .when(!narrow, |bar| {
+                            bar.child(
+                                icon_button("previous", Lucide::ChevronUp, "Previous issue (K)")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.move_selection(-1, window, cx)
+                                    })),
+                            )
+                            .child(
+                                icon_button("next", Lucide::ChevronDown, "Next issue (J)")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.move_selection(1, window, cx)
+                                    })),
+                            )
+                            .child(div().w(px(1.)).h(px(18.)).mx_1().bg(p.border))
+                        })
+                        .child(
+                            Button::new("edit")
+                                .ghost()
+                                .small()
+                                .icon(Icon::new(Lucide::SquarePen))
+                                .label("Edit")
+                                .tooltip("Edit issue (E)")
+                                .disabled(!self.can_write() || self.saving)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.open_form(true, window, cx)
+                                })),
+                        )
+                        .child(
+                            icon_button("open-web", Lucide::ExternalLink, "Open in web")
+                                .when(self.demo, |b| b.tooltip("Not available for sample data"))
+                                .disabled(self.demo)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.open_web(&format!("/w/{slug}/issues/{key}"), cx)
+                                })),
+                        )
+                    }),
+            )
             .into_any_element()
     }
     fn signed_out(&self, cx: &Context<Self>) -> AnyElement {
         let p = Palette::new(self.dark);
-        v_flex().size_full().items_center().justify_center().p_6().gap_4()
+        v_flex().size_full()
+            .child(div().h(px(44.)).w_full().flex_shrink_0().window_control_area(WindowControlArea::Drag))
+            .child(v_flex().flex_1().items_center().justify_center().p_6().gap_4()
             .child(v_flex().w(px(460.)).max_w_full().gap_4().p_6().border_1().border_color(p.border).rounded(px(8.))
                 .child(div().text_size(px(24.)).font_weight(FontWeight::SEMIBOLD).child("Velvet for macOS"))
                 .child(self.label("Your issues and work journal, in a native workspace."))
@@ -2702,7 +2976,7 @@ impl Velvet {
                 .when_some(self.login.as_ref(),|v,login|v.child(self.label("Compare this code in your browser:")).child(div().font_family("Menlo").text_size(px(24.)).child(login.user_code.clone())).child(self.label("Approve only if you started this sign-in. No repository credentials are reused.")))
                 .when(self.loading,|v|v.child(Button::new("cancel-login").label("Cancel sign-in").disabled(self.saving).on_click(cx.listener(|this,_,_,cx|{if !this.saving{this.session_revision.next();this.loading=false;this.login=None;cx.notify();}}))))
                 .child(Button::new("sample").ghost().label("Explore sample workspace").disabled(self.loading).on_click(cx.listener(|this,_,_,cx|{this.demo=true;this.seed_demo();cx.notify();})))
-                .child(self.label(format!("Version {} · Credentials stay in macOS Keychain", update::CURRENT))))
+                .child(self.label(format!("Version {} · Credentials stay in macOS Keychain", update::CURRENT)))))
             .into_any_element()
     }
     fn overlay(&self, cx: &Context<Self>) -> AnyElement {
@@ -2986,6 +3260,29 @@ impl Render for Velvet {
                 cx.listener(|this, _: &CheckForUpdates, _, cx| this.check_for_updates(true, cx)),
             )
             .on_action(cx.listener(|this, _: &ToggleAutoUpdate, _, cx| this.toggle_auto_update(cx)))
+            // Single-key shortcuts, Linear style. Only when no field or overlay has focus.
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                if event.keystroke.modifiers.modified() || !this.list_keys_active(window, cx) {
+                    return;
+                }
+                match event.keystroke.key.as_str() {
+                    "j" => this.move_selection(1, window, cx),
+                    "k" => this.move_selection(-1, window, cx),
+                    "e" if this.selected.is_some() && this.can_write() => {
+                        this.open_form(true, window, cx)
+                    }
+                    "c" if this.selected.is_some() && this.can_write() => {
+                        this.composer.update(cx, |c, cx| c.focus(window, cx))
+                    }
+                    "s" if this.selected.is_some() => this.cycle_status(cx),
+                    _ => return,
+                }
+                cx.stop_propagation();
+            }))
+            // The toolbar hosts the traffic lights, so it stays first; banners sit under it.
+            .when(self.identity.is_some() && self.slug().is_some(), |v| {
+                v.child(self.toolbar(window, cx))
+            })
             .when_some(self.available_update.as_ref(), |v, manifest| {
                 let ready = self.staged_update.is_some();
                 let text = match (ready, manifest.notes.trim()) {
@@ -3047,15 +3344,19 @@ impl Render for Velvet {
             .when(self.demo, |v| {
                 v.child(
                     h_flex()
-                        .h(px(32.))
+                        .h(px(28.))
                         .px_4()
                         .items_center()
                         .justify_center()
                         .bg(p.surface)
-                        .child(self.label(format!(
+                        .border_b_1()
+                        .border_color(p.border)
+                        .text_size(px(13.))
+                        .text_color(p.secondary)
+                        .child(format!(
                             "Sample data · No server writes · v{}",
                             update::CURRENT
-                        ))),
+                        )),
                 )
             })
             .when_some(self.error.as_ref(), |v, error| {
@@ -3117,6 +3418,12 @@ impl Render for Velvet {
                 self.signed_out(cx)
             } else if self.slug().is_none() {
                 v_flex()
+                    .child(
+                        div()
+                            .h(px(44.))
+                            .w_full()
+                            .window_control_area(WindowControlArea::Drag),
+                    )
                     .p_6()
                     .gap_4()
                     .child("No organisations yet.")

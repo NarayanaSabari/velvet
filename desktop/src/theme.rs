@@ -30,6 +30,10 @@ gpui_kit::assets::icon_assets!(
         CircleEllipsis,
         CircleCheck,
         CircleX,
+        SignalHigh,
+        Milestone,
+        ChevronUp,
+        ChevronDown,
     ]
 );
 

@@ -78,8 +78,11 @@ fn main() {
                 window_min_size: Some(size(px(1000.), px(680.))),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Velvet".into()),
-                    ..Default::default()
+                    // The app draws its own toolbar; traffic lights sit in its first segment.
+                    appears_transparent: true,
+                    traffic_light_position: Some(point(px(14.), px(14.))),
                 }),
+                app_owns_titlebar_drag: true,
                 ..Default::default()
             };
             let (handle, view) = gpui_kit::open_window(options, cx, move |window, cx| {
