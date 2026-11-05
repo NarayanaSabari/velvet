@@ -39,7 +39,7 @@ fn main() -> anyhow::Result<()> {
     ] {
         let mut cx = HeadlessAppContext::with_platform(
             platform.text_system(),
-            Arc::new(gpui_kit::assets::Assets),
+            Arc::new(theme::Assets),
             gpui_kit::platform::current_headless_renderer,
         );
         // Create each viewport at its final size. TestPlatform resize does not emit native resize events.

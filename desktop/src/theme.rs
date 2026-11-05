@@ -1,5 +1,56 @@
 use gpui_kit::component::{Theme, ThemeMode};
 use gpui_kit::*;
+use std::borrow::Cow;
+
+gpui_kit::assets::icon_assets!(
+    AppIcons,
+    [
+        LayoutDashboard,
+        ListTodo,
+        Folder,
+        IterationCw,
+        ChartColumn,
+        Rss,
+        AtSign,
+        GitPullRequest,
+        NotebookPen,
+        Search,
+        ChevronsUpDown,
+        SquarePen,
+        ExternalLink,
+        Plus,
+        RefreshCw,
+        Moon,
+        Sun,
+        LogOut,
+        Download,
+        CircleDashed,
+        Circle,
+        CircleDot,
+        CircleEllipsis,
+        CircleCheck,
+        CircleX,
+    ]
+);
+
+/// The component bundle plus only the Lucide icons this app draws, so the
+/// binary does not carry the whole catalog.
+pub struct Assets;
+
+impl AssetSource for Assets {
+    fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
+        match AppIcons.load(path)? {
+            Some(bytes) => Ok(Some(bytes)),
+            None => gpui_kit::assets::Assets.load(path),
+        }
+    }
+
+    fn list(&self, path: &str) -> Result<Vec<SharedString>> {
+        let mut paths = gpui_kit::assets::Assets.list(path)?;
+        paths.extend(AppIcons.list(path)?);
+        Ok(paths)
+    }
+}
 
 #[derive(Clone, Copy)]
 pub struct Palette {
@@ -11,17 +62,19 @@ pub struct Palette {
     /// grey-700: supporting text on the grey surface, where `muted` falls below 4.5:1.
     pub secondary: Hsla,
     pub danger: Hsla,
+    /// Completed state only, never the sole signal.
+    pub done: Hsla,
 }
 
 impl Palette {
     pub fn new(dark: bool) -> Self {
         let values = if dark {
             [
-                0x0a0a0a, 0xffffff, 0x171717, 0x262626, 0xa3a3a3, 0xd4d4d4, 0xf87171,
+                0x0a0a0a, 0xffffff, 0x171717, 0x262626, 0xa3a3a3, 0xd4d4d4, 0xf87171, 0x4ade80,
             ]
         } else {
             [
-                0xffffff, 0x000000, 0xf5f5f5, 0xe5e5e5, 0x737373, 0x404040, 0xb91c1c,
+                0xffffff, 0x000000, 0xf5f5f5, 0xe5e5e5, 0x737373, 0x404040, 0xb91c1c, 0x15803d,
             ]
         };
         Self {
@@ -32,6 +85,7 @@ impl Palette {
             muted: rgb(values[4]).into(),
             secondary: rgb(values[5]).into(),
             danger: rgb(values[6]).into(),
+            done: rgb(values[7]).into(),
         }
     }
 }

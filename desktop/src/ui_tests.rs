@@ -226,6 +226,7 @@ fn dropdowns_open_with_enter_and_space_and_escape_dismisses(cx: &mut TestAppCont
     let (window, _) = demo(cx, 1280.);
     for trigger in [
         "workspace",
+        "account",
         "project-filter",
         "status-filter",
         "issue-status",
@@ -591,10 +592,7 @@ fn update_banner_offers_download_then_restart(cx: &mut TestAppContext) {
         .update(cx, |_, window, cx| {
             window.render_frame(cx);
             assert_eq!(window.find("install-update").label(), Some("Update"));
-            assert_eq!(
-                window.find("auto-update").label(),
-                Some("Automatic updates: Off")
-            );
+            assert!(!view.read(cx).auto_update);
         })
         .unwrap();
     cx.update(|cx| {
@@ -608,10 +606,7 @@ fn update_banner_offers_download_then_restart(cx: &mut TestAppContext) {
         .update(cx, |_, window, cx| {
             window.render_frame(cx);
             assert_eq!(window.find("install-update").label(), Some("Restart now"));
-            assert_eq!(
-                window.find("auto-update").label(),
-                Some("Automatic updates: On")
-            );
+            assert!(view.read(cx).auto_update);
             window.click("dismiss-update", cx);
             window.render_frame(cx);
             assert!(window.try_find("install-update").is_none());
@@ -701,6 +696,82 @@ fn update_startup_failure_keeps_app_and_drafts_open(cx: &mut TestAppContext) {
             window.render_frame(cx);
         })
         .unwrap();
+}
+
+#[gpui_kit::test]
+fn command_palette_filters_moves_and_opens_issue(cx: &mut TestAppContext) {
+    let (window, view) = demo(cx, 1280.);
+    window
+        .update(cx, |_, window, cx| {
+            window.render_frame(cx);
+            window.click("commands", cx);
+            window.render_frame(cx);
+            assert!(view.read(cx).palette.focus_handle(cx).is_focused(window));
+            window.input("keyboard", cx);
+            window.render_frame(cx);
+            assert_eq!(
+                window.find(("cmd", 0usize)).label(),
+                Some("VEL-146  Add keyboard navigation")
+            );
+            window.press("enter", cx);
+            window.render_frame(cx);
+            assert!(!view.read(cx).commands);
+            assert_eq!(view.read(cx).selected.as_ref().unwrap().key, "VEL-146");
+
+            window.click("commands", cx);
+            window.input("go to", cx);
+        })
+        .unwrap();
+    // Input change events flush between updates, as they do between real keystrokes.
+    window
+        .update(cx, |_, window, cx| {
+            window.press("down", cx);
+            assert_eq!(view.read(cx).palette_index, 1);
+            window.press("up", cx);
+            window.press("up", cx);
+            // Wraps from the first result to the last.
+            assert_eq!(view.read(cx).palette_index, super::NAV.len() - 1);
+            window.press("escape", cx);
+            assert!(!view.read(cx).commands);
+        })
+        .unwrap();
+}
+
+#[gpui_kit::test]
+fn every_drawn_icon_is_bundled(_: &mut TestAppContext) {
+    use gpui_kit::AssetSource;
+    use gpui_kit::assets::IconNamed;
+    let p = crate::theme::Palette::new(false);
+    let mut names: Vec<gpui_kit::assets::IconName> = super::NAV.iter().map(|n| n.2).collect();
+    for status in crate::state::STATUSES.iter().chain(["unknown"].iter()) {
+        let _ = super::status_icon(status, p);
+    }
+    use gpui_kit::assets::IconName as L;
+    names.extend([
+        L::Search,
+        L::ChevronsUpDown,
+        L::SquarePen,
+        L::ExternalLink,
+        L::Plus,
+        L::RefreshCw,
+        L::Moon,
+        L::Sun,
+        L::LogOut,
+        L::Download,
+        L::CircleDashed,
+        L::Circle,
+        L::CircleDot,
+        L::CircleEllipsis,
+        L::CircleCheck,
+        L::CircleX,
+    ]);
+    for name in names {
+        let path = name.path();
+        assert!(
+            crate::theme::Assets.load(&path).unwrap().is_some(),
+            "{path} is drawn but not bundled"
+        );
+    }
 }
 
 #[gpui_kit::test]

@@ -6,12 +6,16 @@ use crate::{
     update,
 };
 use gpui_kit::base::{FocusTrapElement, TestSupportExt, text::TextView};
+use gpui_kit::component::kbd::Kbd;
 use gpui_kit::component::menu::{DropdownMenu, PopupMenuItem};
 use gpui_kit::component::{
+    avatar::Avatar,
     button::{Button, ButtonVariants},
     input::{Input, InputEvent, InputState, Textarea, TextareaState},
     *,
 };
+// The full Lucide catalog; the component glob only re-exports a small subset.
+use gpui_kit::assets::IconName as Lucide;
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 #[cfg(all(test, feature = "ui-tests"))]
@@ -25,6 +29,50 @@ use std::{
 
 const UPDATE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 pub const DEFAULT_SERVER: &str = "https://velvet.sabarinarayana.com";
+
+/// Sidebar destinations in web-shell order. The label always accompanies the icon.
+const NAV: [(&str, &str, Lucide); 9] = [
+    ("Dashboard", "", Lucide::LayoutDashboard),
+    ("Issues", "issues", Lucide::ListTodo),
+    ("Projects", "projects", Lucide::Folder),
+    ("Sprints", "sprints", Lucide::IterationCw),
+    ("Reports", "reports", Lucide::ChartColumn),
+    ("Team feed", "feed", Lucide::Rss),
+    ("Mentions", "mentions", Lucide::AtSign),
+    ("Unlinked PRs", "unlinked", Lucide::GitPullRequest),
+    ("My work log", "worklog", Lucide::NotebookPen),
+];
+
+#[derive(Clone, Copy)]
+enum PaletteItem {
+    Action(&'static str, Option<&'static str>, Lucide),
+    Go(&'static str, &'static str, Lucide),
+    Issue(usize),
+}
+
+impl PaletteItem {
+    /// The text the palette shows and filters on, for non-issue rows.
+    fn text(&self) -> String {
+        match self {
+            Self::Action(label, ..) => (*label).to_owned(),
+            Self::Go(label, ..) => format!("Go to {label}"),
+            Self::Issue(_) => String::new(),
+        }
+    }
+}
+
+/// Shape carries the status, so it reads without colour. Only Done gets a hue.
+fn status_icon(status: &str, p: Palette) -> Icon {
+    let (name, color) = match status {
+        "backlog" => (Lucide::CircleDashed, p.muted),
+        "todo" => (Lucide::Circle, p.secondary),
+        "in_progress" => (Lucide::CircleDot, p.ink),
+        "in_review" => (Lucide::CircleEllipsis, p.ink),
+        "done" => (Lucide::CircleCheck, p.done),
+        _ => (Lucide::CircleX, p.muted),
+    };
+    Icon::new(name).size(px(16.)).text_color(color)
+}
 actions!(
     velvet,
     [
@@ -91,6 +139,9 @@ pub struct Velvet {
     notice: Option<String>,
     login: Option<DeviceSession>,
     commands: bool,
+    /// Command palette query and highlighted result.
+    palette: Entity<InputState>,
+    palette_index: usize,
     editing: bool,
     edit_key: Option<String>,
     confirm_logout: bool,
@@ -117,6 +168,8 @@ impl Velvet {
             cx.new(|cx| InputState::new(window, cx).placeholder("https://your-velvet-server"));
         server_input.update(cx, |s, cx| s.set_value(server.clone(), window, cx));
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search loaded issues…"));
+        let palette =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Type a command or issue…"));
         let composer = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .placeholder("Write an update…")
@@ -130,6 +183,12 @@ impl Velvet {
         });
         let subscriptions = vec![
             cx.subscribe(&search, |_, _, _: &InputEvent, cx| cx.notify()),
+            cx.subscribe(&palette, |this, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.palette_index = 0;
+                    cx.notify();
+                }
+            }),
             cx.subscribe(&composer, |this, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
                     if let (Some(slug), Some(issue)) = (this.slug(), this.selected.as_ref()) {
@@ -199,6 +258,8 @@ impl Velvet {
             notice: None,
             login: None,
             commands: false,
+            palette,
+            palette_index: 0,
             editing: false,
             edit_key: None,
             confirm_logout: false,
@@ -1025,8 +1086,96 @@ impl Velvet {
         }
         self.return_focus = window.focused(cx);
         self.commands = true;
-        window.focus(&self.modal_focus, cx);
+        self.palette_index = 0;
+        self.palette.update(cx, |s, cx| {
+            s.set_value("", window, cx);
+            s.focus(window, cx);
+        });
         cx.notify();
+    }
+    /// Commands, destinations, then loaded issues matching the palette query.
+    fn palette_items(&self, cx: &App) -> Vec<PaletteItem> {
+        let query = self.palette.read(cx).value().to_lowercase();
+        let query = query.trim();
+        let mut items = vec![
+            PaletteItem::Action("New issue", Some("cmd-n"), Lucide::SquarePen),
+            PaletteItem::Action("Refresh issues", Some("cmd-r"), Lucide::RefreshCw),
+            PaletteItem::Action("Search issues", None, Lucide::Search),
+            PaletteItem::Action("Toggle appearance", None, Lucide::Moon),
+        ];
+        items.extend(
+            NAV.iter()
+                .map(|(label, path, icon)| PaletteItem::Go(label, path, *icon)),
+        );
+        items.retain(|item| item.text().to_lowercase().contains(query));
+        if !query.is_empty() {
+            items.extend(
+                self.issues
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, i)| {
+                        i.key.to_lowercase().contains(query)
+                            || i.title.to_lowercase().contains(query)
+                    })
+                    .take(8)
+                    .map(|(index, _)| PaletteItem::Issue(index)),
+            );
+        }
+        items
+    }
+    fn run_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.commands {
+            return;
+        }
+        if let Some(item) = self.palette_items(cx).into_iter().nth(self.palette_index) {
+            self.run_palette_item(item, window, cx);
+        }
+    }
+    fn run_palette_item(&mut self, item: PaletteItem, window: &mut Window, cx: &mut Context<Self>) {
+        match item {
+            PaletteItem::Action("New issue", ..) => self.open_form(false, window, cx),
+            PaletteItem::Action("Refresh issues", ..) => {
+                self.close_overlay(window, cx);
+                self.refresh(false, cx);
+            }
+            PaletteItem::Action("Search issues", ..) => {
+                self.commands = false;
+                self.go("issues", cx);
+                self.search.update(cx, |s, cx| s.focus(window, cx));
+            }
+            PaletteItem::Action(..) => {
+                self.close_overlay(window, cx);
+                self.dark = !self.dark;
+                theme::apply(self.dark, cx);
+            }
+            PaletteItem::Go(_, path, _) => {
+                self.close_overlay(window, cx);
+                self.go(path, cx);
+            }
+            PaletteItem::Issue(index) => {
+                self.close_overlay(window, cx);
+                self.go("issues", cx);
+                self.select_issue(index, window, cx);
+            }
+        }
+        cx.notify();
+    }
+    /// Shared by the sidebar and the palette so both reach a view the same way.
+    fn go(&mut self, path: &str, cx: &mut Context<Self>) {
+        match path {
+            "issues" => {
+                self.commands = false;
+                self.sprints_view = false;
+                self.page = None;
+                cx.notify();
+            }
+            "sprints" => self.show_sprints(cx),
+            _ => {
+                if let Some(page) = pages::Page::from_nav(path) {
+                    self.show_page(page, cx);
+                }
+            }
+        }
     }
     fn confirm_sign_out(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.saving {
@@ -1293,12 +1442,16 @@ impl Velvet {
         }
     }
     fn move_selection(&mut self, offset: isize, window: &mut Window, cx: &mut Context<Self>) {
-        if self.commands
-            || self.editing
-            || self.confirm_logout
-            || self.quit_prompt
-            || self.sprints_view
-        {
+        if self.commands {
+            let count = self.palette_items(cx).len();
+            if count > 0 {
+                self.palette_index =
+                    (self.palette_index as isize + offset).rem_euclid(count as isize) as usize;
+                cx.notify();
+            }
+            return;
+        }
+        if self.editing || self.confirm_logout || self.quit_prompt || self.sprints_view {
             return;
         }
         let indices = state::matching_indices(
@@ -1355,34 +1508,40 @@ impl Velvet {
             .text_color(Palette::new(self.dark).muted)
             .child(text)
     }
-    /// A left-aligned sidebar row. Button content centers by default, so the label
-    /// sits in a full-width row, and web destinations carry a quiet trailing arrow.
-    fn nav_row(&self, id: impl Into<ElementId>, label: &str, web: bool, current: bool) -> Button {
+    /// A left-aligned sidebar row: 16px icon, then the label that names it.
+    fn nav_row(
+        &self,
+        id: impl Into<ElementId>,
+        label: &str,
+        icon: Lucide,
+        current: bool,
+    ) -> Button {
         let p = Palette::new(self.dark);
         Button::new(id)
             .ghost()
             .accessibility_label(if current {
                 format!("{label}, current view")
-            } else if web {
-                format!("{label}, opens in the web app")
             } else {
                 label.to_owned()
             })
             .w_full()
-            .h(px(34.))
+            .h(px(32.))
             .px_2()
             .when(current, |b| b.bg(p.paper).border_1().border_color(p.border))
             .child(
                 h_flex()
                     .w_full()
-                    .justify_between()
                     .gap_2()
+                    .child(Icon::new(icon).size(px(16.)).text_color(if current {
+                        p.ink
+                    } else {
+                        p.secondary
+                    }))
                     .child(
                         div()
                             .when(current, |d| d.font_weight(FontWeight::MEDIUM))
                             .child(label.to_owned()),
-                    )
-                    .when(web, |row| row.child(div().text_color(p.muted).child("↗"))),
+                    ),
             )
     }
     /// Dense two-line list row, with a 2px ink rule marking the selection so it never
@@ -1518,12 +1677,16 @@ impl Velvet {
             .selected
             .as_ref()
             .map(|issue| (self.slug(), issue.key.clone()));
+        let p = Palette::new(self.dark);
+        let current_owned = current.map(str::to_owned);
         Button::new(if mutation {
             "issue-status"
         } else {
             "status-filter"
         })
+        .when_some(current, |b, status| b.icon(status_icon(status, p)))
         .label(label)
+        .when(mutation, |b| b.w_full().justify_start())
         .disabled(mutation && (!self.can_write() || self.saving || self.detail_loading))
         // Advertise accessibility Press; the dropdown opens on mouse-down.
         .on_click(|_, _, _| {})
@@ -1542,25 +1705,28 @@ impl Velvet {
             for status in STATUSES {
                 let view = view.clone();
                 let target = target.clone();
-                menu = menu.item(PopupMenuItem::new(status_label(status)).on_click(
-                    move |_, _, cx| {
-                        let _ = view.update(cx, |this, cx| {
-                            if mutation {
-                                if this
-                                    .selected
-                                    .as_ref()
-                                    .map(|issue| (this.slug(), issue.key.clone()))
-                                    == target
-                                {
-                                    this.change_status(status.into(), cx);
+                menu = menu.item(
+                    PopupMenuItem::new(status_label(status))
+                        .icon(status_icon(status, p))
+                        .checked(current_owned.as_deref() == Some(status))
+                        .on_click(move |_, _, cx| {
+                            let _ = view.update(cx, |this, cx| {
+                                if mutation {
+                                    if this
+                                        .selected
+                                        .as_ref()
+                                        .map(|issue| (this.slug(), issue.key.clone()))
+                                        == target
+                                    {
+                                        this.change_status(status.into(), cx);
+                                    }
+                                } else {
+                                    this.status = Some(status.into());
+                                    cx.notify();
                                 }
-                            } else {
-                                this.status = Some(status.into());
-                                cx.notify();
-                            }
-                        });
-                    },
-                ));
+                            });
+                        }),
+                );
             }
             menu
         })
@@ -1568,48 +1734,27 @@ impl Velvet {
     }
     fn sidebar(&self, cx: &Context<Self>) -> AnyElement {
         let p = Palette::new(self.dark);
-        let workspace = self
-            .identity
-            .as_ref()
-            .and_then(|i| i.memberships.get(self.workspace));
         // Grouped like the web shell: planning, activity, then work across organisations.
-        let workspace_nav = [
-            ("Dashboard", ""),
-            ("Issues", "issues"),
-            ("Projects", "projects"),
-            ("Sprints", "sprints"),
-            ("Reports", "reports"),
-        ];
-        let activity_nav = [
-            ("Team feed", "feed"),
-            ("Mentions", "mentions"),
-            ("Unlinked PRs", "unlinked"),
-        ];
-        let nav_button = |label: &'static str, path: &'static str| {
+        let nav_button = |label: &'static str, path: &'static str, icon: Lucide| {
             let page = pages::Page::from_nav(path);
             let current = match path {
                 "issues" => !self.sprints_view && self.page.is_none(),
                 "sprints" => self.sprints_view,
                 _ => page.is_some() && self.page == page,
             };
-            self.nav_row(
-                SharedString::from(format!("nav-{path}")),
-                label,
-                false,
-                current,
-            )
-            .on_click(cx.listener(move |this, _, _, cx| {
-                if path == "issues" {
-                    this.commands = false;
-                    this.sprints_view = false;
-                    this.page = None;
-                    cx.notify();
-                } else if path == "sprints" {
-                    this.show_sprints(cx);
-                } else if let Some(page) = page {
-                    this.show_page(page, cx);
-                }
-            }))
+            // The work log keeps its historical id, which tests and scripts address.
+            let id = if path == "worklog" {
+                SharedString::from("worklog")
+            } else {
+                SharedString::from(format!("nav-{path}"))
+            };
+            self.nav_row(id, label, icon, current)
+                .on_click(cx.listener(move |this, _, _, cx| this.go(path, cx)))
+        };
+        let nav = |range: std::ops::Range<usize>| {
+            NAV[range]
+                .iter()
+                .map(|(label, path, icon)| nav_button(label, path, *icon))
         };
         v_flex()
             .w(px(240.))
@@ -1622,18 +1767,6 @@ impl Velvet {
             .border_color(p.border)
             .child(self.workspace_menu(cx))
             .child(
-                div()
-                    .px_2()
-                    .mb_2()
-                    .text_size(px(14.))
-                    .text_color(p.secondary)
-                    .child(
-                        workspace
-                            .map(|w| format!("{} access", state::role_label(&w.role)))
-                            .unwrap_or_default(),
-                    ),
-            )
-            .child(
                 Button::new("commands")
                     .accessibility_label("Search commands, Command K")
                     .w_full()
@@ -1642,108 +1775,133 @@ impl Velvet {
                     .child(
                         h_flex()
                             .w_full()
-                            .justify_between()
-                            .child(div().text_color(p.secondary).child("Search…"))
-                            .child(div().text_size(px(14.)).text_color(p.muted).child("⌘K")),
+                            .gap_2()
+                            .child(Icon::new(Lucide::Search).size(px(16.)).text_color(p.muted))
+                            .child(div().flex_1().text_color(p.secondary).child("Search"))
+                            .child(Kbd::new(Keystroke::parse("cmd-k").unwrap()).outline()),
                     )
                     .on_click(cx.listener(|this, _, window, cx| this.open_commands(window, cx))),
             )
             .child(self.section_label("Workspace"))
-            .children(workspace_nav.map(|(label, path)| nav_button(label, path)))
+            .children(nav(0..5))
             .child(self.section_label("Activity"))
-            .children(activity_nav.map(|(label, path)| nav_button(label, path)))
+            .children(nav(5..8))
             .child(self.section_label("Across organisations"))
-            .child(
-                self.nav_row(
-                    "worklog",
-                    "My work log",
-                    false,
-                    self.page == Some(pages::Page::Worklog),
-                )
-                .on_click(cx.listener(|this, _, _, cx| this.show_page(pages::Page::Worklog, cx))),
-            )
+            .children(nav(8..9))
             .child(div().flex_1())
+            .child(self.account_menu(cx))
+            .into_any_element()
+    }
+    /// Account, appearance and update controls live behind one menu so the sidebar
+    /// stays navigation. The macOS Velvet menu offers the same update actions.
+    fn account_menu(&self, cx: &Context<Self>) -> AnyElement {
+        let p = Palette::new(self.dark);
+        let name = self
+            .identity
+            .as_ref()
+            .map(|i| i.user.label())
+            .unwrap_or_default();
+        let role = self
+            .identity
+            .as_ref()
+            .and_then(|i| i.memberships.get(self.workspace))
+            .map(|w| format!("{} access", state::role_label(&w.role)))
+            .unwrap_or_default();
+        let (auto_update, dark, demo) = (self.auto_update, self.dark, self.demo);
+        let view = cx.entity().downgrade();
+        Button::new("account")
+            .ghost()
+            .accessibility_label(format!("Account: {name}, {role}. Settings and sign out"))
+            .w_full()
+            .h(px(48.))
+            .px_2()
+            .mt_1()
+            .border_t_1()
+            .border_color(p.border)
+            .rounded_none()
             .child(
-                self.nav_row(
-                    "auto-update",
-                    if self.auto_update {
-                        "Automatic updates: On"
-                    } else {
-                        "Automatic updates: Off"
-                    },
-                    false,
-                    false,
-                )
-                .on_click(cx.listener(|this, _, _, cx| this.toggle_auto_update(cx))),
+                h_flex()
+                    .w_full()
+                    .min_w_0()
+                    .gap_2()
+                    .child(Avatar::new().name(name.clone()).xsmall())
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .items_start()
+                            .child(
+                                div()
+                                    .w_full()
+                                    .truncate()
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(name),
+                            )
+                            .child(div().text_size(px(14.)).text_color(p.secondary).child(role)),
+                    )
+                    .child(
+                        Icon::new(Lucide::ChevronsUpDown)
+                            .size(px(16.))
+                            .text_color(p.muted),
+                    ),
             )
-            .child(
-                self.nav_row(
-                    "check-updates",
-                    &format!("Check for updates · v{}", update::CURRENT),
-                    false,
-                    false,
+            // Advertise accessibility Press; the dropdown opens on mouse-down.
+            .on_click(|_, _, _| {})
+            .dropdown_menu(move |menu, _, _| {
+                let act = |f: fn(&mut Velvet, &mut Window, &mut Context<Velvet>)| {
+                    let view = view.clone();
+                    move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                        let _ = view.update(cx, |this, cx| f(this, window, cx));
+                    }
+                };
+                menu.item(
+                    PopupMenuItem::new("Automatic updates")
+                        .checked(auto_update)
+                        .on_click(act(|this, _, cx| this.toggle_auto_update(cx))),
                 )
-                .on_click(cx.listener(|this, _, _, cx| this.check_for_updates(true, cx))),
-            )
-            .child(
-                self.nav_row(
-                    "theme",
-                    if self.dark {
+                .item(
+                    PopupMenuItem::new(format!("Check for updates (v{})", update::CURRENT))
+                        .icon(Icon::new(Lucide::Download))
+                        .on_click(act(|this, _, cx| this.check_for_updates(true, cx))),
+                )
+                .item(
+                    PopupMenuItem::new(if dark {
                         "Light appearance"
                     } else {
                         "Dark appearance"
-                    },
-                    false,
-                    false,
+                    })
+                    .icon(Icon::new(if dark { Lucide::Sun } else { Lucide::Moon }))
+                    .on_click(act(|this, _, cx| {
+                        this.dark = !this.dark;
+                        theme::apply(this.dark, cx);
+                        cx.notify();
+                    })),
                 )
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.dark = !this.dark;
-                    theme::apply(this.dark, cx);
-                    cx.notify();
-                })),
-            )
-            .child(
-                div()
-                    .mt_1()
-                    .px_2()
-                    .pt_3()
-                    .border_t_1()
-                    .border_color(p.border)
-                    .font_weight(FontWeight::MEDIUM)
-                    .truncate()
-                    .child(
-                        self.identity
-                            .as_ref()
-                            .map(|i| i.user.label())
-                            .unwrap_or_default(),
-                    ),
-            )
-            .child(
-                self.nav_row(
-                    "logout",
-                    if self.demo {
+                .separator()
+                .item(
+                    PopupMenuItem::new(if demo {
                         "Exit sample workspace"
                     } else {
                         "Sign out…"
-                    },
-                    false,
-                    false,
+                    })
+                    .icon(Icon::new(Lucide::LogOut))
+                    .on_click(act(|this, window, cx| this.sign_out_or_exit(window, cx))),
                 )
-                .on_click(cx.listener(|this, _, window, cx| {
-                    if this.demo {
-                        this.demo = false;
-                        this.identity = None;
-                        this.issues.clear();
-                        this.selected = None;
-                        this.clear_sprints();
-                        this.sprints_view = false;
-                    } else {
-                        this.confirm_sign_out(window, cx);
-                    }
-                    cx.notify();
-                })),
-            )
+            })
             .into_any_element()
+    }
+    fn sign_out_or_exit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.demo {
+            self.demo = false;
+            self.identity = None;
+            self.issues.clear();
+            self.selected = None;
+            self.clear_sprints();
+            self.sprints_view = false;
+        } else {
+            self.confirm_sign_out(window, cx);
+        }
+        cx.notify();
     }
     fn issue_list(&self, cx: &Context<Self>) -> AnyElement {
         let p = Palette::new(self.dark);
@@ -1766,14 +1924,15 @@ impl Velvet {
                         Button::new(("issue", index))
                             .ghost()
                             .accessibility_label(format!(
-                                "{}: {}, {}{}",
+                                "{}: {}, {}, priority {}{}",
                                 issue.key,
                                 issue.title,
                                 status_label(&issue.status),
+                                issue.priority,
                                 if selected { ", selected" } else { "" }
                             ))
                             .w_full()
-                            .h(px(64.))
+                            .h(px(44.))
                             .justify_start()
                             .pl_2()
                             .pr_3()
@@ -1785,11 +1944,26 @@ impl Velvet {
                                 this.row_content(
                                     selected,
                                     h_flex()
-                                        .justify_between()
+                                        .w_full()
+                                        .min_w_0()
                                         .gap_2()
-                                        .child(this.label(issue.key))
-                                        .child(this.label(status_label(&issue.status).to_owned())),
-                                    Self::row_title(issue.title),
+                                        .child(status_icon(&issue.status, p))
+                                        .child(
+                                            div()
+                                                .flex_shrink_0()
+                                                .text_size(px(14.))
+                                                .text_color(p.muted)
+                                                .child(issue.key),
+                                        )
+                                        .child(Self::row_title(issue.title).flex_1().min_w_0())
+                                        .child(
+                                            div()
+                                                .flex_shrink_0()
+                                                .text_size(px(14.))
+                                                .text_color(p.secondary)
+                                                .child(format!("P{}", issue.priority)),
+                                        ),
+                                    div(),
                                 ),
                             )
                             .on_click(cx.listener(move |this, _, window, cx| {
@@ -1824,7 +1998,9 @@ impl Velvet {
                             .child(
                                 Button::new("new")
                                     .primary()
-                                    .label("+ New")
+                                    .icon(Icon::new(Lucide::Plus))
+                                    .label("New")
+                                    .tooltip("New issue (⌘N)")
                                     .disabled(!self.can_write() || self.saving)
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.open_form(false, window, cx)
@@ -1847,7 +2023,10 @@ impl Velvet {
                             .child(
                                 Button::new("refresh")
                                     .ghost()
-                                    .label("Refresh")
+                                    .small()
+                                    .icon(Icon::new(Lucide::RefreshCw))
+                                    .tooltip("Refresh (⌘R)")
+                                    .accessibility_label("Refresh issues")
                                     .disabled(self.loading)
                                     .on_click(
                                         cx.listener(|this, _, _, cx| this.refresh(false, cx)),
@@ -2226,6 +2405,7 @@ impl Velvet {
                             .gap_3()
                             .w_full()
                             .min_w_0()
+                            .child(status_icon(&issue.status, p))
                             .child(self.label(issue.key.clone()))
                             .child(
                                 div()
@@ -2263,22 +2443,48 @@ impl Velvet {
             .map(|p| p.name.clone())
             .unwrap_or_else(|| "Unfiled".into());
         // The design's 272px metadata rail, beside the narrative on wide windows.
+        let field = |label: &'static str, value: AnyElement| {
+            v_flex()
+                .gap_1()
+                .pb_3()
+                .border_b_1()
+                .border_color(p.border)
+                .child(self.label(label))
+                .child(value)
+        };
         let metadata = v_flex()
             .w(if narrow { px(0.) } else { px(272.) })
+            .h_full()
             .flex_shrink_0()
-            .when(!narrow, |v| v.p_4().border_l_1().border_color(p.border))
-            .gap_1()
             .when(!narrow, |v| {
-                v.child(self.label("Status"))
-                    .child(self.status_menu(true, cx))
-                    .child(div().mt_4().child(self.label("Priority")))
-                    .child(format!("P{}", issue.priority))
-                    .child(div().mt_4().child(self.label("Project")))
-                    .child(project.clone())
+                v.p_4().border_l_1().border_color(p.border).bg(p.surface)
+            })
+            .gap_3()
+            .when(!narrow, |v| {
+                v.child(field("Status", self.status_menu(true, cx)))
+                    .child(field(
+                        "Priority",
+                        div()
+                            .child(format!("P{}", issue.priority))
+                            .into_any_element(),
+                    ))
+                    .child(field(
+                        "Project",
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Icon::new(Lucide::Folder)
+                                    .size(px(16.))
+                                    .text_color(p.secondary),
+                            )
+                            .child(project.clone())
+                            .into_any_element(),
+                    ))
                     .child(
                         div()
-                            .mt_6()
-                            .child(self.label("Labels, assignee and evidence are in the web app.")),
+                            .text_size(px(14.))
+                            .text_color(p.secondary)
+                            .child("Labels, assignee and evidence are in the web app."),
                     )
             });
         let description = TextView::markdown("description", issue.description.clone())
@@ -2314,6 +2520,8 @@ impl Velvet {
                                     .child(
                                         Button::new("edit")
                                             .ghost()
+                                            .small()
+                                            .icon(Icon::new(Lucide::SquarePen))
                                             .label("Edit")
                                             .disabled(!self.can_write() || self.saving)
                                             .on_click(cx.listener(|this, _, window, cx| {
@@ -2323,7 +2531,12 @@ impl Velvet {
                                     .child(
                                         Button::new("open-web")
                                             .ghost()
-                                            .label("Open in web ↗")
+                                            .small()
+                                            .icon(Icon::new(Lucide::ExternalLink))
+                                            .label("Open in web")
+                                            .when(self.demo, |b| {
+                                                b.tooltip("Not available for sample data")
+                                            })
                                             .disabled(self.demo)
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 this.open_web(
@@ -2446,7 +2659,7 @@ impl Velvet {
                                     Textarea::new(&self.composer)
                                         .aria_label("Progress update")
                                         .disabled(self.saving)
-                                        .h(px(110.)),
+                                        .h(px(80.)),
                                 )
                                 .child(
                                     h_flex()
@@ -2587,41 +2800,108 @@ impl Velvet {
                         ),
                 );
         } else {
+            let items = self.palette_items(cx);
+            let active = self.palette_index.min(items.len().saturating_sub(1));
             body = body
-                .child(div().text_size(px(24.)).child("Commands"))
+                .p_0()
+                .gap_0()
                 .child(
-                    Button::new("cmd-search")
-                        .ghost()
-                        .label("Search issues")
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.commands = false;
-                            this.search.update(cx, |s, cx| s.focus(window, cx));
-                            cx.notify();
-                        })),
-                )
-                .child(
-                    Button::new("cmd-new")
-                        .ghost()
-                        .label("New issue   ⌘N")
-                        .disabled(!self.can_write())
-                        .on_click(
-                            cx.listener(|this, _, window, cx| this.open_form(false, window, cx)),
+                    h_flex()
+                        .px_3()
+                        .gap_2()
+                        .border_b_1()
+                        .border_color(p.border)
+                        .child(Icon::new(Lucide::Search).size(px(16.)).text_color(p.muted))
+                        .child(
+                            Input::new(&self.palette)
+                                .appearance(false)
+                                .aria_label("Command or issue")
+                                .h(px(48.)),
                         ),
                 )
                 .child(
-                    Button::new("cmd-refresh")
-                        .ghost()
-                        .label("Refresh issues   ⌘R")
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.close_overlay(window, cx);
-                            this.refresh(false, cx);
+                    v_flex()
+                        .p_2()
+                        .when(items.is_empty(), |v| {
+                            v.child(
+                                div()
+                                    .p_3()
+                                    .child(self.label("No matching commands or issues.")),
+                            )
+                        })
+                        .children(items.into_iter().enumerate().map(|(row, item)| {
+                            let (icon, text, hint) = match item {
+                                PaletteItem::Action(_, keys, icon) => {
+                                    (Some(icon), item.text(), keys)
+                                }
+                                PaletteItem::Go(_, _, icon) => (Some(icon), item.text(), None),
+                                PaletteItem::Issue(index) => {
+                                    let issue = &self.issues[index];
+                                    (None, format!("{}  {}", issue.key, issue.title), None)
+                                }
+                            };
+                            let status = match item {
+                                PaletteItem::Issue(index) => {
+                                    Some(self.issues[index].status.clone())
+                                }
+                                _ => None,
+                            };
+                            let disabled = matches!(item, PaletteItem::Action("New issue", ..))
+                                && !self.can_write();
+                            Button::new(("cmd", row))
+                                .ghost()
+                                .accessibility_label(text.clone())
+                                .w_full()
+                                .h(px(36.))
+                                .px_2()
+                                .justify_start()
+                                .disabled(disabled)
+                                .when(row == active, |b| b.bg(p.surface))
+                                .child(
+                                    h_flex()
+                                        .w_full()
+                                        .min_w_0()
+                                        .gap_2()
+                                        .when_some(icon, |r, icon| {
+                                            r.child(
+                                                Icon::new(icon)
+                                                    .size(px(16.))
+                                                    .text_color(p.secondary),
+                                            )
+                                        })
+                                        .when_some(status, |r, s| r.child(status_icon(&s, p)))
+                                        .child(div().flex_1().min_w_0().truncate().child(text))
+                                        .when_some(hint, |r, keys| {
+                                            r.child(Kbd::new(Keystroke::parse(keys).unwrap()))
+                                        }),
+                                )
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.run_palette_item(item, window, cx)
+                                }))
                         })),
                 )
                 .child(
-                    Button::new("cmd-close").label("Close   Escape").on_click(
-                        cx.listener(|this, _, window, cx| this.close_overlay(window, cx)),
-                    ),
+                    h_flex()
+                        .px_3()
+                        .py_2()
+                        .gap_3()
+                        .border_t_1()
+                        .border_color(p.border)
+                        .child(self.label("↑↓ to move · Enter to run · Esc to close")),
                 );
+            // Arrow keys and Enter belong to the result list, not the one-line query field.
+            body = body.capture_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                if event.keystroke.modifiers.modified() {
+                    return;
+                }
+                match event.keystroke.key.as_str() {
+                    "up" => this.move_selection(-1, window, cx),
+                    "down" => this.move_selection(1, window, cx),
+                    "enter" => this.run_palette(window, cx),
+                    _ => return,
+                }
+                cx.stop_propagation();
+            }));
         }
         body = body.when_some(self.error.as_ref(), |body, error| {
             body.child(
