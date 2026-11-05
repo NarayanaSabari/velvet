@@ -1777,7 +1777,11 @@ impl Velvet {
             .unwrap_or_else(|| "All projects".into());
         let view = cx.entity().downgrade();
         Button::new("project-filter")
+            .icon(Icon::new(Lucide::Folder))
             .label(label)
+            .outline()
+            .small()
+            .dropdown_caret(true)
             // Advertise accessibility Press; the dropdown opens on mouse-down.
             .on_click(|_, _, _| {})
             .dropdown_menu(move |mut menu, _, _| {
@@ -1828,8 +1832,14 @@ impl Velvet {
             "status-filter"
         })
         .when_some(current, |b, status| b.icon(status_icon(status, p)))
+        .when(current.is_none(), |b| {
+            b.icon(Icon::new(Lucide::CircleDashed))
+        })
         .label(label)
+        .outline()
+        .dropdown_caret(true)
         .when(mutation, |b| b.w_full().justify_start())
+        .when(!mutation, |b| b.small())
         .disabled(mutation && (!self.can_write() || self.saving || self.detail_loading))
         // Advertise accessibility Press; the dropdown opens on mouse-down.
         .on_click(|_, _, _| {})
@@ -1908,6 +1918,7 @@ impl Velvet {
             .as_ref()
             .map(|issue| (self.slug(), issue.key.clone()));
         let checked = current.clone();
+        let assigned = current.as_ref().is_some_and(|c| c.is_some());
         Button::new(if mutation {
             "issue-assignee"
         } else {
@@ -1918,15 +1929,22 @@ impl Velvet {
         } else {
             format!("Assignee filter: {label}")
         })
-        .icon(Icon::new(
-            if current.as_ref().is_some_and(|c| c.is_some()) {
-                Lucide::UserRound
-            } else {
-                Lucide::CircleDashed
-            },
-        ))
-        .label(label)
+        .when(!assigned, |b| {
+            b.icon(Icon::new(Lucide::CircleDashed)).label(label.clone())
+        })
+        .when(assigned, |b| {
+            b.child(
+                h_flex()
+                    .gap_1p5()
+                    .min_w_0()
+                    .child(Avatar::new().name(label.clone()).xsmall())
+                    .child(div().truncate().child(label.clone())),
+            )
+        })
+        .outline()
+        .dropdown_caret(true)
         .when(mutation, |b| b.w_full().justify_start())
+        .when(!mutation, |b| b.small())
         .disabled(mutation && (!self.can_write() || self.saving || self.detail_loading))
         // Advertise accessibility Press; the dropdown opens on mouse-down.
         .on_click(|_, _, _| {})
@@ -2008,6 +2026,8 @@ impl Velvet {
             .min_h(px(28.))
             .py_1()
             .justify_start()
+            .outline()
+            .dropdown_caret(true)
             .disabled(!self.can_write() || self.saving || self.detail_loading)
             .child(if issue.labels.is_empty() {
                 div()
@@ -2432,7 +2452,8 @@ impl Velvet {
                     .child(Input::new(&self.search).aria_label("Search loaded issues"))
                     .child(
                         h_flex()
-                            .gap_2()
+                            .gap_1p5()
+                            .flex_wrap()
                             .child(self.project_menu(cx).into_any_element())
                             .child(self.status_menu(false, cx))
                             .child(self.assignee_menu(false, cx)),
@@ -2866,24 +2887,24 @@ impl Velvet {
             .as_ref()
             .and_then(|id| self.milestones.iter().find(|m| &m.id == id))
             .map(|m| m.name.clone());
-        // Label/value grid on the grey rail, like the web's 272px metadata column.
+        // Stacked label/value like the web's metadata column: 11px uppercase
+        // caption, then the value or its picker on the next line.
         let field = |label: &'static str, value: AnyElement| {
-            h_flex()
-                .min_h(px(30.))
-                .gap_2()
-                .items_center()
+            v_flex()
+                .gap_1()
+                .mb_2()
                 .child(
                     div()
-                        .w(px(76.))
-                        .flex_shrink_0()
-                        .text_size(px(13.))
+                        .text_size(px(11.))
+                        .font_weight(FontWeight::MEDIUM)
                         .text_color(p.secondary)
-                        .child(label),
+                        .child(label.to_uppercase()),
                 )
-                .child(div().flex_1().min_w_0().child(value))
+                .child(div().w_full().min_w_0().child(value))
         };
         let plain = |text: String, icon: Option<Lucide>| {
             h_flex()
+                .min_h(px(28.))
                 .gap_1p5()
                 .text_size(px(14.))
                 .when_some(icon, |r, icon| {
@@ -2921,7 +2942,7 @@ impl Velvet {
             })
             .child(field("Assignee", self.assignee_menu(true, cx)))
             .child(field("Labels", self.labels_menu(cx)))
-            .child(div().h(px(1.)).my_2().bg(p.border))
+            .child(div().h(px(1.)).mb_3().bg(p.border))
             .child(
                 div()
                     .text_size(px(13.))
