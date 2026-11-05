@@ -167,9 +167,7 @@ pub fn parse_rfc3339(value: &str) -> Option<i64> {
         num(&value[17..19])?,
     );
     let rest = &value[19..];
-    let rest = rest
-        .find(|c| c == 'Z' || c == '+' || c == '-')
-        .map_or("", |i| &rest[i..]);
+    let rest = rest.find(['Z', '+', '-']).map_or("", |i| &rest[i..]);
     let offset = match rest.as_bytes().first() {
         None | Some(b'Z') => 0,
         Some(sign) => {
