@@ -105,6 +105,7 @@ pub fn matching_indices(
     query: &str,
     project: Option<&str>,
     status: Option<&str>,
+    assignee: Option<Option<&str>>,
 ) -> Vec<usize> {
     let query = query.trim().to_lowercase();
     issues
@@ -113,6 +114,7 @@ pub fn matching_indices(
         .filter(|(_, issue)| {
             project.is_none_or(|id| issue.project_id.as_deref() == Some(id))
                 && status.is_none_or(|status| issue.status == status)
+                && assignee.is_none_or(|who| issue.assignee_id.as_deref() == who)
                 && (query.is_empty()
                     || [&issue.key, &issue.title, &issue.description]
                         .iter()
@@ -257,6 +259,7 @@ mod tests {
                 title: "Native shell".into(),
                 status: "todo".into(),
                 project_id: Some("one".into()),
+                assignee_id: Some("me".into()),
                 ..Default::default()
             },
             Issue {
@@ -268,12 +271,23 @@ mod tests {
             },
         ];
         assert_eq!(
-            matching_indices(&issues, " NATIVE ", Some("one"), Some("todo")),
+            matching_indices(&issues, " NATIVE ", Some("one"), Some("todo"), None),
             vec![0]
         );
-        assert_eq!(matching_indices(&issues, "vel-2", None, None), vec![1]);
-        assert!(matching_indices(&issues, "native", Some("two"), Some("todo")).is_empty());
-        assert_eq!(matching_indices(&issues, "", None, None), vec![0, 1]);
+        assert_eq!(
+            matching_indices(&issues, "vel-2", None, None, None),
+            vec![1]
+        );
+        assert!(matching_indices(&issues, "native", Some("two"), Some("todo"), None).is_empty());
+        assert_eq!(matching_indices(&issues, "", None, None, None), vec![0, 1]);
+        assert_eq!(
+            matching_indices(&issues, "", None, None, Some(Some("me"))),
+            vec![0]
+        );
+        assert_eq!(
+            matching_indices(&issues, "", None, None, Some(None)),
+            vec![1]
+        );
     }
     #[test]
     fn sprints_follow_the_project_filter_and_open_the_active_one() {

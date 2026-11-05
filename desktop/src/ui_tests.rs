@@ -711,7 +711,29 @@ fn rows_and_rail_name_assignee_labels_and_evidence(cx: &mut TestAppContext) {
             assert!(unassigned.contains("unassigned"), "{unassigned}");
             assert_eq!(
                 window.find("issue-labels").label(),
-                Some("Labels: desktop, ux")
+                Some("Labels: desktop, ux. Change labels")
+            );
+            assert_eq!(
+                window.find("issue-assignee").label(),
+                Some("Assignee: Sabari. Change assignee")
+            );
+            // Sample mode refuses writes but routes through the same mutation path.
+            view.update(cx, |this, cx| this.set_assignee(None, cx));
+            assert_eq!(
+                view.read(cx).notice.as_deref(),
+                Some("Sample mode is read-only.")
+            );
+            // The assignee filter narrows the list without touching selection.
+            view.update(cx, |this, cx| {
+                this.assignee = Some(None);
+                cx.notify();
+            });
+            window.render_frame(cx);
+            assert!(window.try_find(("issue", 0usize)).is_none());
+            assert!(window.try_find(("issue", 2usize)).is_some());
+            assert_eq!(
+                window.find("assignee-filter").label(),
+                Some("Assignee filter: Unassigned")
             );
             assert_eq!(
                 window.find(("evidence", 0usize)).label(),

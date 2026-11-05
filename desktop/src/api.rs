@@ -343,13 +343,48 @@ impl ApiClient {
         )?)
     }
     pub fn update_status(&self, slug: &str, key: &str, status: &str) -> Result<Issue> {
+        self.patch_issue(slug, key, json!({"status":status}))
+    }
+    /// Partial update; `assignee_id: null` clears the assignee.
+    pub fn patch_issue(&self, slug: &str, key: &str, body: Value) -> Result<Issue> {
         Self::decode(self.request(
             Method::PATCH,
             &["api", "v1", "w", slug, "issues", key],
             &[],
-            Some(json!({"status":status})),
+            Some(body),
             true,
         )?)
+    }
+    pub fn labels(&self, slug: &str) -> Result<Vec<Label>> {
+        #[derive(Deserialize)]
+        struct Envelope {
+            #[serde(default, deserialize_with = "null_vec")]
+            labels: Vec<Label>,
+        }
+        let result: Envelope = Self::decode(self.request(
+            Method::GET,
+            &["api", "v1", "w", slug, "labels"],
+            &[],
+            None,
+            true,
+        )?)?;
+        Ok(result.labels)
+    }
+    /// Replaces the whole label set and returns the new one.
+    pub fn set_labels(&self, slug: &str, key: &str, ids: &[String]) -> Result<Vec<Label>> {
+        #[derive(Deserialize)]
+        struct Envelope {
+            #[serde(default, deserialize_with = "null_vec")]
+            labels: Vec<Label>,
+        }
+        let result: Envelope = Self::decode(self.request(
+            Method::PUT,
+            &["api", "v1", "w", slug, "issues", key, "labels"],
+            &[],
+            Some(json!({"label_ids": ids})),
+            true,
+        )?)?;
+        Ok(result.labels)
     }
     pub fn revoke(&self) -> Result<()> {
         let response = self.request(

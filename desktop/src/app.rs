@@ -1,7 +1,7 @@
 use crate::{
     api::{
-        ApiClient, Comment, DeviceSession, Evidence, Identity, Issue, Member, Milestone, Project,
-        Sprint,
+        ApiClient, Comment, DeviceSession, Evidence, Identity, Issue, Label, Member, Milestone,
+        Project, Sprint,
     },
     credentials, pages,
     state::{self, Revision, STATUSES, author_label, status_label},
@@ -64,6 +64,23 @@ impl PaletteItem {
     }
 }
 
+/// A server write on the selected issue.
+enum IssueMutation {
+    Status(String),
+    Assignee(Option<String>),
+    Labels(Vec<String>),
+}
+
+impl IssueMutation {
+    fn notice(&self) -> &'static str {
+        match self {
+            Self::Status(_) => "Status saved.",
+            Self::Assignee(_) => "Assignee saved.",
+            Self::Labels(_) => "Labels saved.",
+        }
+    }
+}
+
 /// Shape carries the status, so it reads without colour. Only Done gets a hue.
 fn status_icon(status: &str, p: Palette) -> Icon {
     let (name, color) = match status {
@@ -110,8 +127,12 @@ pub struct Velvet {
     workspace: usize,
     projects: Vec<Project>,
     members: Vec<Member>,
+    /// Workspace label catalogue, for the native label picker.
+    labels: Vec<Label>,
     project: Option<String>,
     status: Option<String>,
+    /// Assignee filter: `None` for all, `Some(None)` for unassigned, `Some(Some(id))`.
+    assignee: Option<Option<String>>,
     issues: Vec<Issue>,
     selected: Option<Issue>,
     comments: Vec<Comment>,
@@ -233,8 +254,10 @@ impl Velvet {
             workspace: 0,
             projects: vec![],
             members: vec![],
+            labels: vec![],
             project: None,
             status: None,
+            assignee: None,
             issues: vec![],
             selected: None,
             comments: vec![],
@@ -663,6 +686,7 @@ impl Velvet {
                 Ok((
                     client.projects(&slug)?,
                     client.members(&slug)?,
+                    client.labels(&slug)?,
                     client.issues_page(&slug, None, None, cursor.as_deref())?,
                 ))
             })
@@ -674,9 +698,10 @@ impl Velvet {
                 }
                 this.loading = false;
                 match result {
-                    Ok((projects, members, page)) => {
+                    Ok((projects, members, labels, page)) => {
                         this.projects = projects;
                         this.members = members;
+                        this.labels = labels;
                         this.next_cursor = page.next_cursor;
                         if more {
                             for issue in page.issues {
@@ -1011,6 +1036,8 @@ impl Velvet {
         self.issues.clear();
         self.projects.clear();
         self.members.clear();
+        self.labels.clear();
+        self.assignee = None;
         self.selected = None;
         self.comments.clear();
         self.evidence = Evidence::default();
@@ -1334,6 +1361,27 @@ impl Velvet {
         cx.notify();
     }
     fn change_status(&mut self, status: String, cx: &mut Context<Self>) {
+        self.mutate_issue(IssueMutation::Status(status), cx);
+    }
+    fn set_assignee(&mut self, assignee: Option<String>, cx: &mut Context<Self>) {
+        self.mutate_issue(IssueMutation::Assignee(assignee), cx);
+    }
+    fn toggle_label(&mut self, id: String, cx: &mut Context<Self>) {
+        let Some(issue) = self.selected.as_ref() else {
+            return;
+        };
+        let mut ids: Vec<String> = issue.labels.iter().map(|l| l.id.clone()).collect();
+        match ids.iter().position(|l| *l == id) {
+            Some(i) => {
+                ids.remove(i);
+            }
+            None => ids.push(id),
+        }
+        self.mutate_issue(IssueMutation::Labels(ids), cx);
+    }
+    /// One server write against the selected issue. The reply replaces both the
+    /// selection and its list row so every pane agrees.
+    fn mutate_issue(&mut self, mutation: IssueMutation, cx: &mut Context<Self>) {
         if self.saving
             || !self.can_write()
             || self.detail_loading
@@ -1359,9 +1407,25 @@ impl Velvet {
         self.list_revision.next();
         self.loading = false;
         self.saving = true;
+        let saved = mutation.notice();
         cx.spawn(async move |view, cx| {
-            let result =
-                smol::unblock(move || client.update_status(&slug, &issue.key, &status)).await;
+            let result = smol::unblock(move || -> anyhow::Result<Issue> {
+                match mutation {
+                    IssueMutation::Status(status) => {
+                        client.update_status(&slug, &issue.key, &status)
+                    }
+                    IssueMutation::Assignee(assignee) => client.patch_issue(
+                        &slug,
+                        &issue.key,
+                        serde_json::json!({ "assignee_id": assignee }),
+                    ),
+                    IssueMutation::Labels(ids) => {
+                        let labels = client.set_labels(&slug, &issue.key, &ids)?;
+                        Ok(Issue { labels, ..issue })
+                    }
+                }
+            })
+            .await;
             let _ = view.update(cx, |this, cx| {
                 if !this.session_revision.accepts(revision) || !this.detail_revision.accepts(detail)
                 {
@@ -1374,7 +1438,7 @@ impl Velvet {
                             *row = issue.clone();
                         }
                         this.selected = Some(issue);
-                        this.notice = Some("Status saved.".into());
+                        this.notice = Some(saved.into());
                     }
                     Err(e) => this.error = Some(e.to_string()),
                 }
@@ -1414,6 +1478,8 @@ impl Velvet {
                         this.issues.clear();
                         this.projects.clear();
                         this.members.clear();
+                        this.labels.clear();
+                        this.assignee = None;
                         this.selected = None;
                         this.comments.clear();
                         this.evidence = Evidence::default();
@@ -1527,8 +1593,20 @@ impl Velvet {
             {"id":"sample-agent","name":"Agent","email":"agent@example.com"}
         ]))
         .unwrap_or_default();
+        self.labels = [
+            ("l-auth", "auth"),
+            ("l-desktop", "desktop"),
+            ("l-release", "release"),
+            ("l-ux", "ux"),
+        ]
+        .into_iter()
+        .map(|(id, name)| Label {
+            id: id.into(),
+            name: name.into(),
+        })
+        .collect();
         let days_ago = |d: i64| state::format_rfc3339(Self::now() - d * 86_400);
-        let label = |id: &str, name: &str| crate::api::Label {
+        let label = |id: &str, name: &str| Label {
             id: id.into(),
             name: name.into(),
         };
@@ -1797,6 +1875,196 @@ impl Velvet {
         })
         .into_any_element()
     }
+    /// Assignee picker. As a filter it narrows the list; as a mutation it writes
+    /// the selected issue. Members come from the workspace member list.
+    fn assignee_menu(&self, mutation: bool, cx: &Context<Self>) -> AnyElement {
+        let current: Option<Option<String>> = if mutation {
+            self.selected.as_ref().map(|i| i.assignee_id.clone())
+        } else {
+            self.assignee.clone()
+        };
+        let name_of = |id: &Option<String>| match id {
+            None => "Unassigned".to_owned(),
+            Some(id) => self
+                .members
+                .iter()
+                .find(|m| &m.id == id)
+                .map(|m| m.user.label())
+                .unwrap_or_else(|| format!("Member {}", &id[..id.len().min(8)])),
+        };
+        let label = match &current {
+            None if !mutation => "Anyone".to_owned(),
+            None => "Unassigned".to_owned(),
+            Some(id) => name_of(id),
+        };
+        let members: Vec<(String, String)> = self
+            .members
+            .iter()
+            .map(|m| (m.id.clone(), m.user.label()))
+            .collect();
+        let view = cx.entity().downgrade();
+        let target = self
+            .selected
+            .as_ref()
+            .map(|issue| (self.slug(), issue.key.clone()));
+        let checked = current.clone();
+        Button::new(if mutation {
+            "issue-assignee"
+        } else {
+            "assignee-filter"
+        })
+        .accessibility_label(if mutation {
+            format!("Assignee: {label}. Change assignee")
+        } else {
+            format!("Assignee filter: {label}")
+        })
+        .icon(Icon::new(
+            if current.as_ref().is_some_and(|c| c.is_some()) {
+                Lucide::UserRound
+            } else {
+                Lucide::CircleDashed
+            },
+        ))
+        .label(label)
+        .when(mutation, |b| b.w_full().justify_start())
+        .disabled(mutation && (!self.can_write() || self.saving || self.detail_loading))
+        // Advertise accessibility Press; the dropdown opens on mouse-down.
+        .on_click(|_, _, _| {})
+        .dropdown_menu(move |mut menu, _, _| {
+            let pick = |choice: Option<Option<String>>| {
+                let view = view.clone();
+                let target = target.clone();
+                move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+                    let _ = view.update(cx, |this, cx| {
+                        if mutation {
+                            if this
+                                .selected
+                                .as_ref()
+                                .map(|issue| (this.slug(), issue.key.clone()))
+                                == target
+                            {
+                                this.set_assignee(choice.clone().flatten(), cx);
+                            }
+                        } else {
+                            this.assignee = choice.clone();
+                            cx.notify();
+                        }
+                    });
+                }
+            };
+            if !mutation {
+                menu = menu.item(
+                    PopupMenuItem::new("Anyone")
+                        .checked(checked.is_none())
+                        .on_click(pick(None)),
+                );
+            }
+            menu = menu.item(
+                PopupMenuItem::new("Unassigned")
+                    .icon(Icon::new(Lucide::CircleDashed))
+                    .checked(checked.as_ref().is_some_and(|c| c.is_none()))
+                    .on_click(pick(Some(None))),
+            );
+            for (id, name) in &members {
+                menu = menu.item(
+                    PopupMenuItem::new(name.clone())
+                        .icon(Icon::new(Lucide::UserRound))
+                        .checked(checked.as_ref().is_some_and(|c| c.as_deref() == Some(id)))
+                        .on_click(pick(Some(Some(id.clone())))),
+                );
+            }
+            menu
+        })
+        .into_any_element()
+    }
+    /// Label picker for the selected issue: each row toggles one workspace label.
+    fn labels_menu(&self, cx: &Context<Self>) -> AnyElement {
+        let p = Palette::new(self.dark);
+        let Some(issue) = self.selected.as_ref() else {
+            return div().into_any_element();
+        };
+        let applied: Vec<String> = issue.labels.iter().map(|l| l.id.clone()).collect();
+        let catalogue: Vec<(String, String)> = self
+            .labels
+            .iter()
+            .map(|l| (l.id.clone(), l.name.clone()))
+            .collect();
+        let names = issue
+            .labels
+            .iter()
+            .map(|l| l.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let view = cx.entity().downgrade();
+        let target = (self.slug(), issue.key.clone());
+        Button::new("issue-labels")
+            .accessibility_label(if names.is_empty() {
+                "Labels: none. Change labels".to_owned()
+            } else {
+                format!("Labels: {names}. Change labels")
+            })
+            .w_full()
+            .h_auto()
+            .min_h(px(28.))
+            .py_1()
+            .justify_start()
+            .disabled(!self.can_write() || self.saving || self.detail_loading)
+            .child(if issue.labels.is_empty() {
+                div()
+                    .text_size(px(14.))
+                    .text_color(p.secondary)
+                    .child("None")
+                    .into_any_element()
+            } else {
+                h_flex()
+                    .flex_wrap()
+                    .gap_1()
+                    .children(issue.labels.iter().map(|l| {
+                        div()
+                            .h(px(20.))
+                            .px_1p5()
+                            .flex()
+                            .items_center()
+                            .rounded(px(4.))
+                            .border_1()
+                            .border_color(p.border)
+                            .bg(p.paper)
+                            .text_size(px(12.))
+                            .child(l.name.clone())
+                    }))
+                    .into_any_element()
+            })
+            // Advertise accessibility Press; the dropdown opens on mouse-down.
+            .on_click(|_, _, _| {})
+            .dropdown_menu(move |mut menu, _, _| {
+                if catalogue.is_empty() {
+                    return menu.item(PopupMenuItem::new("No labels defined").disabled(true));
+                }
+                for (id, name) in &catalogue {
+                    let view = view.clone();
+                    let target = target.clone();
+                    let id = id.clone();
+                    menu = menu.item(
+                        PopupMenuItem::new(name.clone())
+                            .checked(applied.contains(&id))
+                            .on_click(move |_, _, cx| {
+                                let _ = view.update(cx, |this, cx| {
+                                    if this
+                                        .selected
+                                        .as_ref()
+                                        .map(|issue| (this.slug(), issue.key.clone()))
+                                        == Some(target.clone())
+                                    {
+                                        this.toggle_label(id.clone(), cx);
+                                    }
+                                });
+                            }),
+                    );
+                }
+                menu
+            })
+            .into_any_element()
+    }
     fn sidebar(&self, cx: &Context<Self>) -> AnyElement {
         let p = Palette::new(self.dark);
         // Grouped like the web shell: planning, activity, then work across organisations.
@@ -1992,6 +2260,7 @@ impl Velvet {
             &self.search.read(cx).value(),
             self.project.as_deref(),
             self.status.as_deref(),
+            self.assignee.as_ref().map(|a| a.as_deref()),
         );
         STATUSES
             .iter()
@@ -2165,7 +2434,8 @@ impl Velvet {
                         h_flex()
                             .gap_2()
                             .child(self.project_menu(cx).into_any_element())
-                            .child(self.status_menu(false, cx)),
+                            .child(self.status_menu(false, cx))
+                            .child(self.assignee_menu(false, cx)),
                     ),
             )
             .when(self.loading, |v| {
@@ -2642,65 +2912,15 @@ impl Velvet {
                 "Priority",
                 plain(format!("P{}", issue.priority), Some(Lucide::SignalHigh)),
             ))
-            .child(field("Project", plain(project.clone(), Some(Lucide::Folder))))
+            .child(field(
+                "Project",
+                plain(project.clone(), Some(Lucide::Folder)),
+            ))
             .when_some(milestone, |v, name| {
                 v.child(field("Milestone", plain(name, Some(Lucide::Milestone))))
             })
-            .child(field(
-                "Assignee",
-                match self.assignee_name(issue) {
-                    Some(name) => h_flex()
-                        .gap_1p5()
-                        .text_size(px(14.))
-                        .child(Avatar::new().name(name.clone()).xsmall())
-                        .child(div().truncate().child(name))
-                        .into_any_element(),
-                    None => div()
-                        .text_size(px(14.))
-                        .text_color(p.secondary)
-                        .child("Unassigned")
-                        .into_any_element(),
-                },
-            ))
-            .child(field(
-                "Labels",
-                if issue.labels.is_empty() {
-                    div()
-                        .text_size(px(14.))
-                        .text_color(p.secondary)
-                        .child("None")
-                        .into_any_element()
-                } else {
-                    h_flex()
-                        .id("issue-labels")
-                        .test_support()
-                        .aria_label(format!(
-                            "Labels: {}",
-                            issue
-                                .labels
-                                .iter()
-                                .map(|l| l.name.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        ))
-                        .flex_wrap()
-                        .gap_1()
-                        .children(issue.labels.iter().map(|l| {
-                            div()
-                                .h(px(20.))
-                                .px_1p5()
-                                .flex()
-                                .items_center()
-                                .rounded(px(4.))
-                                .border_1()
-                                .border_color(p.border)
-                                .bg(p.paper)
-                                .text_size(px(12.))
-                                .child(l.name.clone())
-                        }))
-                        .into_any_element()
-                },
-            ))
+            .child(field("Assignee", self.assignee_menu(true, cx)))
+            .child(field("Labels", self.labels_menu(cx)))
             .child(div().h(px(1.)).my_2().bg(p.border))
             .child(
                 div()
@@ -2716,44 +2936,69 @@ impl Velvet {
                         .child("No linked pull requests."),
                 )
             })
-            .children(self.evidence.pull_requests.iter().enumerate().map(|(i, pr)| {
-                let state = if pr.merged_at.is_some() {
-                    "merged"
-                } else if pr.draft {
-                    "draft"
-                } else {
-                    pr.state.as_str()
-                };
-                let url = pr.html_url.clone();
-                Button::new(("evidence", i))
-                    .ghost()
-                    .small()
-                    .w_full()
-                    .justify_start()
-                    .px_1()
-                    .accessibility_label(format!("Pull request {} {}, {state}", pr.number, pr.title))
-                    .disabled(url.is_empty())
-                    .child(
-                        h_flex()
+            .children(
+                self.evidence
+                    .pull_requests
+                    .iter()
+                    .enumerate()
+                    .map(|(i, pr)| {
+                        let state = if pr.merged_at.is_some() {
+                            "merged"
+                        } else if pr.draft {
+                            "draft"
+                        } else {
+                            pr.state.as_str()
+                        };
+                        let url = pr.html_url.clone();
+                        Button::new(("evidence", i))
+                            .ghost()
+                            .small()
                             .w_full()
-                            .min_w_0()
-                            .gap_1p5()
-                            .text_size(px(13.))
+                            .justify_start()
+                            .px_1()
+                            .accessibility_label(format!(
+                                "Pull request {} {}, {state}",
+                                pr.number, pr.title
+                            ))
+                            .disabled(url.is_empty())
                             .child(
-                                Icon::new(Lucide::GitPullRequest)
-                                    .size(px(14.))
-                                    .text_color(p.secondary),
+                                h_flex()
+                                    .w_full()
+                                    .min_w_0()
+                                    .gap_1p5()
+                                    .text_size(px(13.))
+                                    .child(
+                                        Icon::new(Lucide::GitPullRequest)
+                                            .size(px(14.))
+                                            .text_color(p.secondary),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_shrink_0()
+                                            .text_color(p.secondary)
+                                            .child(format!("#{}", pr.number)),
+                                    )
+                                    .child(
+                                        div().flex_1().min_w_0().truncate().child(pr.title.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_shrink_0()
+                                            .text_color(if state == "merged" {
+                                                p.done
+                                            } else {
+                                                p.muted
+                                            })
+                                            .child(state.to_owned()),
+                                    ),
                             )
-                            .child(div().flex_shrink_0().text_color(p.secondary).child(format!("#{}", pr.number)))
-                            .child(div().flex_1().min_w_0().truncate().child(pr.title.clone()))
-                            .child(div().flex_shrink_0().text_color(if state == "merged" { p.done } else { p.muted }).child(state.to_owned())),
-                    )
-                    .on_click(move |_, _, cx| {
-                        if let Some(url) = state::safe_external_url(&url) {
-                            cx.open_url(&url);
-                        }
-                    })
-            }))
+                            .on_click(move |_, _, cx| {
+                                if let Some(url) = state::safe_external_url(&url) {
+                                    cx.open_url(&url);
+                                }
+                            })
+                    }),
+            )
             .child(div().h(px(1.)).my_2().bg(p.border))
             .child(
                 div()
@@ -2763,7 +3008,7 @@ impl Velvet {
                     .child(if self.demo {
                         "Sample data. Nothing is written to a server."
                     } else {
-                        "Evidence never changes status. Assignee and labels are edited in the web app."
+                        "Evidence never changes status. Labels are created in the web app."
                     }),
             )
             .child(
