@@ -59,6 +59,27 @@ func TestCleanupExpiredAuthenticationPreservesLiveRecordsAndRecentCounters(t *te
 	require.Equal(t, []string{"live-auth"}, authHashes)
 }
 
+func TestCleanupDropsOldProcessedDeliveriesAndDeadJobs(t *testing.T) {
+	f := testutil.NewFixture(t)
+	ctx := t.Context()
+	_, err := f.Pool.Exec(ctx, `INSERT INTO github_event(delivery_id,event_type,payload,processed_at) VALUES
+	('old','push','{}',now()-interval '31 days'),
+	('recent','push','{}',now()-interval '1 day'),
+	('pending','push','{}',NULL)`)
+	require.NoError(t, err)
+	_, err = f.Pool.Exec(ctx, `INSERT INTO job(kind,payload,dead,run_after) VALUES
+	('old-dead','{}',true,now()-interval '31 days'),
+	('recent-dead','{}',true,now()-interval '1 day'),
+	('old-live','{}',false,now()-interval '31 days')`)
+	require.NoError(t, err)
+	require.NoError(t, f.Store.CleanupExpiredAuthentication(ctx))
+	var deliveries, kinds []string
+	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT array_agg(delivery_id ORDER BY delivery_id) FROM github_event`).Scan(&deliveries))
+	require.Equal(t, []string{"pending", "recent"}, deliveries)
+	require.NoError(t, f.Pool.QueryRow(ctx, `SELECT array_agg(kind ORDER BY kind) FROM job WHERE kind IN ('old-dead','recent-dead','old-live')`).Scan(&kinds))
+	require.Equal(t, []string{"old-live", "recent-dead"}, kinds)
+}
+
 func TestCleanupExpiredAuthenticationBoundsEachBatch(t *testing.T) {
 	f := testutil.NewFixture(t)
 	_, err := f.Pool.Exec(t.Context(), `INSERT INTO login_token(email,token_hash,request_ip,created_at,expires_at) SELECT 'old@example.com','token-'||n,'127.0.0.1',now()-interval '1 hour',now()-interval '30 minutes' FROM generate_series(1,1001) n`)

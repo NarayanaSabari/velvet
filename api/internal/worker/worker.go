@@ -48,8 +48,6 @@ func New(st *store.Store, gh *github.Client) *Worker {
 // alongside. It only loops over ProcessOnce, so no test has to depend on
 // timing.
 func (w *Worker) Run(ctx context.Context) error {
-	ticker := time.NewTicker(reconcileInterval)
-	defer ticker.Stop()
 	sessionTicker := time.NewTicker(sessionCleanupInterval)
 	defer sessionTicker.Stop()
 	suggestTicker := time.NewTicker(suggestInterval)
@@ -62,20 +60,28 @@ func (w *Worker) Run(ctx context.Context) error {
 
 	w.cleanupAuthentication(ctx)
 
-	// Reconcile once at start, which is also what backfills a freshly
-	// onboarded repository without waiting an hour for the first tick.
-	if err := w.Reconcile(ctx); err != nil {
-		slog.Error("reconcile", "err", err)
-	}
+	// Reconcile walks every repo against GitHub, so it runs beside the queue
+	// loop: a slow GitHub must not delay webhook jobs. It runs once at start,
+	// which backfills a freshly onboarded repository without waiting an hour.
+	go func() {
+		ticker := time.NewTicker(reconcileInterval)
+		defer ticker.Stop()
+		for {
+			if err := w.Reconcile(ctx); err != nil {
+				slog.Error("reconcile", "err", err)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-ticker.C:
-			if err := w.Reconcile(ctx); err != nil {
-				slog.Error("reconcile", "err", err)
-			}
 		case <-sessionTicker.C:
 			w.cleanupAuthentication(ctx)
 		case <-suggestTicker.C:

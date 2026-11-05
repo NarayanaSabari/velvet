@@ -51,6 +51,15 @@ func (s *Store) CleanupExpiredAuthentication(ctx context.Context) error {
 			`DELETE FROM github_authorization_state WHERE token_hash IN (
 			 SELECT token_hash FROM github_authorization_state WHERE expires_at<=now()
 			 ORDER BY expires_at,token_hash LIMIT 1000 FOR UPDATE SKIP LOCKED)`,
+			// Processed webhook payloads and dead jobs are kept 30 days for
+			// debugging, then dropped so they cannot grow without bound.
+			// shortcut: 1000 rows per daily run, raise if deliveries exceed that.
+			`DELETE FROM github_event WHERE delivery_id IN (
+			 SELECT delivery_id FROM github_event WHERE processed_at<=now()-interval '30 days'
+			 LIMIT 1000 FOR UPDATE SKIP LOCKED)`,
+			`DELETE FROM job WHERE id IN (
+			 SELECT id FROM job WHERE dead AND run_after<=now()-interval '30 days'
+			 LIMIT 1000 FOR UPDATE SKIP LOCKED)`,
 		}
 		for _, query := range queries {
 			if _, err := tx.Exec(ctx, query); err != nil {
