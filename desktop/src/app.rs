@@ -683,12 +683,15 @@ impl Velvet {
         self.error = None;
         cx.spawn(async move |view, cx| {
             let result = smol::unblock(move || -> anyhow::Result<_> {
-                Ok((
-                    client.projects(&slug)?,
-                    client.members(&slug)?,
-                    client.labels(&slug)?,
-                    client.issues_page(&slug, None, None, cursor.as_deref())?,
-                ))
+                // Independent requests run concurrently so one round trip, not two,
+                // bounds the refresh.
+                let (boot, page) = std::thread::scope(|s| {
+                    let boot = s.spawn(|| client.bootstrap(&slug));
+                    let page = s.spawn(|| client.issues_page(&slug, None, None, cursor.as_deref()));
+                    (boot.join().unwrap(), page.join().unwrap())
+                });
+                let boot = boot?;
+                Ok((boot.projects, boot.members, boot.labels, page?))
             })
             .await;
             let _ = view.update(cx, |this, cx| {
@@ -754,12 +757,19 @@ impl Velvet {
         self.detail_loading = true;
         cx.spawn(async move |view, cx| {
             let result = smol::unblock(move || -> anyhow::Result<_> {
-                Ok((
-                    client.issue(&slug, &issue.key)?,
-                    client.comments(&slug, &issue.key)?,
+                let (detail, comments, evidence) = std::thread::scope(|s| {
+                    let detail = s.spawn(|| client.issue(&slug, &issue.key));
+                    let comments = s.spawn(|| client.comments(&slug, &issue.key));
                     // Evidence is optional context; a failure must not hide the issue.
-                    client.evidence(&slug, &issue.key).unwrap_or_default(),
-                ))
+                    let evidence =
+                        s.spawn(|| client.evidence(&slug, &issue.key).unwrap_or_default());
+                    (
+                        detail.join().unwrap(),
+                        comments.join().unwrap(),
+                        evidence.join().unwrap(),
+                    )
+                });
+                Ok((detail?, comments?, evidence))
             })
             .await;
             let _ = view.update(cx, |this, cx| {
@@ -1062,7 +1072,9 @@ impl Velvet {
             return;
         };
         let issue = if edit { self.selected.clone() } else { None };
-        if edit && issue.is_none() {
+        // List rows omit the description (fields=summary); editing before the
+        // detail arrives would blank it on save.
+        if edit && (issue.is_none() || (self.detail_loading && !self.demo)) {
             return;
         }
         self.return_focus = window.focused(cx);

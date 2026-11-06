@@ -47,6 +47,10 @@ impl ApiClient {
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
+            // Each cold request pays ~65ms of TLS handshake, so keep the
+            // connection open between bursts and let HTTP/2 multiplex them.
+            .pool_idle_timeout(None)
+            .tcp_keepalive(Duration::from_secs(60))
             .user_agent("Velvet for macOS")
             .build()
             .map_err(|_| anyhow!("Could not initialize HTTP client"))?;
@@ -90,7 +94,7 @@ impl ApiClient {
     ) -> Result<Response> {
         let mut request = self
             .client
-            .request(method, self.url(segments)?)
+            .request(method.clone(), self.url(segments)?)
             .query(query);
         if authenticated {
             let token = self
@@ -103,9 +107,22 @@ impl ApiClient {
             request = request.json(&body);
         }
         // Never expose transport errors, response bodies, or URLs: servers can echo credentials.
-        request
+        let started = std::time::Instant::now();
+        let timing = std::env::var_os("VELVET_TIMING").is_some();
+        let path = timing.then(|| segments.join("/"));
+        let response = request
             .send()
-            .map_err(|_| anyhow!("Could not reach server. Check connection and server address"))
+            .map_err(|_| anyhow!("Could not reach server. Check connection and server address"));
+        if let Some(path) = path {
+            eprintln!(
+                "timing {} /{} {}ms {}",
+                method,
+                path,
+                started.elapsed().as_millis(),
+                response.as_ref().map(|r| r.status().as_u16()).unwrap_or(0)
+            );
+        }
+        response
     }
 
     fn success(response: Response) -> Result<Response> {
@@ -179,6 +196,25 @@ impl ApiClient {
         )?)?;
         Ok(result.projects)
     }
+    /// Projects, members and labels in one round trip. Servers older than
+    /// 0.5 lack the route, so a 404 falls back to the three separate calls.
+    pub fn bootstrap(&self, slug: &str) -> Result<Bootstrap> {
+        let response = self.request(
+            Method::GET,
+            &["api", "v1", "w", slug, "bootstrap"],
+            &[],
+            None,
+            true,
+        )?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(Bootstrap {
+                projects: self.projects(slug)?,
+                members: self.members(slug)?,
+                labels: self.labels(slug)?,
+            });
+        }
+        Self::decode(response)
+    }
     pub fn issues_page(
         &self,
         slug: &str,
@@ -186,7 +222,7 @@ impl ApiClient {
         status: Option<&str>,
         cursor: Option<&str>,
     ) -> Result<IssuePage> {
-        let mut query = vec![("limit", "200")];
+        let mut query = vec![("limit", "200"), ("fields", "summary")];
         if let Some(value) = project {
             query.push(("project", value));
         }
@@ -456,6 +492,15 @@ pub struct Membership {
     pub role: String,
 }
 #[derive(Clone, Debug, Deserialize)]
+pub struct Bootstrap {
+    #[serde(default, deserialize_with = "null_vec")]
+    pub projects: Vec<Project>,
+    #[serde(default, deserialize_with = "null_vec")]
+    pub members: Vec<Member>,
+    #[serde(default, deserialize_with = "null_vec")]
+    pub labels: Vec<Label>,
+}
+#[derive(Clone, Debug, Deserialize)]
 pub struct Project {
     pub id: String,
     pub key: String,
@@ -701,7 +746,7 @@ mod tests {
         assert_eq!(result.next_cursor.as_deref(), Some("next"));
         let request = received.recv().unwrap();
         assert!(request.starts_with(
-            "GET /api/v1/w/my%20org/issues?limit=200&project=project%26one&status=in_progress&cursor=a%2Bb "
+            "GET /api/v1/w/my%20org/issues?limit=200&fields=summary&project=project%26one&status=in_progress&cursor=a%2Bb "
         ));
         assert!(
             request

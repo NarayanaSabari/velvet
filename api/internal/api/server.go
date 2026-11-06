@@ -63,6 +63,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerProjectRoutes(mux)
 	s.registerIssueRoutes(mux)
 	s.registerLabelRoutes(mux)
+	s.registerBootstrapRoutes(mux)
 	s.registerCommentRoutes(mux)
 	s.registerImageRoutes(mux)
 	s.registerActivityRoutes(mux)

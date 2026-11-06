@@ -114,6 +114,13 @@ func (s *Server) handleListIssues(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, "internal", "could not list issues")
 		return
 	}
+	// Descriptions are 60 to 70% of a list payload and no list view renders
+	// them, so clients that only need rows can leave them out.
+	if query.Get("fields") == "summary" {
+		for i := range issues {
+			issues[i].Description = ""
+		}
+	}
 	result := map[string]any{"issues": issues, "next_cursor": next}
 	if query.Get("include_counts") == "true" {
 		var scope *uuid.UUID

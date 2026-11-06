@@ -164,18 +164,17 @@ func (s *Store) DeleteAPIToken(ctx context.Context, userID, id uuid.UUID) error 
 // held to the organisation and project the key was minted for.
 func (s *Store) LookupAPIToken(ctx context.Context, rawToken string) (User, uuid.UUID, TokenScope, error) {
 	hash := apiTokenHash(rawToken)
-	if _, err := s.pool.Exec(ctx, `
-		UPDATE api_token
-		SET last_used_at=now()
-		WHERE token_hash=$1
-		  AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')`, hash); err != nil {
-		return User{}, uuid.Nil, TokenScope{}, err
-	}
-
+	// One round trip: the touch of last_used_at (throttled to once a minute)
+	// rides along with the lookup instead of preceding it.
 	var user User
 	var tokenID uuid.UUID
 	var scope TokenScope
 	err := s.pool.QueryRow(ctx, `
+		WITH touched AS (
+			UPDATE api_token SET last_used_at=now()
+			WHERE token_hash=$1
+			  AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')
+		)
 		SELECT t.id, t.workspace_id, t.project_id, t.kind, t.parent_id, u.id, COALESCE(u.email, ''), u.github_id, u.github_login, u.name, u.avatar_url
 		FROM api_token t JOIN app_user u ON u.id=t.user_id
 		WHERE t.token_hash=$1`, hash).

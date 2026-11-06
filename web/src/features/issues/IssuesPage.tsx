@@ -120,7 +120,7 @@ export function IssuesPage({ slug }: { slug: string }) {
   )
   const [creatingIssue, setCreatingIssue] = useState(false)
 
-  const params = new URLSearchParams({ limit: '50', include_counts: 'true' })
+  const params = new URLSearchParams({ limit: '50', include_counts: 'true', fields: 'summary' })
   if (search.trim()) params.set('q', search.trim())
   if (status === 'open') {
     for (const value of ISSUE_STATUSES) if (value !== 'done' && value !== 'cancelled') params.append('status', value)

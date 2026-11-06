@@ -163,8 +163,8 @@ describe('IssuesPage', () => {
       if (input === '/api/v1/me') return Promise.resolve(response({ user: member, memberships: [membership], last_workspace: membership }))
       if (input === '/api/v1/w/lab/members') return Promise.resolve(response({ members: [member] }))
       if (input === '/api/v1/w/lab/milestones') return Promise.resolve(response({ milestones: [milestone] }))
-      if (input === '/api/v1/w/lab/issues?limit=50&include_counts=true') return Promise.resolve(response({ issues: [first], next_cursor: 'next', matched_count: 2, total_count: 2 }))
-      if (input === '/api/v1/w/lab/issues?limit=50&include_counts=true&cursor=next') return Promise.resolve(response({ issues: [second], next_cursor: '', matched_count: 2, total_count: 2 }))
+      if (input === '/api/v1/w/lab/issues?limit=50&include_counts=true&fields=summary') return Promise.resolve(response({ issues: [first], next_cursor: 'next', matched_count: 2, total_count: 2 }))
+      if (input === '/api/v1/w/lab/issues?limit=50&include_counts=true&fields=summary&cursor=next') return Promise.resolve(response({ issues: [second], next_cursor: '', matched_count: 2, total_count: 2 }))
       return Promise.resolve(response({}))
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -178,7 +178,7 @@ describe('IssuesPage', () => {
       '/w/lab/issues/ENG-1',
     )
     expect(screen.queryByTestId('issue-row-i2')).toBeNull()
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=50&include_counts=true&cursor=next', expect.anything())
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=50&include_counts=true&fields=summary&cursor=next', expect.anything())
     await userEvent.setup().click(screen.getByRole('button', { name: 'Next page' }))
     const filedRow = await screen.findByTestId('issue-row-i2')
     expect(screen.queryByTestId('issue-row-i1')).toBeNull()
@@ -186,8 +186,8 @@ describe('IssuesPage', () => {
     expect(filedRow).not.toHaveTextContent('Filed to milestone')
     expect(screen.getByTestId('issues-list')).toHaveClass('divide-y', 'border-y')
     expect(screen.getByText('Filed work')).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=50&include_counts=true', expect.anything())
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=50&include_counts=true&cursor=next', expect.anything())
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=50&include_counts=true&fields=summary', expect.anything())
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=50&include_counts=true&fields=summary&cursor=next', expect.anything())
     expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled()
     await userEvent.setup().click(screen.getByRole('button', { name: 'Previous page' }))
     expect(await screen.findByTestId('issue-row-i1')).toBeInTheDocument()
@@ -240,7 +240,7 @@ describe('IssuesPage', () => {
     await user.selectOptions(screen.getByTestId('issues-priority-filter'), '0')
     expect(await screen.findByText('Unassigned urgent work')).toBeInTheDocument()
     expect(screen.getByTestId('issues-count')).toHaveTextContent('1 of 3 issues')
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=50&include_counts=true&unassigned=true&priority=0&unfiled=true', expect.anything())
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=50&include_counts=true&fields=summary&unassigned=true&priority=0&unfiled=true', expect.anything())
   })
 
   it('resets the cursor when filters change and never restores an old cursor when cleared', async () => {
@@ -279,7 +279,7 @@ describe('IssuesPage', () => {
     await user.selectOptions(screen.getByTestId('issues-assignee-filter'), 'former-member')
     await screen.findByTestId('issues-no-results')
     expect(screen.getByTestId('issues-assignee-filter')).toHaveValue('former-member')
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=50&include_counts=true&assignee_id=former-member', expect.anything())
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=50&include_counts=true&fields=summary&assignee_id=former-member', expect.anything())
   })
 
   it('filters by search, status, assignee, and priority, then clears them', async () => {
