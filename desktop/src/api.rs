@@ -186,7 +186,7 @@ impl ApiClient {
         status: Option<&str>,
         cursor: Option<&str>,
     ) -> Result<IssuePage> {
-        let mut query = Vec::new();
+        let mut query = vec![("limit", "200")];
         if let Some(value) = project {
             query.push(("project", value));
         }
@@ -407,6 +407,11 @@ fn null_vec<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
 ) -> std::result::Result<Vec<T>, D::Error> {
     Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
 }
+fn empty_string<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<String>, D::Error> {
+    Ok(Option::<String>::deserialize(deserializer)?.filter(|s| !s.is_empty()))
+}
 
 // Secret-bearing models deliberately do not implement Debug.
 #[derive(Clone, Deserialize)]
@@ -460,7 +465,8 @@ pub struct Project {
 pub struct IssuePage {
     #[serde(default, deserialize_with = "null_vec")]
     pub issues: Vec<Issue>,
-    #[serde(default)]
+    // The server sends "" on the last page; treat that as no cursor.
+    #[serde(default, deserialize_with = "empty_string")]
     pub next_cursor: Option<String>,
 }
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -695,7 +701,7 @@ mod tests {
         assert_eq!(result.next_cursor.as_deref(), Some("next"));
         let request = received.recv().unwrap();
         assert!(request.starts_with(
-            "GET /api/v1/w/my%20org/issues?project=project%26one&status=in_progress&cursor=a%2Bb "
+            "GET /api/v1/w/my%20org/issues?limit=200&project=project%26one&status=in_progress&cursor=a%2Bb "
         ));
         assert!(
             request
@@ -703,6 +709,9 @@ mod tests {
                 .contains("authorization: bearer secret")
         );
         handle.join().unwrap();
+        // The last page carries an empty cursor, which must not offer "Load more".
+        let page: IssuePage = serde_json::from_str(r#"{"issues":[],"next_cursor":""}"#).unwrap();
+        assert_eq!(page.next_cursor, None);
     }
 
     #[test]
