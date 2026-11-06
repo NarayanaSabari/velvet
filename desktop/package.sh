@@ -56,6 +56,19 @@ ditto Info.plist "$bundle/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$version" "$bundle/Contents/Info.plist"
 plutil -replace CFBundleVersion -string "$version" "$bundle/Contents/Info.plist"
 ditto target/aarch64-apple-darwin/release/velvet-desktop "$bundle/Contents/MacOS/velvet-desktop"
+# App icon: icon.svg rasterised by Quick Look, then packed with the stock
+# macOS tools so the build needs no extra dependency.
+iconset="$stage/Velvet.iconset"
+mkdir -p "$iconset"
+qlmanage -t -s 1024 -o "$stage" icon.svg >/dev/null 2>&1
+[ -f "$stage/icon.svg.png" ] || { echo "error: could not rasterise icon.svg" >&2; exit 1; }
+for size in 16 32 128 256 512; do
+    sips -z "$size" "$size" "$stage/icon.svg.png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
+    double=$((size * 2))
+    sips -z "$double" "$double" "$stage/icon.svg.png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+done
+iconutil -c icns "$iconset" -o "$bundle/Contents/Resources/Velvet.icns"
+rm -rf "$iconset" "$stage/icon.svg.png"
 plutil -lint "$bundle/Contents/Info.plist"
 codesign --force --sign - --timestamp=none "$bundle"
 codesign --verify --strict --verbose=2 "$bundle"

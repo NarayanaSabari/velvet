@@ -10,6 +10,8 @@
     <string>Velvet</string>
     <key>CFBundleExecutable</key>
     <string>velvet-desktop</string>
+    <key>CFBundleIconFile</key>
+    <string>Velvet</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
