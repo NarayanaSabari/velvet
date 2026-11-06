@@ -3381,6 +3381,7 @@ impl Velvet {
             .h(px(52.))
             .flex_shrink_0()
             .window_control_area(WindowControlArea::Drag)
+            .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
             .pr_3()
             .gap_3()
             .items_center()
@@ -3513,7 +3514,8 @@ impl Velvet {
     fn signed_out(&self, cx: &Context<Self>) -> AnyElement {
         let p = self.palette();
         v_flex().size_full()
-            .child(div().h(px(44.)).w_full().flex_shrink_0().window_control_area(WindowControlArea::Drag))
+            .child(div().h(px(44.)).w_full().flex_shrink_0().window_control_area(WindowControlArea::Drag)
+            .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move()))
             .child(v_flex().flex_1().items_center().justify_center().p_6().gap_4()
             .child(v_flex().w(px(460.)).max_w_full().gap_4().p_6().border_1().border_color(p.border).rounded(px(8.))
                 .child(div().text_size(px(24.)).font_weight(FontWeight::SEMIBOLD).child("Velvet for macOS"))
@@ -3980,7 +3982,10 @@ impl Render for Velvet {
                         div()
                             .h(px(44.))
                             .w_full()
-                            .window_control_area(WindowControlArea::Drag),
+                            .window_control_area(WindowControlArea::Drag)
+                            .on_mouse_down(MouseButton::Left, |_, window, _| {
+                                window.start_window_move()
+                            }),
                     )
                     .p_6()
                     .gap_4()
