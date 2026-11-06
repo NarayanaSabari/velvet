@@ -8,6 +8,8 @@ mod api;
 mod app;
 #[path = "../src/credentials.rs"]
 mod credentials;
+#[path = "../src/glass.rs"]
+mod glass;
 #[path = "../src/pages.rs"]
 mod pages;
 #[path = "../src/state.rs"]

@@ -27,8 +27,11 @@ mod ui_tests;
 
 use std::{
     collections::HashMap,
+    rc::Rc,
     time::{Duration, Instant},
 };
+
+use crate::glass::{self, Glass, glass_region};
 
 const UPDATE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 pub const DEFAULT_SERVER: &str = "https://velvet.sabarinarayana.com";
@@ -115,6 +118,8 @@ pub struct Velvet {
     dark: bool,
     /// Liquid Glass chrome; false when macOS "Reduce transparency" is on.
     glass: bool,
+    /// System `NSGlassEffectView` host (macOS 26+). None falls back to painted tints.
+    native_glass: Option<Rc<Glass>>,
     focus: FocusHandle,
     modal_focus: FocusHandle,
     cancel_focus: FocusHandle,
@@ -190,6 +195,20 @@ impl Velvet {
         let p = Palette::new(self.dark);
         if self.glass { p } else { p.opaque() }
     }
+    /// Backs `el` with a native glass view when available, else paints `fill`.
+    fn glass_backed(
+        &self,
+        el: Div,
+        name: &'static str,
+        radius: Pixels,
+        clear: bool,
+        fill: Hsla,
+    ) -> Div {
+        match &self.native_glass {
+            Some(g) if self.glass => el.relative().child(glass_region(g, name, radius, clear)),
+            _ => el.bg(fill),
+        }
+    }
     pub fn new(server: String, demo: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let dark = matches!(
             window.appearance(),
@@ -242,11 +261,19 @@ impl Velvet {
                 cx.refresh_windows();
             }),
         ];
+        let glass = !Palette::reduce_transparency();
+        let native_glass = (glass && glass::available()).then(|| Rc::new(Glass::new()));
+        if native_glass.is_some() {
+            // gpui's own NSVisualEffectView would sit between the glass views
+            // and the desktop and flatten them; use a plain transparent window.
+            window.set_background_appearance(WindowBackgroundAppearance::Transparent);
+        }
         let mut this = Self {
             server,
             demo,
             dark,
-            glass: !Palette::reduce_transparency(),
+            glass,
+            native_glass,
             focus: cx.focus_handle(),
             modal_focus: cx.focus_handle(),
             cancel_focus: cx.focus_handle(),
@@ -450,6 +477,10 @@ impl Velvet {
 
     pub fn is_quitting(&self) -> bool {
         self.quitting
+    }
+    /// True when system `NSGlassEffectView`s back the chrome.
+    pub fn native_glass(&self) -> bool {
+        self.native_glass.is_some()
     }
 
     pub fn request_quit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -2141,16 +2172,16 @@ impl Velvet {
                 .iter()
                 .map(|(label, path, icon)| nav_button(label, path, *icon))
         };
-        v_flex()
+        let shell = v_flex()
             .w(px(240.))
             .h_full()
             .flex_shrink_0()
             .px_2()
             .pt_2()
             .gap_0p5()
-            .bg(p.glass)
             .border_r_1()
-            .border_color(p.hair)
+            .border_color(p.hair);
+        self.glass_backed(shell, "glass-sidebar", px(0.), false, p.glass)
             .child(self.workspace_menu(cx))
             .child(
                 Button::new("commands")
@@ -2960,9 +2991,10 @@ impl Velvet {
             .p_4()
             .gap_1()
             .rounded(px(14.))
-            .bg(p.glass)
             .border_t_1()
-            .border_color(p.edge)
+            .border_color(p.edge);
+        let rail = self
+            .glass_backed(rail, "glass-rail", px(14.), false, p.glass)
             .child(field("Status", self.status_menu(true, cx)))
             .child(field(
                 "Priority",
@@ -3336,7 +3368,7 @@ impl Velvet {
                 h_flex().w(px(228.)).h_full().flex_shrink_0(),
             )
             .child(
-                self.capsule(p)
+                self.capsule(p, "glass-list")
                     .w(px(400.))
                     .flex_shrink_0()
                     .child(
@@ -3376,7 +3408,7 @@ impl Velvet {
                     ),
             )
             .child(
-                self.capsule(p)
+                self.capsule(p, "glass-detail")
                     .flex_1()
                     .min_w_0()
                     .when_some(issue, |bar, issue| {
@@ -3445,17 +3477,17 @@ impl Velvet {
             .into_any_element()
     }
     /// A floating glass capsule: the Liquid Glass unit for toolbar segments.
-    fn capsule(&self, p: Palette) -> Div {
-        h_flex()
+    fn capsule(&self, p: Palette, name: &'static str) -> Div {
+        let el = h_flex()
             .h(px(36.))
             .px_3()
             .gap_1()
             .items_center()
             .rounded_full()
-            .bg(p.glass_strong)
             .border_t_1()
             .border_color(p.edge)
-            .shadow_sm()
+            .shadow_sm();
+        self.glass_backed(el, name, px(18.), false, p.glass_strong)
     }
     fn signed_out(&self, cx: &Context<Self>) -> AnyElement {
         let p = self.palette();
@@ -3700,6 +3732,9 @@ impl Render for Velvet {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Theme mode may change from the system while the window is open.
         self.dark = Theme::global(cx).mode.is_dark();
+        if let Some(g) = &self.native_glass {
+            g.begin_frame();
+        }
         let p = self.palette();
         v_flex()
             .id("velvet-workspace")
@@ -3708,11 +3743,13 @@ impl Render for Velvet {
             .test_support()
             .relative()
             .size_full()
-            // Translucent so the window vibrancy shows through between the cards.
-            .bg(if self.glass {
-                p.paper.opacity(0.35)
-            } else {
-                p.paper
+            // Translucent so the backdrop shows between the cards. With native
+            // glass the system views sample the desktop, so the root paints a
+            // lighter wash and the glass regions stay fully clear.
+            .bg(match (&self.native_glass, self.glass) {
+                (Some(_), true) => p.paper.opacity(0.3),
+                (None, true) => p.paper.opacity(0.35),
+                _ => p.paper,
             })
             .text_color(p.ink)
             .font_family(".AppleSystemUIFont")

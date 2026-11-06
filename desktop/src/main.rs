@@ -1,6 +1,7 @@
 mod api;
 mod app;
 mod credentials;
+mod glass;
 mod pages;
 mod state;
 mod theme;
@@ -104,6 +105,15 @@ fn main() {
                 view
             })
             .expect("Could not open Velvet");
+            // The kit Root paints the theme background under the whole window,
+            // which would hide the native glass views. Clear it when they run.
+            if view.read(cx).native_glass() {
+                let _ = handle.update(cx, |_, window, cx| {
+                    gpui_kit::base::Root::update(window, cx, |root, _, _| {
+                        root.style().background = Some(gpui_kit::transparent_black().into());
+                    });
+                });
+            }
             let weak = view.downgrade();
             cx.on_action(move |_: &Quit, cx| {
                 let _ = handle.update(cx, |_, window, cx| {
