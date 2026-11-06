@@ -54,7 +54,15 @@ if [ ! -t 0 ]; then
 fi
 
 echo "pulling $tag"
-IMAGE_TAG="$tag" compose pull --quiet migrate api worker web
+# SKIP_PULL=1 deploys images already loaded on the host (docker load), for a
+# manual deploy while CI cannot publish to the registry.
+if [ "${SKIP_PULL:-}" = 1 ]; then
+  for image in api web; do
+    docker image inspect "${IMAGE_REPO:-ghcr.io/narayanasabari/velvet}/$image:$tag" >/dev/null
+  done
+else
+  IMAGE_TAG="$tag" compose pull --quiet migrate api worker web
+fi
 
 # Contract migrations can change keys used by the old writer binary (0020
 # scopes commit identity to a repository). Drain writers only after pulling
