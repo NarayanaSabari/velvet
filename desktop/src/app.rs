@@ -113,6 +113,8 @@ pub struct Velvet {
     server: String,
     demo: bool,
     dark: bool,
+    /// Liquid Glass chrome; false when macOS "Reduce transparency" is on.
+    glass: bool,
     focus: FocusHandle,
     modal_focus: FocusHandle,
     cancel_focus: FocusHandle,
@@ -184,6 +186,10 @@ pub struct Velvet {
 }
 
 impl Velvet {
+    fn palette(&self) -> Palette {
+        let p = Palette::new(self.dark);
+        if self.glass { p } else { p.opaque() }
+    }
     pub fn new(server: String, demo: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let dark = matches!(
             window.appearance(),
@@ -240,6 +246,7 @@ impl Velvet {
             server,
             demo,
             dark,
+            glass: !Palette::reduce_transparency(),
             focus: cx.focus_handle(),
             modal_focus: cx.focus_handle(),
             cancel_focus: cx.focus_handle(),
@@ -1652,7 +1659,7 @@ impl Velvet {
             .role(Role::Label)
             .aria_label(text.clone())
             .text_size(px(14.))
-            .text_color(Palette::new(self.dark).muted)
+            .text_color(self.palette().muted)
             .child(text)
     }
     /// A left-aligned sidebar row: 16px icon, then the label that names it.
@@ -1664,7 +1671,7 @@ impl Velvet {
         current: bool,
         count: Option<String>,
     ) -> Button {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         Button::new(id)
             .ghost()
             .accessibility_label(if current {
@@ -1700,7 +1707,7 @@ impl Velvet {
     /// Dense two-line list row, with a 2px ink rule marking the selection so it never
     /// depends on the background colour alone.
     fn row_content(&self, selected: bool, top: impl IntoElement, bottom: impl IntoElement) -> Div {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         v_flex()
             .w_full()
             .min_w_0()
@@ -1720,7 +1727,7 @@ impl Velvet {
             .px_2()
             .text_size(px(11.))
             .font_weight(FontWeight::MEDIUM)
-            .text_color(Palette::new(self.dark).secondary)
+            .text_color(self.palette().secondary)
             .child(text.to_uppercase())
     }
     fn workspace_menu(&self, cx: &Context<Self>) -> AnyElement {
@@ -1733,7 +1740,7 @@ impl Velvet {
             .get(self.workspace)
             .map(|w| w.workspace_name.clone())
             .unwrap_or_else(|| "Velvet".into());
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         let view = cx.entity().downgrade();
         Button::new("workspace")
             .ghost()
@@ -1836,7 +1843,7 @@ impl Velvet {
             .selected
             .as_ref()
             .map(|issue| (self.slug(), issue.key.clone()));
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         let current_owned = current.map(str::to_owned);
         Button::new(if mutation {
             "issue-status"
@@ -2012,7 +2019,7 @@ impl Velvet {
     }
     /// Label picker for the selected issue: each row toggles one workspace label.
     fn labels_menu(&self, cx: &Context<Self>) -> AnyElement {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         let Some(issue) = self.selected.as_ref() else {
             return div().into_any_element();
         };
@@ -2101,7 +2108,7 @@ impl Velvet {
             .into_any_element()
     }
     fn sidebar(&self, cx: &Context<Self>) -> AnyElement {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         // Grouped like the web shell: planning, activity, then work across organisations.
         let nav_button = |label: &'static str, path: &'static str, icon: Lucide| {
             let page = pages::Page::from_nav(path);
@@ -2141,9 +2148,9 @@ impl Velvet {
             .px_2()
             .pt_2()
             .gap_0p5()
-            .bg(p.surface)
+            .bg(p.glass)
             .border_r_1()
-            .border_color(p.border)
+            .border_color(p.hair)
             .child(self.workspace_menu(cx))
             .child(
                 Button::new("commands")
@@ -2152,7 +2159,10 @@ impl Velvet {
                     .h(px(28.))
                     .px_2()
                     .mt_1()
-                    .bg(p.paper)
+                    .rounded_full()
+                    .bg(p.glass_strong)
+                    .border_t_1()
+                    .border_color(p.edge)
                     .child(
                         h_flex()
                             .w_full()
@@ -2177,7 +2187,7 @@ impl Velvet {
     /// Account, appearance and update controls live behind one menu so the sidebar
     /// stays navigation. The macOS Velvet menu offers the same update actions.
     fn account_menu(&self, cx: &Context<Self>) -> AnyElement {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         let name = self
             .identity
             .as_ref()
@@ -2313,7 +2323,7 @@ impl Velvet {
     /// One 34px row: status shape, key, title, priority. The 2px ink rule marks the
     /// selection so it never depends on the background colour alone.
     fn issue_row(&self, index: usize, cx: &Context<Self>) -> Button {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         let issue = &self.issues[index];
         let selected = self.selected.as_ref().is_some_and(|s| s.id == issue.id);
         let done = matches!(issue.status.as_str(), "done" | "cancelled");
@@ -2406,7 +2416,7 @@ impl Velvet {
             .on_click(cx.listener(move |this, _, window, cx| this.select_issue(index, window, cx)))
     }
     fn issue_list(&self, cx: &Context<Self>) -> AnyElement {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         let visible = self.visible_groups(cx);
         let count = visible.iter().map(|(_, m)| m.len()).sum::<usize>();
         let mut groups = v_flex()
@@ -2452,18 +2462,20 @@ impl Velvet {
                 .child(Kbd::new(Keystroke::parse(keys).unwrap()).outline())
                 .child(div().text_color(p.muted).child(text))
         };
-        v_flex()
-            .w(px(400.))
-            .h_full()
-            .flex_shrink_0()
-            .border_r_1()
-            .border_color(p.border)
+        // Near-opaque card floating over the vibrancy, per the glass mock.
+        let card = v_flex()
+            .size_full()
+            .rounded(px(14.))
+            .overflow_hidden()
+            .bg(p.card)
+            .border_t_1()
+            .border_color(p.edge)
             .child(
                 v_flex()
                     .p_2()
                     .gap_2()
                     .border_b_1()
-                    .border_color(p.border)
+                    .border_color(p.hair)
                     .child(Input::new(&self.search).aria_label("Search loaded issues"))
                     .child(
                         h_flex()
@@ -2520,12 +2532,19 @@ impl Velvet {
                             .child(hint("k", "previous"))
                             .child(hint("e", "edit")),
                     ),
-            )
+            );
+        v_flex()
+            .w(px(400.))
+            .flex_shrink_0()
+            .h_full()
+            .pl_3()
+            .py_3()
+            .child(card)
             .into_any_element()
     }
     /// Dashboard, projects, reports, feed, mentions, unlinked PRs and work log.
     fn page_view(&self, page: pages::Page, cx: &Context<Self>) -> AnyElement {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         let mut body = v_flex()
             .id("page")
             .flex_1()
@@ -2628,7 +2647,7 @@ impl Velvet {
         body.into_any_element()
     }
     fn sprint_list(&self, cx: &Context<Self>) -> AnyElement {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         let visible = state::visible_sprints(&self.sprints, self.project.as_deref());
         v_flex()
             .w(px(340.))
@@ -2714,7 +2733,7 @@ impl Velvet {
             .into_any_element()
     }
     fn sprint_board(&self, cx: &Context<Self>) -> AnyElement {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         let Some(sprint) = self
             .sprint
             .as_ref()
@@ -2831,7 +2850,7 @@ impl Velvet {
             .into_any_element()
     }
     fn milestone_issue_rows(&self, cx: &Context<Self>) -> AnyElement {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         let Some(issues) = self.milestone_issues.as_ref() else {
             return div()
                 .p_3()
@@ -2885,7 +2904,7 @@ impl Velvet {
             .into_any_element()
     }
     fn detail(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         let Some(issue) = self.selected.as_ref() else {
             return v_flex()
                 .flex_1()
@@ -2940,9 +2959,10 @@ impl Velvet {
             .flex_shrink_0()
             .p_4()
             .gap_1()
-            .border_l_1()
-            .border_color(p.border)
-            .bg(p.surface)
+            .rounded(px(14.))
+            .bg(p.glass)
+            .border_t_1()
+            .border_color(p.edge)
             .child(field("Status", self.status_menu(true, cx)))
             .child(field(
                 "Priority",
@@ -3236,11 +3256,18 @@ impl Velvet {
             .flex_1()
             .min_w_0()
             .h_full()
+            .p_3()
+            .gap_3()
             .child(
                 v_flex()
                     .flex_1()
                     .min_w_0()
                     .h_full()
+                    .rounded(px(14.))
+                    .overflow_hidden()
+                    .bg(p.card)
+                    .border_t_1()
+                    .border_color(p.edge)
                     .child(narrative)
                     .children(composer),
             )
@@ -3275,7 +3302,7 @@ impl Velvet {
     }
     /// Three segments aligned with the panes below: sidebar, list actions, detail actions.
     fn toolbar(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         let narrow = window.viewport_size().width < px(1200.);
         let slug = self.slug().unwrap_or_default();
         let issue = (self.page.is_none() && !self.sprints_view)
@@ -3298,30 +3325,20 @@ impl Velvet {
         };
         h_flex()
             .id("toolbar")
-            .h(px(44.))
+            .h(px(52.))
             .flex_shrink_0()
             .window_control_area(WindowControlArea::Drag)
-            .bg(p.surface)
-            .border_b_1()
-            .border_color(p.border)
+            .pr_3()
+            .gap_3()
+            .items_center()
             .child(
                 // Traffic lights sit over this segment; the rest is a drag handle.
-                h_flex()
-                    .w(px(240.))
-                    .h_full()
-                    .flex_shrink_0()
-                    .border_r_1()
-                    .border_color(p.border),
+                h_flex().w(px(228.)).h_full().flex_shrink_0(),
             )
             .child(
-                h_flex()
+                self.capsule(p)
                     .w(px(400.))
-                    .h_full()
                     .flex_shrink_0()
-                    .px_3()
-                    .gap_1()
-                    .border_r_1()
-                    .border_color(p.border)
                     .child(
                         div()
                             .id("view-heading")
@@ -3359,22 +3376,16 @@ impl Velvet {
                     ),
             )
             .child(
-                h_flex()
+                self.capsule(p)
                     .flex_1()
                     .min_w_0()
-                    .h_full()
-                    .px_3()
-                    .gap_1()
                     .when_some(issue, |bar, issue| {
                         let key = issue.key.clone();
-                        let project = self.project_name(issue);
                         bar.child(
                             h_flex()
                                 .min_w_0()
                                 .gap_2()
                                 .text_size(px(14.))
-                                .child(div().text_color(p.secondary).child(project))
-                                .child(div().text_color(p.muted).child("/"))
                                 .child(div().font_weight(FontWeight::SEMIBOLD).child(key.clone()))
                                 .when(!narrow, |r| {
                                     r.child(
@@ -3384,9 +3395,9 @@ impl Velvet {
                                             .px_2()
                                             .gap_1p5()
                                             .rounded_full()
-                                            .border_1()
-                                            .border_color(p.border)
-                                            .bg(p.paper)
+                                            .border_t_1()
+                                            .border_color(p.edge)
+                                            .bg(p.glass)
                                             .text_size(px(13.))
                                             .child(status_icon(&issue.status, p).size(px(13.)))
                                             .child(status_label(&issue.status).to_owned()),
@@ -3407,7 +3418,7 @@ impl Velvet {
                                         this.move_selection(1, window, cx)
                                     })),
                             )
-                            .child(div().w(px(1.)).h(px(18.)).mx_1().bg(p.border))
+                            .child(div().w(px(1.)).h(px(18.)).mx_1().bg(p.hair))
                         })
                         .child(
                             Button::new("edit")
@@ -3433,8 +3444,21 @@ impl Velvet {
             )
             .into_any_element()
     }
+    /// A floating glass capsule: the Liquid Glass unit for toolbar segments.
+    fn capsule(&self, p: Palette) -> Div {
+        h_flex()
+            .h(px(36.))
+            .px_3()
+            .gap_1()
+            .items_center()
+            .rounded_full()
+            .bg(p.glass_strong)
+            .border_t_1()
+            .border_color(p.edge)
+            .shadow_sm()
+    }
     fn signed_out(&self, cx: &Context<Self>) -> AnyElement {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         v_flex().size_full()
             .child(div().h(px(44.)).w_full().flex_shrink_0().window_control_area(WindowControlArea::Drag))
             .child(v_flex().flex_1().items_center().justify_center().p_6().gap_4()
@@ -3451,7 +3475,7 @@ impl Velvet {
             .into_any_element()
     }
     fn overlay(&self, cx: &Context<Self>) -> AnyElement {
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         let mut body = v_flex()
             .id("overlay-body")
             .role(Role::Dialog)
@@ -3676,7 +3700,7 @@ impl Render for Velvet {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Theme mode may change from the system while the window is open.
         self.dark = Theme::global(cx).mode.is_dark();
-        let p = Palette::new(self.dark);
+        let p = self.palette();
         v_flex()
             .id("velvet-workspace")
             .role(Role::Main)
@@ -3684,7 +3708,12 @@ impl Render for Velvet {
             .test_support()
             .relative()
             .size_full()
-            .bg(p.paper)
+            // Translucent so the window vibrancy shows through between the cards.
+            .bg(if self.glass {
+                p.paper.opacity(0.35)
+            } else {
+                p.paper
+            })
             .text_color(p.ink)
             .font_family(".AppleSystemUIFont")
             .text_size(px(16.))
@@ -3819,9 +3848,9 @@ impl Render for Velvet {
                         .px_4()
                         .items_center()
                         .justify_center()
-                        .bg(p.surface)
+                        .bg(p.glass)
                         .border_b_1()
-                        .border_color(p.border)
+                        .border_color(p.hair)
                         .text_size(px(13.))
                         .text_color(p.secondary)
                         .child(format!(

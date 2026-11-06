@@ -83,6 +83,9 @@ fn main() {
                     traffic_light_position: Some(point(px(14.), px(14.))),
                 }),
                 app_owns_titlebar_drag: true,
+                // Liquid Glass: NSVisualEffect vibrancy behind the window. Surfaces
+                // draw translucent fills on top; see Palette::glass.
+                window_background: WindowBackgroundAppearance::Blurred,
                 ..Default::default()
             };
             let (handle, view) = gpui_kit::open_window(options, cx, move |window, cx| {

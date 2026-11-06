@@ -69,6 +69,16 @@ pub struct Palette {
     pub danger: Hsla,
     /// Completed state only, never the sole signal.
     pub done: Hsla,
+    /// Liquid Glass chrome: translucent fills for vibrancy regions (sidebar, rail).
+    pub glass: Hsla,
+    /// Translucent fill for floating capsules (toolbar, chips, pickers).
+    pub glass_strong: Hsla,
+    /// Near-opaque reading surface for the list and document.
+    pub card: Hsla,
+    /// 0.5px top highlight that sells the glass edge.
+    pub edge: Hsla,
+    /// Hairline separators on glass.
+    pub hair: Hsla,
 }
 
 impl Palette {
@@ -91,7 +101,49 @@ impl Palette {
             secondary: rgb(values[5]).into(),
             danger: rgb(values[6]).into(),
             done: rgb(values[7]).into(),
+            glass: if dark {
+                hsla(0., 0., 0.11, 0.55)
+            } else {
+                hsla(0., 0., 1., 0.55)
+            },
+            glass_strong: if dark {
+                hsla(0., 0., 0.13, 0.72)
+            } else {
+                hsla(0., 0., 1., 0.72)
+            },
+            card: if dark {
+                hsla(0., 0., 0.085, 0.86)
+            } else {
+                hsla(0., 0., 1., 0.86)
+            },
+            edge: if dark {
+                hsla(0., 0., 1., 0.14)
+            } else {
+                hsla(0., 0., 1., 0.65)
+            },
+            hair: if dark {
+                hsla(0., 0., 1., 0.09)
+            } else {
+                hsla(0., 0., 0., 0.08)
+            },
         }
+    }
+    /// The user's macOS "Reduce transparency" setting. Glass falls back to
+    /// opaque surfaces so text never sits on a moving backdrop.
+    pub fn reduce_transparency() -> bool {
+        std::process::Command::new("defaults")
+            .args(["read", "com.apple.universalaccess", "reduceTransparency"])
+            .output()
+            .ok()
+            .is_some_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "1")
+    }
+    pub fn opaque(mut self) -> Self {
+        self.glass = self.surface;
+        self.glass_strong = self.surface;
+        self.card = self.paper;
+        self.edge = self.border;
+        self.hair = self.border;
+        self
     }
 }
 
