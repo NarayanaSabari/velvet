@@ -26,9 +26,12 @@ gh release view "$tag" -R "$repo" >/dev/null 2>&1 && fail "Release $tag already 
 
 archive="dist/Velvet-$version-arm64.zip"
 [[ -e "$archive" || -e "dist/Velvet-$version-arm64.dmg" ]] && fail "Output for $version exists in dist/. Move it aside before releasing."
-[[ -e dist/Velvet.app ]] && mv dist/Velvet.app "$(mktemp -d dist/.previous.XXXXXX)/"
+rm -rf dist/Velvet.app
 ./package.sh --dmg
 dmg="dist/Velvet-$version-arm64.dmg"
+# Only the zip and dmg are kept; a loose .app here would show up in Spotlight
+# as a second install next to /Applications/Velvet.app.
+mv dist/Velvet.app "dist/.Velvet-$version.app"
 
 sha="$(shasum -a 256 "$archive" | cut -d' ' -f1)"
 signature="$(cargo run -q --locked --example update_key -- sign "$key" "$version" "$sha")"
