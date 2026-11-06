@@ -47,6 +47,8 @@ plutil -lint Info.plist
 # An explicit native target avoids an inherited Cargo cross-compilation default.
 cargo build --release --locked --target aarch64-apple-darwin --target-dir "$root/target"
 mkdir -p "$dist"
+# Keep build output out of Spotlight and Launchpad so only /Applications/Velvet.app shows.
+touch "$dist/.metadata_never_index"
 stage="$(mktemp -d "$dist/.package.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT
 bundle="$stage/Velvet.app"
