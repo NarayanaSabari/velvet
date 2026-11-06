@@ -33,6 +33,14 @@ use std::{
 
 use crate::glass::{self, Glass, glass_region};
 
+/// The test platform panics on `start_window_move`, so drag strips only move
+/// a real window.
+fn start_window_move(window: &mut Window) {
+    if !cfg!(test) {
+        window.start_window_move();
+    }
+}
+
 const UPDATE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 pub const DEFAULT_SERVER: &str = "https://velvet.sabarinarayana.com";
 
@@ -3381,7 +3389,7 @@ impl Velvet {
             .h(px(52.))
             .flex_shrink_0()
             .window_control_area(WindowControlArea::Drag)
-            .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
+            .on_mouse_down(MouseButton::Left, |_, window, _| start_window_move(window))
             .pr_3()
             .gap_3()
             .items_center()
@@ -3515,7 +3523,7 @@ impl Velvet {
         let p = self.palette();
         v_flex().size_full()
             .child(div().h(px(44.)).w_full().flex_shrink_0().window_control_area(WindowControlArea::Drag)
-            .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move()))
+            .on_mouse_down(MouseButton::Left, |_, window, _| start_window_move(window)))
             .child(v_flex().flex_1().items_center().justify_center().p_6().gap_4()
             .child(v_flex().w(px(460.)).max_w_full().gap_4().p_6().border_1().border_color(p.border).rounded(px(8.))
                 .child(div().text_size(px(24.)).font_weight(FontWeight::SEMIBOLD).child("Velvet for macOS"))
@@ -3984,7 +3992,7 @@ impl Render for Velvet {
                             .w_full()
                             .window_control_area(WindowControlArea::Drag)
                             .on_mouse_down(MouseButton::Left, |_, window, _| {
-                                window.start_window_move()
+                                start_window_move(window)
                             }),
                     )
                     .p_6()
