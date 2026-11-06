@@ -209,6 +209,14 @@ impl Velvet {
             _ => el.bg(fill),
         }
     }
+    /// Near-opaque content panel floating over the glass backdrop.
+    fn card<E: Styled>(&self, p: Palette, el: E) -> E {
+        el.rounded(px(14.))
+            .overflow_hidden()
+            .bg(p.card)
+            .border_t_1()
+            .border_color(p.edge)
+    }
     pub fn new(server: String, demo: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let dark = matches!(
             window.appearance(),
@@ -2576,40 +2584,32 @@ impl Velvet {
     /// Dashboard, projects, reports, feed, mentions, unlinked PRs and work log.
     fn page_view(&self, page: pages::Page, cx: &Context<Self>) -> AnyElement {
         let p = self.palette();
-        let mut body = v_flex()
-            .id("page")
-            .flex_1()
-            .min_w_0()
-            .h_full()
-            .overflow_y_scroll()
-            .p_6()
-            .gap_5()
-            .child(
-                h_flex()
-                    .justify_between()
-                    .gap_2()
-                    .child(
-                        div()
-                            .id("page-heading")
-                            .role(Role::Heading)
-                            .aria_label(page.title())
-                            .test_support()
-                            .text_size(px(24.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(page.title()),
-                    )
-                    .child(
-                        Button::new("page-refresh")
-                            .ghost()
-                            .label(if self.page_loading {
-                                "Loading…"
-                            } else {
-                                "Refresh"
-                            })
-                            .disabled(self.page_loading)
-                            .on_click(cx.listener(move |this, _, _, cx| this.show_page(page, cx))),
-                    ),
-            );
+        let mut body = v_flex().id("page").overflow_y_scroll().p_6().gap_5().child(
+            h_flex()
+                .justify_between()
+                .gap_2()
+                .child(
+                    div()
+                        .id("page-heading")
+                        .role(Role::Heading)
+                        .aria_label(page.title())
+                        .test_support()
+                        .text_size(px(24.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(page.title()),
+                )
+                .child(
+                    Button::new("page-refresh")
+                        .ghost()
+                        .label(if self.page_loading {
+                            "Loading…"
+                        } else {
+                            "Refresh"
+                        })
+                        .disabled(self.page_loading)
+                        .on_click(cx.listener(move |this, _, _, cx| this.show_page(page, cx))),
+                ),
+        );
         if self.demo {
             body = body.child(self.label("Sample mode has no server data for this page."));
         }
@@ -2675,17 +2675,19 @@ impl Velvet {
             }
             body = body.child(list);
         }
-        body.into_any_element()
+        div()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .p_3()
+            .child(self.card(p, body.size_full()))
+            .into_any_element()
     }
     fn sprint_list(&self, cx: &Context<Self>) -> AnyElement {
         let p = self.palette();
         let visible = state::visible_sprints(&self.sprints, self.project.as_deref());
-        v_flex()
-            .w(px(340.))
-            .h_full()
-            .flex_shrink_0()
-            .border_r_1()
-            .border_color(p.border)
+        let list = self
+            .card(p, v_flex().size_full())
             .child(
                 v_flex()
                     .p_4()
@@ -2760,7 +2762,13 @@ impl Velvet {
                                 this.select_sprint(Some(id.clone()), cx)
                             }))
                     })),
-            )
+            );
+        v_flex()
+            .w(px(340.))
+            .h_full()
+            .flex_shrink_0()
+            .p_3()
+            .child(list)
             .into_any_element()
     }
     fn sprint_board(&self, cx: &Context<Self>) -> AnyElement {
@@ -2770,12 +2778,17 @@ impl Velvet {
             .as_ref()
             .and_then(|id| self.sprints.iter().find(|s| &s.id == id))
         else {
-            return v_flex()
+            return div()
                 .flex_1()
-                .p_6()
-                .gap_3()
-                .child(div().text_size(px(24.)).child("Plans, in focus."))
-                .child(self.label("Choose a sprint to see its milestones and progress."))
+                .min_w_0()
+                .h_full()
+                .py_3()
+                .pr_3()
+                .child(
+                    self.card(p, v_flex().size_full().p_6().gap_3())
+                        .child(div().text_size(px(24.)).child("Plans, in focus."))
+                        .child(self.label("Choose a sprint to see its milestones and progress.")),
+                )
                 .into_any_element();
         };
         let path = format!(
@@ -2783,11 +2796,8 @@ impl Velvet {
             self.slug().unwrap_or_default(),
             sprint.id
         );
-        v_flex()
+        let board = v_flex()
             .id("sprint-board")
-            .flex_1()
-            .min_w_0()
-            .h_full()
             .overflow_y_scroll()
             .p_6()
             .gap_4()
@@ -2877,7 +2887,14 @@ impl Velvet {
                     .when(expanded, |v| {
                         v.child(self.milestone_issue_rows(cx))
                     })
-            }))
+            }));
+        div()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .py_3()
+            .pr_3()
+            .child(self.card(p, board.size_full()))
             .into_any_element()
     }
     fn milestone_issue_rows(&self, cx: &Context<Self>) -> AnyElement {
@@ -2937,12 +2954,16 @@ impl Velvet {
     fn detail(&self, window: &Window, cx: &Context<Self>) -> AnyElement {
         let p = self.palette();
         let Some(issue) = self.selected.as_ref() else {
-            return v_flex()
+            return div()
                 .flex_1()
-                .p_6()
-                .gap_3()
-                .child(div().text_size(px(20.)).child("Your work, in focus."))
-                .child(self.label("Choose an issue to see its description and updates."))
+                .min_w_0()
+                .h_full()
+                .p_3()
+                .child(
+                    self.card(p, v_flex().size_full().p_6().gap_3())
+                        .child(div().text_size(px(20.)).child("Your work, in focus."))
+                        .child(self.label("Choose an issue to see its description and updates.")),
+                )
                 .into_any_element();
         };
         let narrow = window.viewport_size().width < px(1200.);
