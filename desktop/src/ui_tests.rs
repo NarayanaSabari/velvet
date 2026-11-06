@@ -229,7 +229,10 @@ fn dropdowns_open_with_enter_and_space_and_escape_dismisses(cx: &mut TestAppCont
         "account",
         "project-filter",
         "status-filter",
+        "assignee-filter",
         "issue-status",
+        "issue-assignee",
+        "issue-labels",
     ] {
         for key in ["enter", "space"] {
             window

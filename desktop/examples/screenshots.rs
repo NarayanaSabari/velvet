@@ -36,6 +36,9 @@ fn main() -> anyhow::Result<()> {
         ("quit-light", 1280., false, "quit"),
         ("sprints-light", 1280., false, "sprints"),
         ("sprints-dark", 1280., true, "sprints"),
+        ("assignee-menu-light", 1440., false, "issue-assignee"),
+        ("labels-menu-dark", 1440., true, "issue-labels"),
+        ("assignee-filter-light", 1440., false, "assignee-filter"),
     ] {
         let mut cx = HeadlessAppContext::with_platform(
             platform.text_system(),
@@ -77,6 +80,15 @@ fn main() -> anyhow::Result<()> {
                 window.click("new", cx);
                 window.input("Unsent draft retained until you confirm", cx);
                 window.dispatch_action(Box::new(app::Quit), cx);
+            } else if !overlay.is_empty() {
+                // Open a picker from the keyboard so the menu shows checked state.
+                for _ in 0..60 {
+                    if window.find(overlay).focused() == Some(true) {
+                        break;
+                    }
+                    window.press("tab", cx);
+                }
+                window.press("enter", cx);
             }
         })?;
         cx.run_until_parked();

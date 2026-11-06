@@ -1844,6 +1844,8 @@ impl Velvet {
         // Advertise accessibility Press; the dropdown opens on mouse-down.
         .on_click(|_, _, _| {})
         .dropdown_menu(move |mut menu, _, _| {
+            // Items carry status icons, so the check mark must sit on the right.
+            menu = menu.check_side(Side::Right);
             if !mutation {
                 let view = view.clone();
                 menu = menu.item(
@@ -1949,6 +1951,7 @@ impl Velvet {
         // Advertise accessibility Press; the dropdown opens on mouse-down.
         .on_click(|_, _, _| {})
         .dropdown_menu(move |mut menu, _, _| {
+            menu = menu.check_side(Side::Right);
             let pick = |choice: Option<Option<String>>| {
                 let view = view.clone();
                 let target = target.clone();
