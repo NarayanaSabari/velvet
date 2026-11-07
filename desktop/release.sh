@@ -24,6 +24,11 @@ grep -q "^version = \"$version\"$" Cargo.toml || fail "Cargo.toml is not at $ver
 [[ -z "$(git status --porcelain -- . ':!dist' ':!target')" ]] || fail 'Commit desktop changes before releasing.'
 gh release view "$tag" -R "$repo" >/dev/null 2>&1 && fail "Release $tag already exists."
 
+# Never publish a build whose tests fail or that does not pass clippy.
+echo "Running tests…"
+cargo test --locked --features ui-tests >/dev/null 2>&1 || fail 'Tests fail. Fix them before releasing.'
+cargo clippy --locked --features ui-tests >/dev/null 2>&1 || fail 'Clippy fails. Fix it before releasing.'
+
 archive="dist/Velvet-$version-arm64.zip"
 [[ -e "$archive" || -e "dist/Velvet-$version-arm64.dmg" ]] && fail "Output for $version exists in dist/. Move it aside before releasing."
 rm -rf dist/Velvet.app
