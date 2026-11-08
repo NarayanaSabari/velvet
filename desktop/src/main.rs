@@ -81,7 +81,7 @@ fn main() {
                     title: Some("Velvet".into()),
                     // The app draws its own toolbar; traffic lights sit in its first segment.
                     appears_transparent: true,
-                    traffic_light_position: Some(point(px(14.), px(14.))),
+                    traffic_light_position: Some(point(px(16.), px(20.))),
                 }),
                 app_owns_titlebar_drag: true,
                 // Liquid Glass: NSVisualEffect vibrancy behind the window. Surfaces

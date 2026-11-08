@@ -1822,7 +1822,7 @@ impl Velvet {
             )
             .px_2()
             .w_full()
-            .h(px(36.))
+            .h(px(30.))
             .text_size(px(14.))
             .disabled(self.saving)
             // Advertise accessibility Press; the dropdown opens on mouse-down.
@@ -2215,7 +2215,6 @@ impl Velvet {
             .shadow_md();
         let pane = self
             .glass_backed(shell, "glass-sidebar", px(18.), false, p.glass)
-            .child(self.workspace_menu(cx))
             .child(
                 Button::new("commands")
                     .accessibility_label("Search commands, Command K")
@@ -3411,7 +3410,14 @@ impl Velvet {
             .items_center()
             .child(
                 // Traffic lights sit over this segment; the rest is a drag handle.
-                h_flex().w(px(252.)).h_full().flex_shrink_0(),
+                h_flex().w(px(74.)).h_full().flex_shrink_0(),
+            )
+            .child(
+                self.capsule(p, "glass-workspace")
+                    .w(px(166.))
+                    .flex_shrink_0()
+                    .px_1()
+                    .child(self.workspace_menu(cx)),
             )
             .child(
                 self.capsule(p, "glass-list")
