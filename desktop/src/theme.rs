@@ -161,7 +161,8 @@ pub fn apply(dark: bool, cx: &mut App) {
     let theme = Theme::global_mut(cx);
     theme.font_family = ".AppleSystemUIFont".into();
     theme.font_size = px(16.);
-    theme.radius = px(6.);
+    theme.radius = px(8.);
+    theme.radius_lg = px(14.);
     let c = &mut theme.colors;
     c.background = p.paper;
     c.foreground = p.ink;
@@ -182,4 +183,18 @@ pub fn apply(dark: bool, cx: &mut App) {
     c.sidebar = p.surface;
     c.sidebar_foreground = p.ink;
     c.sidebar_border = p.border;
+    // Menus and popovers read as glass: translucent fill, soft hover, no hard
+    // black box next to the window chrome.
+    c.popover = if dark {
+        hsla(0., 0., 0.12, 0.92)
+    } else {
+        hsla(0., 0., 1., 0.92)
+    };
+    c.popover_foreground = p.ink;
+    c.list_hover = if dark {
+        hsla(0., 0., 1., 0.08)
+    } else {
+        hsla(0., 0., 0., 0.06)
+    };
+    c.accent = c.list_hover;
 }
