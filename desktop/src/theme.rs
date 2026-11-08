@@ -112,14 +112,14 @@ impl Palette {
                 hsla(0., 0., 1., 0.72)
             },
             card: if dark {
-                hsla(0., 0., 0.085, 0.86)
+                hsla(0., 0., 0.08, 0.9)
             } else {
-                hsla(0., 0., 1., 0.86)
+                hsla(0., 0., 1., 0.9)
             },
             edge: if dark {
-                hsla(0., 0., 1., 0.14)
+                hsla(0., 0., 1., 0.22)
             } else {
-                hsla(0., 0., 1., 0.65)
+                hsla(0., 0., 1., 0.9)
             },
             hair: if dark {
                 hsla(0., 0., 1., 0.09)

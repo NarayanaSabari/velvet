@@ -28,6 +28,7 @@ gh release view "$tag" -R "$repo" >/dev/null 2>&1 && fail "Release $tag already 
 echo "Running tests…"
 cargo test --locked --features ui-tests >/dev/null 2>&1 || fail 'Tests fail. Fix them before releasing.'
 cargo clippy --locked --features ui-tests >/dev/null 2>&1 || fail 'Clippy fails. Fix it before releasing.'
+cargo run --locked --features ui-tests --example screenshots >/dev/null 2>&1 || fail 'Screenshot run fails. Fix it before releasing.'
 
 archive="dist/Velvet-$version-arm64.zip"
 [[ -e "$archive" || -e "dist/Velvet-$version-arm64.dmg" ]] && fail "Output for $version exists in dist/. Move it aside before releasing."

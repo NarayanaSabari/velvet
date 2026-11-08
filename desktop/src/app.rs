@@ -33,10 +33,11 @@ use std::{
 
 use crate::glass::{self, Glass, glass_region};
 
-/// The test platform panics on `start_window_move`, so drag strips only move
-/// a real window.
+/// The test platform (tests and the screenshots example, both behind
+/// `ui-tests`) panics on `start_window_move`, so drag strips only move a real
+/// window. Release builds never enable that feature.
 fn start_window_move(window: &mut Window) {
-    if !cfg!(test) {
+    if cfg!(not(feature = "ui-tests")) {
         window.start_window_move();
     }
 }
@@ -213,17 +214,31 @@ impl Velvet {
         fill: Hsla,
     ) -> Div {
         match &self.native_glass {
-            Some(g) if self.glass => el.relative().child(glass_region(g, name, radius, clear)),
+            Some(g) if self.glass => el
+                .relative()
+                .child(glass_region(g, name, radius, clear))
+                // Lit top edge, the one painted hint of thickness on real glass.
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left(px(1.))
+                        .right(px(1.))
+                        .h(px(1.))
+                        .rounded_full()
+                        .bg(self.palette().edge),
+                ),
             _ => el.bg(fill),
         }
     }
     /// Near-opaque content panel floating over the glass backdrop.
     fn card<E: Styled>(&self, p: Palette, el: E) -> E {
-        el.rounded(px(14.))
+        el.rounded(px(18.))
             .overflow_hidden()
             .bg(p.card)
-            .border_t_1()
-            .border_color(p.edge)
+            .border_1()
+            .border_color(p.hair)
+            .shadow_md()
     }
     pub fn new(server: String, demo: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let dark = matches!(
@@ -2189,15 +2204,17 @@ impl Velvet {
                 .map(|(label, path, icon)| nav_button(label, path, *icon))
         };
         let shell = v_flex()
-            .w(px(240.))
-            .h_full()
-            .flex_shrink_0()
+            .size_full()
             .px_2()
             .pt_2()
             .gap_0p5()
-            .border_r_1()
-            .border_color(p.hair);
-        self.glass_backed(shell, "glass-sidebar", px(0.), false, p.glass)
+            .rounded(px(18.))
+            .overflow_hidden()
+            .border_1()
+            .border_color(p.hair)
+            .shadow_md();
+        let pane = self
+            .glass_backed(shell, "glass-sidebar", px(18.), false, p.glass)
             .child(self.workspace_menu(cx))
             .child(
                 Button::new("commands")
@@ -2228,7 +2245,14 @@ impl Velvet {
             .child(self.section_label("Across organisations"))
             .children(nav(8..9))
             .child(div().flex_1())
-            .child(self.account_menu(cx))
+            .child(self.account_menu(cx));
+        v_flex()
+            .w(px(252.))
+            .h_full()
+            .flex_shrink_0()
+            .pl_3()
+            .py_3()
+            .child(pane)
             .into_any_element()
     }
     /// Account, appearance and update controls live behind one menu so the sidebar
@@ -2510,13 +2534,8 @@ impl Velvet {
                 .child(div().text_color(p.muted).child(text))
         };
         // Near-opaque card floating over the vibrancy, per the glass mock.
-        let card = v_flex()
-            .size_full()
-            .rounded(px(14.))
-            .overflow_hidden()
-            .bg(p.card)
-            .border_t_1()
-            .border_color(p.edge)
+        let card = self
+            .card(p, v_flex().size_full())
             .child(
                 v_flex()
                     .p_2()
@@ -3019,11 +3038,12 @@ impl Velvet {
             .flex_shrink_0()
             .p_4()
             .gap_1()
-            .rounded(px(14.))
-            .border_t_1()
-            .border_color(p.edge);
+            .rounded(px(18.))
+            .border_1()
+            .border_color(p.hair)
+            .shadow_md();
         let rail = self
-            .glass_backed(rail, "glass-rail", px(14.), false, p.glass)
+            .glass_backed(rail, "glass-rail", px(18.), false, p.glass)
             .child(field("Status", self.status_menu(true, cx)))
             .child(field(
                 "Priority",
@@ -3324,11 +3344,7 @@ impl Velvet {
                     .flex_1()
                     .min_w_0()
                     .h_full()
-                    .rounded(px(14.))
-                    .overflow_hidden()
-                    .bg(p.card)
-                    .border_t_1()
-                    .border_color(p.edge)
+                    .map(|v| self.card(p, v))
                     .child(narrative)
                     .children(composer),
             )
@@ -3395,7 +3411,7 @@ impl Velvet {
             .items_center()
             .child(
                 // Traffic lights sit over this segment; the rest is a drag handle.
-                h_flex().w(px(228.)).h_full().flex_shrink_0(),
+                h_flex().w(px(252.)).h_full().flex_shrink_0(),
             )
             .child(
                 self.capsule(p, "glass-list")
@@ -3509,14 +3525,14 @@ impl Velvet {
     /// A floating glass capsule: the Liquid Glass unit for toolbar segments.
     fn capsule(&self, p: Palette, name: &'static str) -> Div {
         let el = h_flex()
-            .h(px(36.))
+            .h(px(38.))
             .px_3()
             .gap_1()
             .items_center()
             .rounded_full()
-            .border_t_1()
-            .border_color(p.edge)
-            .shadow_sm();
+            .border_1()
+            .border_color(p.hair)
+            .shadow_md();
         self.glass_backed(el, name, px(18.), false, p.glass_strong)
     }
     fn signed_out(&self, cx: &Context<Self>) -> AnyElement {
@@ -3911,20 +3927,22 @@ impl Render for Velvet {
             .on_action(cx.listener(|this, _: &Dismiss, window, cx| this.close_overlay(window, cx)))
             .when(self.demo, |v| {
                 v.child(
-                    h_flex()
-                        .h(px(28.))
-                        .px_4()
-                        .items_center()
-                        .justify_center()
-                        .bg(p.glass)
-                        .border_b_1()
-                        .border_color(p.hair)
-                        .text_size(px(13.))
-                        .text_color(p.secondary)
-                        .child(format!(
-                            "Sample data · No server writes · v{}",
-                            update::CURRENT
-                        )),
+                    h_flex().w_full().justify_center().pb_1().child(
+                        h_flex()
+                            .h(px(24.))
+                            .px_3()
+                            .items_center()
+                            .rounded_full()
+                            .bg(p.glass_strong)
+                            .border_1()
+                            .border_color(p.hair)
+                            .text_size(px(12.))
+                            .text_color(p.secondary)
+                            .child(format!(
+                                "Sample data, nothing is saved to a server. v{}",
+                                update::CURRENT
+                            )),
+                    ),
                 )
             })
             .when_some(self.error.as_ref(), |v, error| {
