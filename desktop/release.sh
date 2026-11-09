@@ -15,7 +15,9 @@ if [[ "${2:-}" == --notes ]]; then notes="${3:?--notes needs text}"; fi
 
 root="$(cd "$(dirname "$0")" && pwd)"
 cd "$root"
-export PATH="$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+# justrust wraps cargo with caching and timing; fall back to cargo when absent.
+rust="$(command -v justrust || echo cargo)"
 key="${VELVET_UPDATE_KEY:-$HOME/.config/velvet/desktop-update-key.hex}"
 [[ -r "$key" ]] || fail "Signing key not readable: $key"
 repo="NarayanaSabari/velvet"
@@ -26,9 +28,9 @@ gh release view "$tag" -R "$repo" >/dev/null 2>&1 && fail "Release $tag already 
 
 # Never publish a build whose tests fail or that does not pass clippy.
 echo "Running tests…"
-cargo test --locked --features ui-tests >/dev/null 2>&1 || fail 'Tests fail. Fix them before releasing.'
-cargo clippy --locked --features ui-tests >/dev/null 2>&1 || fail 'Clippy fails. Fix it before releasing.'
-cargo run --locked --features ui-tests --example screenshots >/dev/null 2>&1 || fail 'Screenshot run fails. Fix it before releasing.'
+"$rust" test --locked --features ui-tests >/dev/null 2>&1 || fail 'Tests fail. Fix them before releasing.'
+"$rust" clippy --locked --features ui-tests >/dev/null 2>&1 || fail 'Clippy fails. Fix it before releasing.'
+"$rust" run --locked --features ui-tests --example screenshots >/dev/null 2>&1 || fail 'Screenshot run fails. Fix it before releasing.'
 
 archive="dist/Velvet-$version-arm64.zip"
 [[ -e "$archive" || -e "dist/Velvet-$version-arm64.dmg" ]] && fail "Output for $version exists in dist/. Move it aside before releasing."

@@ -189,3 +189,13 @@ The expected commit email is `sabarinarayanakg@proton.me`.
 Commit only after inspecting the focused diff, checking the relevant validation evidence, and confirming that no secret or unrelated file is included.
 
 Use a concise commit message with no tool attribution, co-author trailer, credentials, or session metadata.
+
+## Rust builds and tests: use justrust
+
+For `desktop/`, use `justrust` instead of calling cargo directly: `justrust check`,
+`justrust test`, `justrust build`, `justrust clippy` and `justrust run` take cargo's
+arguments and return its exit code, then print a timing report. Do not pipe it through
+`grep`, `tail` or `head`. `justrust log` shows the last full output. `cargo fmt`,
+`cargo add` and `cargo tree` stay cargo. Install: `curl -fsSL https://jcode.sh/rust.sh | sh`
+(or `gh release download -R 1jehuang/justrust`), binary lands in `~/.local/bin`.
+Builds stay local unless signed in with `justrust login`.
