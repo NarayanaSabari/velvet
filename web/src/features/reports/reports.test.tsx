@@ -25,4 +25,13 @@ describe('StaleTable', () => {
     render(<StaleTable rows={[]} />)
     expect(screen.getByText(/nothing has stalled/i)).toBeInTheDocument()
   })
+
+  it('gives the table a named, focusable scroll region with a phone-only hint', () => {
+    render(<StaleTable rows={[
+      { id: 'i1', key: 'ENG-1', title: 'Stuck thing', status: 'in_progress', days_silent: 21, assignee_login: 'sabari' },
+    ]} />)
+
+    expect(screen.getByRole('region', { name: 'Stale work' })).toHaveAttribute('tabindex', '0')
+    expect(screen.getByText('Scroll sideways to see every column.')).toHaveClass('sm:hidden')
+  })
 })

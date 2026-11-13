@@ -6,6 +6,12 @@ import { CommentComposer } from './CommentComposer'
 import { CommentThread } from './CommentThread'
 
 describe('CommentComposer', () => {
+  it.each([['MacIntel', '⌘↵ to post'], ['Win32', 'Ctrl+Enter to post']])('names the submit shortcut for %s', (platform, hint) => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform)
+    render(<CommentComposer onSubmit={vi.fn()} />)
+    expect(screen.getByText(hint)).toBeInTheDocument()
+    vi.restoreAllMocks()
+  })
   it.each(['Meta', 'Control'])('submits on %s+Enter', async (modifier) => {
     const onSubmit = vi.fn()
     const user = userEvent.setup()

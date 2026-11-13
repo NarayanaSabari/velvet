@@ -370,6 +370,10 @@ Validate at least 4.5:1 contrast for normal text, 3:1 for large text and meaning
 
 Check disabled text and focus indicators separately because opacity can erase otherwise valid contrast.
 
+Disabled buttons keep `grey-700` text and show a dashed border instead of fading, so the label stays readable. When a control is unavailable for a reason the person can act on, say the reason in visible text next to it, not only in a tooltip.
+
+Priority is shown as P0 to P4. The API and CLI define 0 as none, so pickers label it `P0 (none)`. The product does not define an order for 1 to 4, so the interface does not claim one.
+
 Aim for 44px by 44px touch targets on touch surfaces and never ship a target below 24px by 24px without the applicable spacing exception.
 
 Below `sm`, `.ui-button` and `.ui-control` are at least 44px tall. That rule in `web/src/index.css` is deliberately outside the cascade layers so a call-site `min-h-*` utility cannot shrink a phone target.
