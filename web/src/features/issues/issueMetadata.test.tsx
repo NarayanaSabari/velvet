@@ -97,7 +97,7 @@ it('renders issue metadata without controls for a viewer', () => {
     milestones={[shipAuth]}
   />)
 
-  expect(screen.getByText('3')).toBeInTheDocument()
+  expect(screen.getByText('P3')).toBeInTheDocument()
   expect(screen.getByText('sabari')).toBeInTheDocument()
   expect(screen.getByText('Web')).toBeInTheDocument()
   expect(screen.getByText('Ship auth')).toBeInTheDocument()

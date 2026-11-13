@@ -10,6 +10,7 @@ import { EmptyState } from '../../ui/EmptyState'
 import { Markdown } from '../../ui/Markdown'
 import { ErrorState, LoadingState, NotFoundState } from '../../ui/QueryState'
 import { NavLink } from '../../app/nav'
+import { useReturnFocus } from '../issues/useReturnFocus'
 import { CommentComposer } from '../comments/CommentComposer'
 import { ImagesSection } from '../images/ImagesSection'
 import { CommentThread } from '../comments/CommentThread'
@@ -69,6 +70,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
   const canWrite = workspace?.role === 'admin' || workspace?.role === 'member'
   const [editingMilestone, setEditingMilestone] = useState(false)
   const [creatingIssue, setCreatingIssue] = useState(false)
+  const editButton = useReturnFocus(editingMilestone)
 
   const milestone = useQuery({
     queryKey: ['milestone', slug, milestoneId],
@@ -130,7 +132,13 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
     },
   })
 
-  if (milestone.isPending) return <LoadingState />
+  const pendingHeader = (
+    <header className="mb-6 border-b border-grey-200 pb-4" data-testid="milestone-header">
+      <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase">Milestone</p>
+      <h1 className="text-lg font-medium tracking-[-0.02em]">Milestone</h1>
+    </header>
+  )
+  if (milestone.isPending) return <>{pendingHeader}<LoadingState /></>
   if (isNotFound(milestone.error)) {
     return (
       <NotFoundState
@@ -143,11 +151,14 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
   }
   if (milestone.error || !milestone.data) {
     return (
-      <ErrorState
-        message="Could not load this milestone."
-        onRetry={() => void milestone.refetch()}
-        retrying={milestone.isRefetching}
-      />
+      <>
+        {pendingHeader}
+        <ErrorState
+          message="Could not load this milestone."
+          onRetry={() => void milestone.refetch()}
+          retrying={milestone.isRefetching}
+        />
+      </>
     )
   }
 
@@ -166,28 +177,20 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
       <header className="flex items-start justify-between gap-3 border-b border-grey-200 pb-4" data-testid="milestone-header">
         <div className="min-w-0">
           <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase">Milestone</p>
-          <h1 className="text-lg [overflow-wrap:anywhere]">{data.name}</h1>
+          <h1 className="text-lg font-medium tracking-[-0.02em] [overflow-wrap:anywhere]">{data.name}</h1>
         </div>
         {canWrite ? (
-          <Button className="shrink-0" onClick={() => setEditingMilestone((open) => !open)}>
+          <span ref={editButton} className="shrink-0">
+          <Button
+            aria-expanded={editingMilestone}
+            aria-controls={editingMilestone ? 'milestone-edit-panel' : undefined}
+            onClick={() => setEditingMilestone((open) => !open)}
+          >
             {editingMilestone ? 'Close editor' : 'Edit milestone'}
           </Button>
+          </span>
         ) : null}
       </header>
-
-      <section data-testid="milestone-description">
-        {data.description ? (
-          <div className="border-b border-grey-200 pb-4 text-sm">
-            <Markdown source={data.description} />
-          </div>
-        ) : (
-          <EmptyState
-            title="No description yet."
-            message={canWrite ? 'Add the outcome this milestone is meant to deliver.' : 'Ask a member to add context.'}
-            action={canWrite ? <Button onClick={() => setEditingMilestone(true)}>Add description</Button> : undefined}
-          />
-        )}
-      </section>
 
       {editingMilestone ? (
         <section id="milestone-edit-panel" data-testid="milestone-edit-panel">
@@ -202,6 +205,21 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
           />
         </section>
       ) : null}
+
+      <section data-testid="milestone-description">
+        {data.description ? (
+          <div className="border-b border-grey-200 pb-4 text-sm">
+            <Markdown source={data.description} />
+          </div>
+        ) : (
+          <EmptyState
+            compact
+            title="No description yet."
+            action={canWrite && !editingMilestone ? <Button onClick={() => setEditingMilestone(true)}>Add description</Button> : undefined}
+          />
+        )}
+      </section>
+
 
       <ImagesSection key={`${slug}/${milestoneId}`} slug={slug} target="milestones" targetId={milestoneId} />
 
@@ -223,10 +241,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
               : undefined}
           />
         ) : (
-          <EmptyState
-            title="No updates yet."
-            message={canWrite ? 'Add the first update below.' : 'Ask a teammate to add the first update.'}
-          />
+          <EmptyState compact title={canWrite ? 'No updates yet.' : 'No updates yet. Ask a teammate to add the first one.'} />
         )}
         {canWrite ? (
           <CommentComposer
@@ -329,15 +344,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
           </div>
         ) : (
           <div className="mt-3">
-            <EmptyState
-              title="No issues in this milestone yet."
-              message={canWrite
-                ? creatingIssue ? 'Use the form above to add the first issue.' : 'Track the first piece of work here.'
-                : 'Ask a member to add the first issue.'}
-              action={canWrite && !creatingIssue
-                ? <Button onClick={() => setCreatingIssue(true)}>New issue</Button>
-                : undefined}
-            />
+            <EmptyState compact title="No issues in this milestone yet." />
           </div>
         )}
       </section>

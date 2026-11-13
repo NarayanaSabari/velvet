@@ -110,7 +110,7 @@ describe('IssueEvidenceSection', () => {
 
     expect(screen.getByTestId('issue-evidence-section')).toBeInTheDocument()
     expect(screen.getByText('No linked PRs.')).toBeInTheDocument()
-    expect(screen.getByText('Branch as sabari/eng-42-... to link automatically.')).toBeInTheDocument()
+    expect(screen.getByText(/Branch as sabari\/eng-42-\.\.\. to link automatically\./)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /mark issue done/i })).toBeNull()
   })
 })

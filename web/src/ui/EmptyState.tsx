@@ -12,7 +12,13 @@ export function EmptyState({
   compact?: boolean
 }) {
   if (compact) {
-    return <p className="text-sm text-grey-700">{title}{action ? <> {action}</> : null}</p>
+    return (
+      <p className="text-sm text-grey-700">
+        <span>{title}</span>
+        {message ? <> {message}</> : null}
+        {action ? <> {action}</> : null}
+      </p>
+    )
   }
   return (
     <div className="ui-surface bg-grey-100 px-6 py-10 text-center">

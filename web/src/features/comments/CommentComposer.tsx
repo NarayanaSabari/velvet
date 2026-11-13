@@ -3,6 +3,11 @@ import { useId, useRef, useState, type KeyboardEvent } from 'react'
 import { Button } from '../../ui/Button'
 import { Markdown } from '../../ui/Markdown'
 
+function submitShortcut() {
+  const platform = typeof navigator === 'undefined' ? '' : navigator.platform || navigator.userAgent
+  return /Mac|iPhone|iPad/.test(platform) ? '⌘↵' : 'Ctrl+Enter'
+}
+
 export function CommentComposer({
   onSubmit,
   placeholder = 'Write an update…',
@@ -98,7 +103,7 @@ export function CommentComposer({
         <Button variant="primary" disabled={busy} onClick={() => void submit()}>
           {busy ? 'Commenting…' : 'Comment'}
         </Button>
-        <span className="text-xs text-grey-500">⌘↵ to post</span>
+        <span className="text-xs text-grey-500">{submitShortcut()} to post</span>
         {failed ? (
           <span role="alert" className="text-xs text-blocked">
             Could not post. Your draft is still here - try again.

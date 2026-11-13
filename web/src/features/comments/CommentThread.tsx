@@ -59,6 +59,7 @@ export function ReplyEditor({ commentId, onReply }: {
   if (!open) {
     return (
       <button
+        type="button"
         className="mb-2 min-h-7 rounded-[var(--radius-control)] px-2 text-xs text-grey-500 hover:bg-grey-100 hover:text-ink"
         onClick={() => setOpen(true)}
       >

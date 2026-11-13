@@ -68,10 +68,7 @@ export function ReadOnlyIssueMetadata({
       </div>
       <div data-testid="issue-priority-field">
         <dt>{metadataLabel('Priority')}</dt>
-        <dd className="mt-1 flex items-baseline gap-1 text-ink">
-          <span>P{priority}</span>
-          <span className="text-grey-500">{priority}</span>
-        </dd>
+        <dd className="mt-1 text-ink">P{priority}</dd>
       </div>
       <div data-testid="issue-project-field">
         <dt>{metadataLabel('Project')}</dt>

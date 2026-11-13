@@ -41,7 +41,6 @@ export function IssueLabels({
           >
             <input type="checkbox" checked={selected.includes(label.id)}
               onChange={(event) => void toggle(label.id, event.target.checked)} />
-            <span aria-hidden="true" className="h-2 w-2 rounded-full border border-grey-500 bg-grey-100" />
             {label.name}
           </label>
         ))}

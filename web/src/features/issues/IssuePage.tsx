@@ -29,7 +29,25 @@ import { membersQuery, useWorkLinks } from '../work/workLinks'
 import { Button } from '../../ui/Button'
 import { ErrorState, LoadingState, NotFoundState } from '../../ui/QueryState'
 import { NavLink } from '../../app/nav'
+import { useReturnFocus } from './useReturnFocus'
 import { buildTimeline, type TimelineEntry } from './issueTimeline'
+
+/** Below lg the rail falls under the narrative, so status moves up under the
+ *  header instead. Without matchMedia (tests) the rail layout is assumed. */
+function useLargeLayout(): boolean {
+  const query = '(min-width: 1024px)'
+  const [large, setLarge] = useState(() =>
+    typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : true,
+  )
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const media = window.matchMedia(query)
+    const update = () => setLarge(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  return large
+}
 
 function label(status: string | null): string {
   if (!status) return 'unknown'
@@ -48,7 +66,7 @@ export function IssueTimeline({ entries, onReply }: {
   const sorted = [...entries].sort((a, b) => a.at.localeCompare(b.at))
 
   if (sorted.length === 0) {
-    return <EmptyState title="No updates yet." message="Add the first update below." />
+    return <EmptyState compact title="No updates yet." />
   }
 
   return (
@@ -138,10 +156,7 @@ export function IssueEvidenceSection({
         <p className="text-sm text-blocked" role="alert">Could not load linked PRs.</p>
       ) : pullRequests.length === 0 ? (
         <div data-testid="issue-evidence-empty">
-          <EmptyState
-            title="No linked PRs."
-            message="Branch as sabari/eng-42-... to link automatically."
-          />
+          <EmptyState compact title="No linked PRs." message="Branch as sabari/eng-42-... to link automatically." />
         </div>
       ) : (
         <div className="space-y-1">
@@ -163,6 +178,8 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
   const [newLabel, setNewLabel] = useState('')
   const [editingIssue, setEditingIssue] = useState(false)
   const [creatingSubIssue, setCreatingSubIssue] = useState(false)
+  const editButton = useReturnFocus(editingIssue)
+  const large = useLargeLayout()
 
   const issue = useQuery({
     queryKey: ['issue', slug, issueKey],
@@ -253,7 +270,12 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
     onSuccess: invalidate,
   })
 
-  if (issue.isPending) return <LoadingState />
+  const pendingHeader = (
+    <header className="mb-6 border-b border-grey-200 pb-4" data-testid="issue-header">
+      <h1 className="text-lg font-medium tracking-[-0.02em] [overflow-wrap:anywhere]">{issueKey}</h1>
+    </header>
+  )
+  if (issue.isPending) return <>{pendingHeader}<LoadingState /></>
   if (isNotFound(issue.error)) {
     return (
       <NotFoundState
@@ -266,11 +288,14 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
   }
   if (issue.error || !issue.data) {
     return (
+      <>
+      {pendingHeader}
       <ErrorState
         message="Could not load this issue."
         onRetry={() => void issue.refetch()}
         retrying={issue.isRefetching}
       />
+      </>
     )
   }
 
@@ -283,6 +308,27 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
     comments.data?.comments ?? [],
     activity.data?.activity ?? [],
     evidence.data,
+  )
+
+  const statusSection = (
+      <section className="border-b border-grey-200 pb-4" data-testid="issue-status-section">
+        <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Status</h2>
+        {canWrite ? (
+          <StatusSelect
+            value={data.status}
+            disabled={setStatus.isPending}
+            onChange={(status) => setStatus.mutate(status)}
+          />
+        ) : (
+          <div className="flex items-center gap-2">
+            <StatusDot status={data.status} />
+            <StatusBadge status={data.status} />
+          </div>
+        )}
+        {setStatus.error ? (
+          <p className="mt-2 text-xs text-blocked" role="alert">Could not update status. Try again.</p>
+        ) : null}
+      </section>
   )
 
   const main = (
@@ -303,33 +349,20 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
               </>
             ) : null}
           </p>
-          <h1 className="text-lg [overflow-wrap:anywhere]">{data.title}</h1>
+          <h1 className="text-lg font-medium tracking-[-0.02em] [overflow-wrap:anywhere]">{data.title}</h1>
         </div>
         {canWrite ? (
+          <span ref={editButton} className="shrink-0">
           <Button
-            className="shrink-0"
+            aria-expanded={editingIssue}
             aria-controls={editingIssue ? 'issue-edit-panel' : undefined}
             onClick={() => setEditingIssue((open) => !open)}
           >
             {editingIssue ? 'Close editor' : 'Edit issue'}
           </Button>
+          </span>
         ) : null}
       </header>
-
-      <section data-testid="issue-description">
-        {data.description ? (
-          <div className="border-b border-grey-200 pb-4 text-sm">
-            <Markdown source={data.description} />
-          </div>
-        ) : (
-          <EmptyState
-            title="No description yet."
-            message={canWrite ? 'Add context so the next person can pick up the work.' : 'Ask a member to add context.'}
-            action={canWrite ? <Button onClick={() => setEditingIssue(true)}>Add description</Button> : undefined}
-          />
-        )}
-      </section>
-
       {editingIssue ? (
         <section id="issue-edit-panel" data-testid="issue-edit-panel">
           <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Edit issue</h2>
@@ -343,6 +376,23 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
         </section>
       ) : null}
 
+      {large ? null : statusSection}
+
+      <section data-testid="issue-description">
+        {data.description ? (
+          <div className="border-b border-grey-200 pb-4 text-sm">
+            <Markdown source={data.description} />
+          </div>
+        ) : (
+          <EmptyState
+            compact
+            title="No description yet."
+            action={canWrite && !editingIssue ? <Button onClick={() => setEditingIssue(true)}>Add description</Button> : undefined}
+          />
+        )}
+      </section>
+
+
       <ImagesSection key={`${slug}/${issueKey}`} slug={slug} target="issues" targetId={issueKey} />
 
       <section data-testid="issue-timeline-section">
@@ -355,10 +405,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
               : undefined}
           />
         ) : (
-          <EmptyState
-            title="No updates yet."
-            message={canWrite ? 'Add the first update below.' : 'Ask a teammate to add the first update.'}
-          />
+          <EmptyState compact title={canWrite ? 'No updates yet.' : 'No updates yet. Ask a teammate to add the first one.'} />
         )}
         {canWrite ? <CommentComposer onSubmit={(body) => addComment.mutateAsync(body)} /> : null}
       </section>
@@ -367,24 +414,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
 
   const sidebar = (
     <div className="space-y-6">
-      <section className="border-b border-grey-200 pb-4" data-testid="issue-status-section">
-        <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Status</h2>
-        {canWrite ? (
-          <StatusSelect
-            value={data.status}
-            disabled={setStatus.isPending}
-            onChange={(status) => setStatus.mutate(status)}
-          />
-        ) : (
-          <div className="flex items-center gap-2">
-            <StatusDot status={data.status} />
-            <StatusBadge status={data.status} />
-          </div>
-        )}
-        {setStatus.error ? (
-          <p className="mt-2 text-xs text-blocked" role="alert">Could not update status. Try again.</p>
-        ) : null}
-      </section>
+      {large ? statusSection : null}
 
       <section data-testid="issue-metadata-section">
         {canWrite ? (
@@ -491,17 +521,9 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
             ))}
           </ul>
         ) : (
-          <EmptyState
-            title="No sub-issues yet."
-            message={data.parent_id
-              ? 'This issue is already nested.'
-              : canWrite
-                ? creatingSubIssue ? 'Use the form above to split this work.' : 'Split the work into a smaller, trackable task.'
-                : 'Ask a member to split this work.'}
-            action={canWrite && !data.parent_id && !creatingSubIssue
-              ? <Button onClick={() => setCreatingSubIssue(true)}>New sub-issue</Button>
-              : undefined}
-          />
+          <div className="mt-3">
+            <EmptyState compact title={data.parent_id ? 'No sub-issues. This issue is already nested.' : 'No sub-issues yet.'} />
+          </div>
         )}
       </section>
     </div>

@@ -119,7 +119,7 @@ export function ImagesSection({ slug, target, targetId }: { slug: string; target
         <ul className="min-w-0 divide-y divide-grey-200 border-y border-grey-200">
           {images.data.images.map((image) => <ImageRow key={image.id} image={image} slug={slug} canDelete={Boolean(user && workspace && (workspace.role === 'admin' || (workspace.role === 'member' && image.uploader_id === user.id)))} onDelete={() => remove(image)} />)}
         </ul>
-      ) : <EmptyState title="No images yet." message="Ask your agent to attach an image with context for this work." />}
+      ) : <EmptyState compact title="No images yet." message="Ask your agent to attach an image with context for this work." />}
     </section>
   )
 }
