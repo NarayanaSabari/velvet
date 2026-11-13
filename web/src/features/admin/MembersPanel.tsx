@@ -62,7 +62,7 @@ export function MembersPanel({ slug, selfId, members }: {
     <section aria-label="Members">
       {members.data ? <p className="mb-1 text-sm text-grey-700" data-testid="member-counts">{counts}</p> : null}
       <details className="mb-3 text-sm">
-        <summary className="inline-flex min-h-8 cursor-pointer items-center text-grey-700 underline underline-offset-4">What each role can do</summary>
+        <summary className="inline-flex min-h-11 cursor-pointer items-center text-grey-700 underline underline-offset-4 sm:min-h-8">What each role can do</summary>
         <dl className="mt-2 grid max-w-[46rem] gap-x-4 gap-y-1 rounded-[var(--radius-surface)] border border-grey-200 p-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
           {ROLES.map((role) => (
             <div key={role} className="contents">

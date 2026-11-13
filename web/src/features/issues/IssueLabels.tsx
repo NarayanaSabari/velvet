@@ -37,7 +37,7 @@ export function IssueLabels({
         {labels.map((label) => (
           <label
             key={label.id}
-            className="inline-flex cursor-pointer items-center gap-1.5 border border-grey-200 px-1.5 py-1 text-xs hover:bg-grey-100"
+            className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 border border-grey-200 px-1.5 py-1 text-xs hover:bg-grey-100 sm:min-h-0"
           >
             <input type="checkbox" checked={selected.includes(label.id)}
               onChange={(event) => void toggle(label.id, event.target.checked)} />

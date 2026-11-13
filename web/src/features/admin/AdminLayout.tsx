@@ -16,7 +16,7 @@ function AdminNav({ slug, counts }: { slug: string; counts: Partial<Record<Admin
           <li key={page.id} className="shrink-0">
             <NavLink
               to={`/w/${slug}/admin/${page.id}`}
-              className={`group flex min-h-10 items-center justify-between gap-3 whitespace-nowrap rounded-[var(--radius-control)] border border-transparent px-2.5 text-sm no-underline hover:bg-grey-100 lg:min-h-8 ${page.id === 'danger' ? 'text-blocked' : 'text-grey-700 hover:text-ink'}`}
+              className={`group flex min-h-11 items-center justify-between gap-3 whitespace-nowrap rounded-[var(--radius-control)] border border-transparent px-2.5 text-sm no-underline hover:bg-grey-100 lg:min-h-8 ${page.id === 'danger' ? 'text-blocked' : 'text-grey-700 hover:text-ink'}`}
               activeClassName="border-grey-200 bg-grey-100 font-medium !text-ink"
             >
               <span className={page.id === 'danger' ? 'group-aria-[current=page]:text-blocked' : undefined}>{page.label}</span>

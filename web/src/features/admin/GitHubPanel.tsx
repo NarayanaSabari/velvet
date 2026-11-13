@@ -126,7 +126,7 @@ export function GitHubPanel({ slug, repos }: {
           </div>
           {connection.data.installation ? (
             <details className="mt-3 border-t border-grey-200 pt-3">
-              <summary className="inline-flex min-h-8 cursor-pointer items-center underline underline-offset-4">Disconnect GitHub</summary>
+              <summary className="inline-flex min-h-11 cursor-pointer items-center underline underline-offset-4 sm:min-h-8">Disconnect GitHub</summary>
               <p className="mt-2">To disconnect, uninstall the App in the GitHub account where it is installed. Your existing work evidence remains available.</p>
               <a className="mt-2 block underline" href="https://github.com/settings/installations" target="_blank" rel="noreferrer">Open GitHub App settings</a>
               <p className="mt-2 text-grey-500">For an organisation installation, open that organisation’s settings as an owner.</p>

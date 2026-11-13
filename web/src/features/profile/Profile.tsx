@@ -36,7 +36,7 @@ export function Profile({ slug, page = 'general' }: { slug: string; page?: Profi
           <ul className="flex flex-wrap gap-1 border-b border-grey-200 pb-2 lg:flex-col lg:flex-nowrap lg:gap-0.5 lg:border-b-0 lg:pb-0">
             {PROFILE_PAGES.map((section) => <li key={section.id} className="shrink-0">
               <NavLink to={`/w/${slug}/settings/profile/${section.id}`}
-                className="flex min-h-10 items-center rounded-[var(--radius-control)] border border-transparent px-2.5 text-sm text-grey-700 no-underline hover:bg-grey-100 hover:text-ink lg:min-h-8"
+                className="flex min-h-11 items-center rounded-[var(--radius-control)] border border-transparent px-2.5 text-sm text-grey-700 no-underline hover:bg-grey-100 hover:text-ink lg:min-h-8"
                 activeClassName="border-grey-200 bg-grey-100 font-medium !text-ink">
                 {section.label}
               </NavLink>
@@ -80,7 +80,7 @@ function TokenForm({
   return (
     <form className="flex max-w-2xl flex-col gap-2 sm:flex-row sm:items-end" onSubmit={onSubmit}>
       <label className="min-w-0 flex-1">
-        <span className="mb-0.5 block text-xs text-grey-500">Token name</span>
+        <span className="mb-0.5 block text-xs text-grey-700">Token name</span>
         <input
           className="ui-control block min-h-10 w-full px-2 py-1 md:min-h-8"
           type="text"

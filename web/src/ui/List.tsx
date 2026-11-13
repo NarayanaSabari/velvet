@@ -60,8 +60,9 @@ export function List<T>({
               setIndex(i)
               onActivate?.(item)
             }}
-            className={`cursor-default border-t border-l-2 border-t-grey-200 px-3 py-2 transition-colors duration-100 first:border-t-0 hover:bg-grey-100 ${
-              isActive ? 'border-l-ink bg-grey-100' : 'border-l-transparent'
+            // grey-500 on the grey-100 row is 4.35:1, so muted text darkens with the row.
+            className={`cursor-default border-t border-l-2 border-t-grey-200 px-3 py-2 transition-colors duration-100 first:border-t-0 hover:bg-grey-100 hover:[&_.text-grey-500]:text-grey-700 ${
+              isActive ? 'border-l-ink bg-grey-100 [&_.text-grey-500]:text-grey-700' : 'border-l-transparent'
             }`}
           >
             {renderItem(item, isActive)}

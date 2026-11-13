@@ -75,7 +75,7 @@ export function Mentions({ slug }: { slug: string }) {
               <li
                 key={comment.id}
                 className={`border-t border-l-2 border-t-grey-200 px-3 py-3 text-sm first:border-t-0 ${
-                  readAt ? 'border-l-transparent' : 'border-l-ink bg-grey-100'
+                  readAt ? 'border-l-transparent' : 'border-l-ink bg-grey-100 [&_.text-grey-500]:text-grey-700'
                 }`}
               >
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">

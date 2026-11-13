@@ -276,7 +276,7 @@ export function IssueGroups({ issues, members = [], onOpen }: IssueGroupsProps) 
       {groups.map(({ status, issues: groupIssues }) => (
         <details key={status} data-status={status} open={openStatuses.has(status)}>
           <summary
-            className="flex cursor-pointer items-center gap-3 px-2 py-2 text-sm hover:bg-grey-100"
+            className="flex min-h-11 cursor-pointer items-center gap-3 px-2 py-2 text-sm hover:bg-grey-100 sm:min-h-0"
             aria-expanded={openStatuses.has(status)}
             onClick={(event) => {
               event.preventDefault()

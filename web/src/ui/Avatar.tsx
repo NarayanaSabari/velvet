@@ -5,7 +5,7 @@ const SIZES = { sm: 'h-4 w-4 text-xs', md: 'h-6 w-6 text-xs', lg: 'h-8 w-8 text-
 
 export function Avatar({ user, size = 'sm' }: { user: User | null; size?: keyof typeof SIZES }) {
   const label = userLabel(user)
-  const cls = `${SIZES[size]} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-grey-300 bg-grey-100 align-middle object-cover`
+  const cls = `${SIZES[size]} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-grey-300 bg-grey-100 align-middle text-grey-700 object-cover`
 
   if (user?.avatar_url) {
     return <img className={cls} src={user.avatar_url} alt={label} title={label} />

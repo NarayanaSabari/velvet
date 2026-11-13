@@ -136,7 +136,7 @@ export function ProjectsPage({ slug }: { slug: string }) {
         {canWrite && !creatingProject ? (
           <Button variant="primary" onClick={() => setCreatingProject(true)}>New project</Button>
         ) : null}
-        <label className="flex min-h-8 items-center gap-2 text-sm text-grey-500">
+        <label className="flex min-h-11 items-center gap-2 text-sm text-grey-500 sm:min-h-8">
           <input
             type="checkbox"
             checked={includeArchived}

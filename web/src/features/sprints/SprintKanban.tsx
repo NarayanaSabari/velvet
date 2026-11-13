@@ -213,7 +213,7 @@ export function SprintKanban({
               <StatusDot status={status} />
               <span>{STATUS_LABELS[status]}</span>
               <span
-                className="ml-auto font-normal text-grey-500"
+                className="ml-auto font-normal text-grey-700"
                 aria-label={`${columnIssues.length} ${STATUS_LABELS[status].toLowerCase()} issues`}
               >
                 {columnIssues.length}
@@ -222,7 +222,7 @@ export function SprintKanban({
             <ul className="flex min-h-16 flex-col gap-1.5 p-2" aria-label={`${STATUS_LABELS[status]} issues`}>
               {visible.map(card)}
               {columnIssues.length === 0 ? (
-                <li className="px-1 py-3 text-center text-xs text-grey-500">
+                <li className="px-1 py-3 text-center text-xs text-grey-700">
                   {canWrite ? 'Drop issues here' : 'None'}
                 </li>
               ) : null}
