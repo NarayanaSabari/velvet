@@ -87,20 +87,20 @@ test('each project runs its own sprint, one active at a time', async ({ page }) 
   await openSprint(page, 'web', 'September 2026')
   await expect(page.getByTestId('sprint-project')).toContainText('Web app')
   await page.getByRole('button', { name: 'Activate sprint' }).click()
-  await expect(page.getByText('2026-09-01 to 2026-09-30 · active')).toBeVisible()
+  await expect(page.getByText('1 Sep 2026 to 30 Sep 2026 · Active')).toBeVisible()
 
   await openSprint(page, 'api', 'September 2026')
   await expect(page.getByTestId('sprint-project')).toContainText('Public API')
   await page.getByRole('button', { name: 'Activate sprint' }).click()
-  await expect(page.getByText('2026-09-01 to 2026-09-30 · active')).toBeVisible()
+  await expect(page.getByText('1 Sep 2026 to 30 Sep 2026 · Active')).toBeVisible()
 
   // Activating Web's October completes Web's September, and leaves the API alone.
   await openSprint(page, 'web', 'October 2026')
   await page.getByRole('button', { name: 'Activate sprint' }).click()
-  await expect(page.getByText('2026-10-01 to 2026-10-31 · active')).toBeVisible()
+  await expect(page.getByText('1 Oct 2026 to 31 Oct 2026 · Active')).toBeVisible()
   await page.goto(`/w/${slug}/sprints`)
-  await expect(web.getByRole('option', { name: /September 2026/ })).toContainText('completed')
-  await expect(api.getByRole('option', { name: /September 2026/ })).toContainText('active')
+  await expect(web.getByRole('option', { name: /September 2026/ })).toContainText('Completed')
+  await expect(api.getByRole('option', { name: /September 2026/ })).toContainText('Active')
 
   // The dashboard shows every project's running sprint.
   await page.goto(`/w/${slug}`)

@@ -215,9 +215,9 @@ test('navigates the workspace Issues page and completes the issue workflow', asy
   await page.goto('/w/lab/issues')
   await expect(page.getByTestId('issues-list')).toBeVisible()
   // The title column keeps a real minimum at 1280, so a title wraps to a few lines, not one word per line.
-  const titleBox = await page.locator('[data-testid^="issue-title-"]').first().boundingBox()
-  expect(titleBox?.width ?? 0).toBeGreaterThanOrEqual(200)
-  expect(titleBox?.height ?? Infinity).toBeLessThanOrEqual(80)
+  const wideTitleBox = await page.locator('[data-testid^="issue-title-"]').first().boundingBox()
+  expect(wideTitleBox?.width ?? 0).toBeGreaterThanOrEqual(200)
+  expect(wideTitleBox?.height ?? Infinity).toBeLessThanOrEqual(80)
   await page.emulateMedia({ colorScheme: 'dark' })
   await page.reload()
   await expect(page.getByText('Ship the Issues layout')).toBeVisible()

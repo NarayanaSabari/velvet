@@ -271,7 +271,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
   })
 
   const pendingHeader = (
-    <header className="mb-6 border-b border-grey-200 pb-4" data-testid="issue-header">
+    <header className="mb-6 border-b border-grey-200 pb-4">
       <h1 className="text-lg font-medium tracking-[-0.02em] [overflow-wrap:anywhere]">{issueKey}</h1>
     </header>
   )

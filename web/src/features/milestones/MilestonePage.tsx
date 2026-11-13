@@ -133,7 +133,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
   })
 
   const pendingHeader = (
-    <header className="mb-6 border-b border-grey-200 pb-4" data-testid="milestone-header">
+    <header className="mb-6 border-b border-grey-200 pb-4">
       <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase">Milestone</p>
       <h1 className="text-lg font-medium tracking-[-0.02em]">Milestone</h1>
     </header>
