@@ -77,7 +77,8 @@ function IssueRow({
         to={`/w/${slug}/issues/${issue.key}`}
         className="block px-2 py-3 hover:bg-grey-100 focus-visible:bg-grey-100"
       >
-        <div className="grid min-w-0 gap-2 md:grid-cols-[5rem_minmax(0,1fr)] md:items-center xl:grid-cols-[5rem_minmax(16rem,3fr)_8rem_3rem_minmax(0,1fr)_minmax(0,1fr)_5rem_fit-content(10rem)] xl:gap-x-4">
+        {/* Each row is its own grid, so every xl column has a fixed width to keep rows aligned. Labels sit under the title. */}
+        <div className="grid min-w-0 gap-2 md:grid-cols-[5rem_minmax(0,1fr)] md:items-center xl:grid-cols-[5rem_minmax(16rem,1fr)_8rem_3rem_8rem_11rem_5rem] xl:gap-x-4 xl:gap-y-0">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 md:contents">
             <span className="shrink-0 font-mono text-xs text-grey-500" data-testid={`issue-key-${issue.id}`}>
               {issue.key}
@@ -111,7 +112,7 @@ function IssueRow({
               {milestone}
             </span>
             <span
-              className="flex min-w-0 flex-wrap gap-1 xl:order-last"
+              className="flex min-w-0 flex-wrap gap-1 empty:hidden xl:col-start-2 xl:row-start-2 xl:mt-1"
               aria-label={issue.labels?.length ? `Labels: ${issue.labels.map((label) => label.name).join(', ')}` : undefined}
               data-testid={`issue-labels-${issue.id}`}
             >
