@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 
 import { NavLink } from '../../app/nav'
 import { api } from '../../lib/api'
+import { formatDay, stateLabel } from '../../lib/formatDate'
 import type { Project, Sprint } from '../../lib/types'
 import { EmptyState } from '../../ui/EmptyState'
 import { List } from '../../ui/List'
@@ -43,9 +44,14 @@ export function SprintList({ slug }: { slug: string }) {
     },
   })
 
-  if (query.isPending || projects.isPending) return <LoadingState />
+  const plainHeader = <PageHeader title="Sprints" description="Each project runs its own sprints, one active at a time." />
+  if (query.isPending || projects.isPending) {
+    return <div className="w-full min-w-0">{plainHeader}<LoadingState /></div>
+  }
   if (query.error || projects.error) {
     return (
+      <div className="w-full min-w-0">
+      {plainHeader}
       <ErrorState
         message="Could not load sprints."
         onRetry={() => {
@@ -54,6 +60,7 @@ export function SprintList({ slug }: { slug: string }) {
         }}
         retrying={query.isRefetching || projects.isRefetching}
       />
+      </div>
     )
   }
 
@@ -118,8 +125,8 @@ export function SprintList({ slug }: { slug: string }) {
                     <span className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:items-baseline sm:gap-2">
                       <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{sprint.name}</span>
                       <span className="flex flex-wrap gap-x-2 text-xs text-grey-500 sm:shrink-0 sm:text-sm">
-                        <span>{sprint.starts_on} – {sprint.ends_on}</span>
-                        <span>{sprint.state}</span>
+                        <span><time dateTime={sprint.starts_on}>{formatDay(sprint.starts_on)}</time> – <time dateTime={sprint.ends_on}>{formatDay(sprint.ends_on)}</time></span>
+                        <span>{stateLabel(sprint.state)}</span>
                       </span>
                     </span>
                   )}

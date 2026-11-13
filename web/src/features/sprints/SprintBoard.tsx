@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 
 import { NavLink } from '../../app/nav'
 import { api, isNotFound, listAllWorkspaceIssues } from '../../lib/api'
+import { formatDay, stateLabel } from '../../lib/formatDate'
 import type { Issue, IssueStatus, Milestone, Project, Sprint, User } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Avatar } from '../../ui/Avatar'
@@ -33,10 +34,10 @@ function writeView(view: SprintView) {
   window.history.replaceState(window.history.state, '', url)
 }
 
-/** The board needs five readable columns. Below the shell's `sm` breakpoint
- *  the page keeps the grouped list, which already changes status per row. */
+/** The board needs five readable columns. Below `lg` (1024px) the page keeps
+ *  the grouped list, which already changes status per row. */
 function useWideEnoughForBoard(): boolean {
-  const query = '(min-width: 640px)'
+  const query = '(min-width: 1024px)'
   const [wide, setWide] = useState(() =>
     typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : true,
   )
@@ -172,7 +173,7 @@ function MilestoneCardContent({ milestone, owner }: { milestone: SprintMilestone
 
       <div className="mt-3 flex items-center gap-2 text-xs text-grey-500">
         <span className="capitalize">{milestone.status.replace('_', ' ')}</span>
-        {milestone.target_date ? <span>· due {milestone.target_date}</span> : null}
+        {milestone.target_date ? <span>· due <time dateTime={milestone.target_date}>{formatDay(milestone.target_date)}</time></span> : null}
         <span className="ml-auto" title={assignedTo ? userLabel(assignedTo) : 'No owner'}>
           {assignedTo ? <Avatar user={assignedTo} /> : null}
         </span>
@@ -423,7 +424,7 @@ function SprintHeader({
           </p>
           <h1 className="text-lg font-medium [overflow-wrap:anywhere]">{sprint.name}</h1>
           <p className="mt-1 text-sm text-grey-500">
-            {sprint.starts_on} to {sprint.ends_on} · {sprint.state}
+            <time dateTime={sprint.starts_on}>{formatDay(sprint.starts_on)}</time> to <time dateTime={sprint.ends_on}>{formatDay(sprint.ends_on)}</time> · {stateLabel(sprint.state)}
           </p>
         </div>
         {isAdmin && sprint.state !== 'completed' ? (
@@ -553,9 +554,14 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
       />
     )
   }
-  if (sprint.isPending || milestones.isPending) return <LoadingState />
+  const placeholderHeading = <h1 className="border-b border-grey-200 pb-4 text-lg font-medium">Sprint</h1>
+  if (sprint.isPending || milestones.isPending) {
+    return <div className="w-full min-w-0 space-y-8">{placeholderHeading}<LoadingState /></div>
+  }
   if (sprint.error || milestones.error || !sprint.data || !milestones.data) {
     return (
+      <div className="w-full min-w-0 space-y-8">
+      {placeholderHeading}
       <ErrorState
         message="Could not load this sprint."
         onRetry={() => {
@@ -564,6 +570,7 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
         }}
         retrying={sprint.isRefetching || milestones.isRefetching}
       />
+      </div>
     )
   }
 

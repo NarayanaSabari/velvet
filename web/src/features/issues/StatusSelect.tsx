@@ -44,6 +44,7 @@ export function StatusSelect({
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(() => statusIndex(value))
   const [openedByKeyboard, setOpenedByKeyboard] = useState(false)
+  const [openUp, setOpenUp] = useState(false)
   const generatedId = useId()
   const listboxId = `status-listbox-options-${generatedId}`
 
@@ -63,6 +64,9 @@ export function StatusSelect({
   function openMenu(byKeyboard: boolean, initialIndex = statusIndex(value)) {
     setActiveIndex(Math.max(0, Math.min(initialIndex, ISSUE_STATUSES.length - 1)))
     setOpenedByKeyboard(byKeyboard)
+    // Six options at ~36px plus padding: open upwards when that would pass the viewport bottom.
+    const rect = triggerRef.current?.getBoundingClientRect()
+    setOpenUp(!!rect && rect.bottom + 240 > window.innerHeight && rect.top > window.innerHeight - rect.bottom)
     setOpen(true)
   }
 
@@ -157,12 +161,13 @@ export function StatusSelect({
           aria-label="Status"
           data-testid="status-listbox-options"
           data-status-listbox-options
-          className="absolute right-0 top-[calc(100%+0.375rem)] z-20 min-w-40 overflow-hidden rounded-[var(--radius-surface)] border border-grey-300 bg-paper py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+          data-placement={openUp ? 'top' : 'bottom'}
+          className={`absolute right-0 ${openUp ? 'bottom-[calc(100%+0.375rem)]' : 'top-[calc(100%+0.375rem)]'} z-20 min-w-40 overflow-hidden rounded-[var(--radius-surface)] border border-grey-300 bg-paper py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]`}
           style={{
             animation: openedByKeyboard
               ? 'none'
               : 'status-listbox-enter 150ms cubic-bezier(0.23, 1, 0.32, 1)',
-            transformOrigin: 'top right',
+            transformOrigin: openUp ? 'bottom right' : 'top right',
           }}
         >
           {ISSUE_STATUSES.map((status, index) => (

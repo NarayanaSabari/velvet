@@ -230,7 +230,7 @@ export function SprintKanban({
             {hidden > 0 ? (
               <button
                 type="button"
-                className="mx-2 mb-2 rounded-[var(--radius-control)] px-2 py-1 text-xs text-grey-700 hover:bg-paper"
+                className="mx-2 mb-2 min-h-6 rounded-[var(--radius-control)] px-2 py-1 text-xs text-grey-700 hover:bg-paper"
                 onClick={() => setShowAllDone(true)}
               >
                 + {hidden} more · Show all
@@ -250,7 +250,7 @@ export function SprintKanban({
                   drop(event, 'cancelled')
                 }}
               >
-                <summary className="flex cursor-pointer items-center gap-2 text-xs text-grey-700">
+                <summary className="flex min-h-6 cursor-pointer items-center gap-2 text-xs text-grey-700">
                   <StatusDot status="cancelled" />
                   Cancelled · {cancelled.length}
                 </summary>
@@ -293,11 +293,11 @@ export function MoveToast({
           : `Moved ${move.issue.key} to ${STATUS_LABELS[move.to]}`}
       </span>
       {failed ? null : (
-        <button type="button" className="underline" onClick={onUndo}>
+        <button type="button" className="min-h-11 min-w-11 underline sm:min-h-6 sm:min-w-6" onClick={onUndo}>
           Undo
         </button>
       )}
-      <button type="button" aria-label="Dismiss" className="text-grey-300" onClick={onDismiss}>
+      <button type="button" aria-label="Dismiss" className="inline-flex min-h-11 min-w-11 items-center justify-center text-grey-300 sm:min-h-6 sm:min-w-6" onClick={onDismiss}>
         ×
       </button>
     </div>

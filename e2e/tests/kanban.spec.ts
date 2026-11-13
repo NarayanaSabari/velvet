@@ -126,6 +126,11 @@ test('the board fits desktop in both schemes, and phones keep the list', async (
     expect(await overflow()).toBeLessThanOrEqual(0)
     await page.screenshot({ path: `test-results/kanban-1280-${colorScheme}.png`, fullPage: true })
 
+    // The board needs lg (1024px). A tablet width keeps the grouped list.
+    await page.setViewportSize({ width: 768, height: 1024 })
+    await expect(page.getByTestId('sprint-kanban')).toHaveCount(0)
+    await expect(page.getByRole('group', { name: 'Issue view' })).toHaveCount(0)
+
     await page.setViewportSize({ width: 390, height: 844 })
     await expect(page.getByTestId('sprint-kanban')).toHaveCount(0)
     await expect(page.getByRole('group', { name: 'Issue view' })).toHaveCount(0)
