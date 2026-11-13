@@ -53,12 +53,19 @@ function ReportBody<T>({ query, name, children }: {
   return <LoadingState />
 }
 
-function Table({ head, children }: { head: string[]; children: ReactNode }) {
+function Table({ label, head, children }: { label: string; head: string[]; children: ReactNode }) {
   return (
-    <div className="max-w-full overflow-x-auto rounded-[var(--radius-surface)] border border-grey-200">
+    <>
+    <p className="mb-1 text-xs text-grey-700 sm:hidden">Scroll sideways to see every column.</p>
+    <div
+      role="region"
+      aria-label={label}
+      tabIndex={0}
+      className="max-w-full overflow-x-auto rounded-[var(--radius-surface)] border border-grey-200"
+    >
       <table className="w-full min-w-[36rem] text-sm [overflow-wrap:anywhere]">
         <thead className="bg-grey-100">
-          <tr className="border-b border-grey-200 text-left text-xs text-grey-500">
+          <tr className="border-b border-grey-200 text-left text-xs text-grey-700">
             {head.map((h) => (
               <th key={h} className="px-3 py-2 font-normal">
                 {h}
@@ -69,6 +76,7 @@ function Table({ head, children }: { head: string[]; children: ReactNode }) {
         <tbody className="divide-y divide-grey-200 [&_td]:px-3 [&_td]:py-2">{children}</tbody>
       </table>
     </div>
+    </>
   )
 }
 
@@ -79,7 +87,7 @@ function Nothing({ message }: { message: string }) {
 export function PersonActivityTable({ rows }: { rows: PersonActivityRow[] }) {
   if (rows.length === 0) return <Nothing message="No activity in this period." />
   return (
-    <Table head={['Person', 'Comments', 'Status changes', 'Issues created', 'Total']}>
+    <Table label="Activity per person" head={['Person', 'Comments', 'Status changes', 'Issues created', 'Total']}>
       {rows.map((row) => (
         <tr key={row.user_id ?? row.github_login ?? 'system'}>
           <td className="py-1 pr-4">{row.user_id ? userLabel(row) : 'System'}</td>
@@ -96,7 +104,7 @@ export function PersonActivityTable({ rows }: { rows: PersonActivityRow[] }) {
 export function MilestoneCompletionTable({ rows }: { rows: MilestoneCompletionRow[] }) {
   if (rows.length === 0) return <Nothing message="No sprints yet." />
   return (
-    <Table head={['Sprint', 'Project', 'Completed', 'Planned', 'Rate']}>
+    <Table label="Milestone completion per sprint" head={['Sprint', 'Project', 'Completed', 'Planned', 'Rate']}>
       {rows.map((row) => (
         <tr key={row.sprint_id}>
           <td className="py-1 pr-4">{row.sprint_name}</td>
@@ -115,7 +123,7 @@ export function MilestoneCompletionTable({ rows }: { rows: MilestoneCompletionRo
 export function ClosedPerSprintTable({ rows }: { rows: SprintClosedRow[] }) {
   if (rows.length === 0) return <Nothing message="No sprints yet." />
   return (
-    <Table head={['Sprint', 'Project', 'Closed', 'Total issues']}>
+    <Table label="Issues closed per sprint" head={['Sprint', 'Project', 'Closed', 'Total issues']}>
       {rows.map((row) => (
         <tr key={row.sprint_id}>
           <td className="py-1 pr-4">{row.sprint_name}</td>
@@ -131,7 +139,7 @@ export function ClosedPerSprintTable({ rows }: { rows: SprintClosedRow[] }) {
 export function StaleTable({ rows, slug }: { rows: StaleIssueRow[]; slug?: string }) {
   if (rows.length === 0) return <Nothing message="Nothing has stalled." />
   return (
-    <Table head={['Issue', 'Title', 'Status', 'Assignee', 'Silent for']}>
+    <Table label="Stale work" head={['Issue', 'Title', 'Status', 'Assignee', 'Silent for']}>
       {rows.map((row) => (
         <tr key={row.id}>
           <td className="py-1 pr-4 whitespace-nowrap">

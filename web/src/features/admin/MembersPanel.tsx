@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type SyntheticEvent } from 'react'
 import { useMutation, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
@@ -11,6 +11,11 @@ import { clearPrivateQueries, navigateTo, refreshPrivateQueries } from '../auth/
 import { ROLE_DESCRIPTIONS, ROLE_LABELS, ROLES } from './roles'
 
 const ROLE_ORDER: Record<Role, number> = { admin: 0, member: 1, viewer: 2 }
+
+/** Return focus to the row's trigger before its confirmation unmounts. */
+function focusTrigger(event: SyntheticEvent<HTMLElement>) {
+  event.currentTarget.closest('li')?.querySelector<HTMLButtonElement>('[data-confirm-trigger]')?.focus()
+}
 
 /** Admins first, then by name, with the current person leading their group. */
 function sortMembers(members: WorkspaceMembership[], selfId: string | undefined) {
@@ -115,6 +120,7 @@ export function MembersPanel({ slug, selfId, members }: {
                     </label>
                     <Button
                       variant="danger"
+                      data-confirm-trigger
                       className="min-h-10 md:min-h-8"
                       aria-label={isSelf ? `Leave organisation as ${label}` : `Remove ${label}`}
                       disabled={remove.isPending || updateRole.isPending || lastAdmin}
@@ -125,11 +131,22 @@ export function MembersPanel({ slug, selfId, members }: {
                     </Button>
                   </div>
                 </div>
-                {lastAdmin && list.length > 1 ? (
-                  <p className="mt-1 text-xs text-grey-500 sm:pl-11">The only admin. Make someone else an admin before changing this role or removing them.</p>
+                {lastAdmin ? (
+                  <p className="mt-1 text-xs text-grey-700 sm:pl-11">
+                    {list.length > 1
+                      ? 'The only admin. Make someone else an admin before changing this role or removing them.'
+                      : 'The only member and admin. An organisation needs at least one admin, so this cannot be removed.'}
+                  </p>
                 ) : null}
                 {removing?.id === membership.id ? (
-                  <div className="mt-3 space-y-2 border-t border-grey-200 pt-3" role="group" aria-label={`Confirm removing ${label}`}>
+                  <div
+                    className="mt-3 space-y-2 border-t border-grey-200 pt-3"
+                    role="group"
+                    aria-label={`Confirm removing ${label}`}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape' && !remove.isPending) { focusTrigger(event); setRemoving(null) }
+                    }}
+                  >
                     <p className="text-sm">{isSelf ? 'Leave this organisation?' : `Remove ${label} from this organisation?`}</p>
                     <p className="text-sm text-grey-500">
                       {isSelf
@@ -140,7 +157,7 @@ export function MembersPanel({ slug, selfId, members }: {
                       <Button variant="danger" disabled={remove.isPending} onClick={() => remove.mutate(removing)}>
                         {remove.isPending ? 'Removing…' : isSelf ? 'Confirm leave' : 'Confirm removal'}
                       </Button>
-                      <Button disabled={remove.isPending} onClick={() => setRemoving(null)}>Cancel</Button>
+                      <Button autoFocus disabled={remove.isPending} onClick={(event) => { focusTrigger(event); setRemoving(null) }}>Cancel</Button>
                     </div>
                   </div>
                 ) : null}

@@ -25,14 +25,18 @@ export function Mentions({ slug }: { slug: string }) {
     },
   })
 
-  if (query.isPending) return <LoadingState />
-  if (query.error) {
+  if (query.isPending || query.error) {
     return (
-      <ErrorState
-        message="Could not load mentions."
-        onRetry={() => void query.refetch()}
-        retrying={query.isRefetching}
-      />
+      <div className="w-full min-w-0">
+        <PageHeader title="Mentions" description="Comments that need your attention, gathered into one inbox." />
+        {query.isPending ? <LoadingState /> : (
+          <ErrorState
+            message="Could not load mentions."
+            onRetry={() => void query.refetch()}
+            retrying={query.isRefetching}
+          />
+        )}
+      </div>
     )
   }
 

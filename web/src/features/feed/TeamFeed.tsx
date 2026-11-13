@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
@@ -8,6 +9,7 @@ import { ActivityRow } from '../activity/ActivityRow'
 import { useActivity, type ActivityFilters } from '../activity/useActivity'
 import { useSession } from '../auth/useSession'
 import { userLabel } from '../../lib/userLabel'
+import { membersQuery } from '../work/workLinks'
 
 const VERBS = [
   'commented',
@@ -31,6 +33,8 @@ const VERB_LABELS: Record<string, string> = {
 
 export function TeamFeed({ slug }: { slug: string }) {
   const session = useSession(slug)
+  const members = useQuery(membersQuery(slug))
+  const people = members.data?.members ?? (session.user ? [session.user] : [])
   const [filters, setFilters] = useState<ActivityFilters>({})
   const query = useActivity(slug, filters)
 
@@ -46,7 +50,7 @@ export function TeamFeed({ slug }: { slug: string }) {
 
       <div className="ui-surface mb-4 grid gap-3 bg-grey-100 p-3 text-sm sm:grid-cols-3">
         <label className="min-w-0">
-          <span className="mb-1 block text-xs text-grey-500">Person</span>
+          <span className="mb-1 block text-xs text-grey-700">Person</span>
           <select
             className="ui-control min-h-10 w-full px-2 py-1 text-sm leading-5 md:min-h-8"
             value={filters.actor_id ?? ''}
@@ -55,14 +59,14 @@ export function TeamFeed({ slug }: { slug: string }) {
             }
           >
             <option value="">Everyone</option>
-            {session.user ? (
-              <option value={session.user.id}>{userLabel(session.user)}</option>
-            ) : null}
+            {people.map((person) => (
+              <option key={person.id} value={person.id}>{userLabel(person)}</option>
+            ))}
           </select>
         </label>
 
         <label className="min-w-0">
-          <span className="mb-1 block text-xs text-grey-500">Activity</span>
+          <span className="mb-1 block text-xs text-grey-700">Activity</span>
           <select
             aria-label="Verb"
             className="ui-control min-h-10 w-full px-2 py-1 text-sm leading-5 md:min-h-8"
@@ -79,7 +83,7 @@ export function TeamFeed({ slug }: { slug: string }) {
         </label>
 
         <label className="min-w-0">
-          <span className="mb-1 block text-xs text-grey-500">Work type</span>
+          <span className="mb-1 block text-xs text-grey-700">Work type</span>
           <select
             className="ui-control min-h-10 w-full px-2 py-1 text-sm leading-5 md:min-h-8"
             value={filters.target_type ?? ''}

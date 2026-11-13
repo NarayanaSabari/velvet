@@ -33,14 +33,25 @@ export function UnlinkedPRs({ slug }: { slug: string }) {
     queryFn: () => api.get<{ notes: SuggestedNote[] }>(`/w/${slug}/suggestions/notes`),
   })
 
-  if (query.isPending) return <LoadingState />
-  if (query.error) {
+  const header = (
+    <PageHeader
+      title="Unlinked PRs"
+      description={<>Pull requests with no matching issue. Name the branch after an issue key, such as <span className="font-mono text-grey-700">sabari/eng-42-fix-auth</span>, and they link themselves. Jev suggests an issue when one clearly fits; nothing is linked until you choose.</>}
+    />
+  )
+
+  if (query.isPending || query.error) {
     return (
-      <ErrorState
-        message="Could not load pull requests."
-        onRetry={() => void query.refetch()}
-        retrying={query.isRefetching}
-      />
+      <div className="w-full min-w-0">
+        {header}
+        {query.isPending ? <LoadingState /> : (
+          <ErrorState
+            message="Could not load pull requests."
+            onRetry={() => void query.refetch()}
+            retrying={query.isRefetching}
+          />
+        )}
+      </div>
     )
   }
 
@@ -49,10 +60,7 @@ export function UnlinkedPRs({ slug }: { slug: string }) {
 
   return (
     <div className="w-full min-w-0">
-      <PageHeader
-        title="Unlinked PRs"
-        description={<>Pull requests with no matching issue. Name the branch after an issue key, such as <span className="font-mono text-grey-700">sabari/eng-42-fix-auth</span>, and they link themselves. Jev suggests an issue when one clearly fits; nothing is linked until you choose.</>}
-      />
+      {header}
 
       {prs.length === 0 ? (
         <EmptyState

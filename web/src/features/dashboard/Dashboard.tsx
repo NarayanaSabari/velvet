@@ -14,6 +14,7 @@ import { useSession } from '../auth/useSession'
 import { ConnectAgentCard } from '../onboarding/ConnectAgentCard'
 import { IssueForm, type IssueInput } from '../work/CoreForms'
 import { useWorkLinks } from '../work/workLinks'
+import { formatDay } from '../../lib/formatDate'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -27,10 +28,10 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function IssueLine({ slug, issue }: { slug: string; issue: Issue }) {
   return (
     <div className="flex items-start gap-2 py-1">
-      <NavLink to={`/w/${slug}/issues/${issue.key}`} className="shrink-0 text-grey-500">
-        {issue.key}
+      <NavLink to={`/w/${slug}/issues/${issue.key}`} className="flex min-w-0 flex-1 gap-2">
+        <span className="shrink-0 text-grey-700">{issue.key}</span>
+        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{issue.title}</span>
       </NavLink>
-      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{issue.title}</span>
       <StatusBadge status={issue.status} />
     </div>
   )
@@ -83,14 +84,27 @@ export function Dashboard({ slug }: { slug: string }) {
   })
   const links = useWorkLinks(slug)
 
-  if (query.isPending) return <LoadingState />
+  const header = (
+    <PageHeader
+      title="Dashboard"
+      description="Each project's current sprint, your assigned work, and latest activity in one view."
+      actions={canWrite && !creatingIssue && query.data ? (
+        <Button variant="primary" onClick={() => setCreatingIssue(true)}>New issue</Button>
+      ) : undefined}
+    />
+  )
+
+  if (query.isPending) return <div className="w-full min-w-0">{header}<LoadingState /></div>
   if (query.error) {
     return (
-      <ErrorState
-        message="Could not load the dashboard."
-        onRetry={() => void query.refetch()}
-        retrying={query.isRefetching}
-      />
+      <div className="w-full min-w-0">
+        {header}
+        <ErrorState
+          message="Could not load the dashboard."
+          onRetry={() => void query.refetch()}
+          retrying={query.isRefetching}
+        />
+      </div>
     )
   }
 
@@ -102,13 +116,7 @@ export function Dashboard({ slug }: { slug: string }) {
 
   return (
     <div className="w-full min-w-0">
-      <PageHeader
-        title="Dashboard"
-        description="Each project's current sprint, your assigned work, and latest activity in one view."
-        actions={canWrite && !creatingIssue ? (
-          <Button variant="primary" onClick={() => setCreatingIssue(true)}>New issue</Button>
-        ) : undefined}
-      />
+      {header}
 
       <ConnectAgentCard slug={slug} />
 
@@ -159,7 +167,7 @@ export function Dashboard({ slug }: { slug: string }) {
                       {active.sprint.name}
                     </NavLink>
                   )}
-                  meta={`ends ${active.sprint.ends_on}`}
+                  meta={`ends ${formatDay(active.sprint.ends_on)}`}
                 />
                 {active.milestones.length === 0 ? (
                   <EmptyState title="No milestones in this sprint" />

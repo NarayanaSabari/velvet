@@ -25,6 +25,7 @@ export function renderDiagram(source: string, dark: boolean): Promise<string> {
       theme: 'base',
       look: 'classic',
       layout: 'dagre',
+      // Mirrors the --color-* tokens in src/index.css (light and dark). Keep in sync.
       themeVariables: {
         darkMode: dark,
         background: dark ? '#0a0a0a' : '#ffffff',

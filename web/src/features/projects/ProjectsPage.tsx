@@ -191,6 +191,7 @@ export function ProjectsPage({ slug }: { slug: string }) {
                 {canWrite ? (
                   <div>
                     <Button
+                      data-confirm-trigger
                       disabled={setStatus.isPending}
                       onClick={() => {
                         setStatus.reset()
@@ -211,7 +212,16 @@ export function ProjectsPage({ slug }: { slug: string }) {
                 ) : null}
               </div>
               {archivingKey === project.key ? (
-                <div className="mt-3 space-y-2 border-t border-grey-200 pt-3">
+                <div
+                  className="mt-3 space-y-2 border-t border-grey-200 pt-3"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape' && !setStatus.isPending) {
+                      event.currentTarget.closest('li')?.querySelector<HTMLButtonElement>('[data-confirm-trigger]')?.focus()
+                      setStatus.reset()
+                      setArchivingKey(null)
+                    }
+                  }}
+                >
                   <p className="text-sm font-medium">Archive {project.name}?</p>
                   <p className="text-sm text-grey-500">
                     It will be hidden from the active list. Its issues and history stay available.
@@ -226,8 +236,10 @@ export function ProjectsPage({ slug }: { slug: string }) {
                       {setStatus.isPending ? 'Archiving…' : 'Confirm archive'}
                     </Button>
                     <Button
+                      autoFocus
                       disabled={setStatus.isPending}
-                      onClick={() => {
+                      onClick={(event) => {
+                        event.currentTarget.closest('li')?.querySelector<HTMLButtonElement>('[data-confirm-trigger]')?.focus()
                         setStatus.reset()
                         setArchivingKey(null)
                       }}
