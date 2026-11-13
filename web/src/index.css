@@ -43,22 +43,24 @@
   --radius-surface: 8px;
 }
 
+/* Unlayered on purpose: below sm every shared button and control is a 44px
+   touch target, and no call-site min-h-* utility can shrink it. */
+@media (max-width: 39.99rem) {
+  .ui-button,
+  .ui-control {
+    min-height: 2.75rem;
+  }
+}
+
 @layer components {
   .ui-button {
     transition: transform 160ms ease-out;
   }
 
-  /* 44px touch targets on phones, compact from sm up. Call-site min-h-* utilities still win. */
+  /* Compact default. Call-site min-h-* utilities still win from sm up. */
   .ui-button,
   .ui-control {
-    min-height: 2.75rem;
-  }
-
-  @media (min-width: 40rem) {
-    .ui-button,
-    .ui-control {
-      min-height: 2rem;
-    }
+    min-height: 2rem;
   }
 
   .ui-control {
