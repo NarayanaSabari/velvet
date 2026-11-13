@@ -17,7 +17,7 @@ import { membersQuery, projectsQuery, useWorkLinks } from '../work/workLinks'
 const ISSUE_STATUSES = Object.keys(STATUS_LABELS) as IssueStatus[]
 type StatusFilter = IssueStatus | 'open' | ''
 const ISSUE_PRIORITIES = [0, 1, 2, 3, 4] as const
-const controlClass = 'ui-control w-full px-2 py-1 text-sm leading-5'
+const controlClass = 'ui-control min-h-10 w-full px-2 py-1 text-sm leading-5 md:min-h-8'
 
 const FILTER_KEYS = { search: 'q', status: 'status', assignee: 'assignee', priority: 'priority', project: 'project' } as const
 type Filters = { search: string; status: StatusFilter; assignee: string; priority: string; project: string }
