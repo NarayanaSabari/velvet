@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 
+import { PRIORITIES, priorityOption } from '../../lib/priority'
 import type { Issue, IssueStatus, Milestone, MilestoneStatus } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
@@ -331,7 +332,7 @@ export function IssueForm({
         <Field label="Priority">
           <select className={inputClass} value={priority}
             onChange={(event) => setPriority(Number(event.target.value))}>
-            {[0, 1, 2, 3, 4].map((value) => <option key={value} value={value}>P{value}</option>)}
+            {PRIORITIES.map((value) => <option key={value} value={value}>{priorityOption(value)}</option>)}
           </select>
         </Field>
       </div>
@@ -397,7 +398,7 @@ export function IssueEditForm({
       <Field label="Priority">
         <select className={inputClass} value={priority}
           onChange={(event) => setPriority(Number(event.target.value))}>
-          {[0, 1, 2, 3, 4].map((value) => <option key={value} value={value}>P{value}</option>)}
+          {PRIORITIES.map((value) => <option key={value} value={value}>{priorityOption(value)}</option>)}
         </select>
       </Field>
       <Actions busy={busy} label="Save issue" error={failed} />

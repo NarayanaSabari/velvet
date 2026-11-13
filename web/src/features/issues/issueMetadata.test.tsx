@@ -78,7 +78,7 @@ it('offers P0 through P4 and shows the selected member avatar', async () => {
     onPatch={onPatch}
   />)
 
-  expect(screen.getByRole('option', { name: 'P0' })).toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'P0 (none)' })).toBeInTheDocument()
   expect(screen.getByRole('option', { name: 'P4' })).toBeInTheDocument()
   expect(screen.getByRole('img', { name: 'Sabari' })).toBeInTheDocument()
 

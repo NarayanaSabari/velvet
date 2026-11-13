@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { NavLink } from '../../app/nav'
 import { useSession } from '../auth/useSession'
 import { api } from '../../lib/api'
+import { priorityOption } from '../../lib/priority'
 import type { Issue, IssueStatus, Milestone, Project, User } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
@@ -327,7 +328,7 @@ export function IssuesPage({ slug }: { slug: string }) {
             >
               <option value="">All priorities</option>
               {ISSUE_PRIORITIES.map((value) => (
-                <option key={value} value={value}>P{value}</option>
+                <option key={value} value={value}>{priorityOption(value)}</option>
               ))}
             </select>
           </label>

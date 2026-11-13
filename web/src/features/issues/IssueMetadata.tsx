@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { PRIORITIES, priorityOption } from '../../lib/priority'
 import type { User } from '../../lib/types'
 import { Avatar } from '../../ui/Avatar'
 import { MilestoneOptions } from '../work/CoreForms'
@@ -68,7 +69,7 @@ export function ReadOnlyIssueMetadata({
       </div>
       <div data-testid="issue-priority-field">
         <dt>{metadataLabel('Priority')}</dt>
-        <dd className="mt-1 text-ink">P{priority}</dd>
+        <dd className="mt-1 text-ink">{priorityOption(priority)}</dd>
       </div>
       <div data-testid="issue-project-field">
         <dt>{metadataLabel('Project')}</dt>
@@ -161,9 +162,9 @@ export function IssueMetadata({
           disabled={busy}
           onChange={(event) => void update({ priority: Number(event.target.value) })}
         >
-          {[0, 1, 2, 3, 4].map((value) => (
+          {PRIORITIES.map((value) => (
             <option key={value} value={value}>
-              P{value}
+              {priorityOption(value)}
             </option>
           ))}
         </select>
