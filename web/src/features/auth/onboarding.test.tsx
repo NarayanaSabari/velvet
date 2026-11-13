@@ -134,6 +134,14 @@ it('lets a viewer leave and clears organisation data before navigation', async (
   await waitFor(() => expect(navigate).toHaveBeenCalledWith('/'))
 })
 
+it('tells the only admin how to leave instead of echoing the server', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => response({ error: { code: 'last_admin', message: 'the organisation must retain at least one admin' } }, 409)))
+  show(<LeaveOrganisation slug="lab" />)
+  await userEvent.click(screen.getByRole('button', { name: 'Leave organisation' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Confirm leave' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('You are the only admin. Make someone else an admin in Administration, then leave.')
+})
+
 it('names the pending leave action', async () => {
   vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>(() => {})))
   show(<LeaveOrganisation slug="lab" />)

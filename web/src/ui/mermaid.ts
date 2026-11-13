@@ -1,5 +1,10 @@
 import DOMPurify from 'dompurify'
 
+/** Reads a palette token from index.css, so diagrams follow the one palette in both schemes. */
+function token(name: string): string | undefined {
+  return getComputedStyle(document.documentElement).getPropertyValue(`--color-${name}`).trim() || undefined
+}
+
 let sequence = 0
 let queue: Promise<unknown> = Promise.resolve()
 
@@ -25,16 +30,15 @@ export function renderDiagram(source: string, dark: boolean): Promise<string> {
       theme: 'base',
       look: 'classic',
       layout: 'dagre',
-      // Mirrors the --color-* tokens in src/index.css (light and dark). Keep in sync.
       themeVariables: {
         darkMode: dark,
-        background: dark ? '#0a0a0a' : '#ffffff',
-        primaryColor: dark ? '#171717' : '#f5f5f5',
-        primaryTextColor: dark ? '#ffffff' : '#000000',
-        primaryBorderColor: dark ? '#a3a3a3' : '#737373',
-        lineColor: dark ? '#a3a3a3' : '#737373',
-        secondaryColor: dark ? '#262626' : '#e5e5e5',
-        tertiaryColor: dark ? '#171717' : '#f5f5f5',
+        background: token('paper'),
+        primaryColor: token('grey-100'),
+        primaryTextColor: token('ink'),
+        primaryBorderColor: token('grey-500'),
+        lineColor: token('grey-500'),
+        secondaryColor: token('grey-200'),
+        tertiaryColor: token('grey-100'),
         fontFamily: 'ui-sans-serif, system-ui, sans-serif',
         fontSize: '16px',
       },
@@ -57,5 +61,6 @@ export function renderDiagram(source: string, dark: boolean): Promise<string> {
 
 /** No scripts, network, forms or top-level navigation, even if a renderer regression occurs. */
 export function diagramDocument(svg: string, dark: boolean, expanded = false) {
-  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>html,body{margin:0;background:${dark ? '#0a0a0a' : '#ffffff'};color:${dark ? '#fff' : '#000'};height:100%;overflow:hidden}body{display:grid;place-items:center;padding:16px;box-sizing:border-box}svg{${expanded ? 'max-width:100%!important;width:100%;height:100%' : 'max-width:100%;width:100%;height:auto'};max-height:100%}</style></head><body>${svg}</body></html>`
+  // The frame cannot see the page's custom properties, so the resolved values are written in.
+  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><style>html{color-scheme:${dark ? 'dark' : 'light'}}html,body{margin:0;background:${token('paper') ?? 'Canvas'};color:${token('ink') ?? 'CanvasText'};height:100%;overflow:hidden}body{display:grid;place-items:center;padding:16px;box-sizing:border-box}svg{${expanded ? 'max-width:100%!important;width:100%;height:100%' : 'max-width:100%;width:100%;height:auto'};max-height:100%}</style></head><body>${svg}</body></html>`
 }

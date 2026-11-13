@@ -54,6 +54,9 @@ describe('Button', () => {
       'border-transparent',
       'bg-transparent',
     )
+    // Disabled must stay readable: no opacity fade.
+    expect(screen.getByRole('button', { name: 'Ghost' }).className).toContain('disabled:text-grey-700')
+    expect(screen.getByRole('button', { name: 'Ghost' }).className).not.toContain('opacity')
   })
 })
 

@@ -21,8 +21,8 @@ export function SignOutButton({
     <div role={menuItem ? 'none' : undefined}>
       <button
         className={menuItem
-          ? 'flex min-h-11 w-full items-center rounded-[var(--radius-control)] px-2 py-1.5 text-left sm:min-h-0 text-grey-500 hover:bg-grey-100 focus-visible:bg-grey-100 disabled:opacity-50'
-          : `mt-2 inline-block text-grey-500 underline disabled:opacity-50${publicStyle ? ' min-h-12 px-3' : ''}`}
+          ? 'flex min-h-11 w-full items-center rounded-[var(--radius-control)] px-2 py-1.5 text-left text-grey-700 hover:bg-grey-100 focus-visible:bg-grey-100 disabled:cursor-wait sm:min-h-0'
+          : `mt-2 inline-block text-grey-500 underline disabled:cursor-wait${publicStyle ? ' min-h-12 px-3' : ''}`}
         disabled={isSigningOut}
         type="button"
         role={menuItem ? 'menuitem' : undefined}

@@ -54,7 +54,7 @@ export function MermaidDiagram({ source }: { source: string }) {
         </div>
         <div className="flex gap-1">
           <Button variant="ghost" onClick={() => void copy()}>Copy source</Button>
-          <button ref={expand} type="button" className="ui-button min-h-9 rounded-[var(--radius-control)] px-2 text-xs hover:bg-grey-200 disabled:opacity-40" disabled={!frame} onClick={() => dialog.current?.showModal()}>Expand</button>
+          <button ref={expand} type="button" className="ui-button min-h-9 rounded-[var(--radius-control)] border border-transparent px-2 text-xs hover:bg-grey-200 disabled:cursor-not-allowed disabled:border-dashed disabled:border-grey-300 disabled:text-grey-700 disabled:hover:bg-transparent" disabled={!frame} onClick={() => dialog.current?.showModal()}>Expand</button>
         </div>
       </div>
       {view === 'source' ? <pre className="!m-0 !border-0 text-xs"><code>{source}</code></pre> : (
