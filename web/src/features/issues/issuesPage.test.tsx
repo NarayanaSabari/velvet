@@ -282,6 +282,22 @@ describe('IssuesPage', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=50&include_counts=true&fields=summary&assignee_id=former-member', expect.anything())
   })
 
+  it('restores every filter from the address on load', async () => {
+    window.history.replaceState({}, '', `/w/lab/issues?q=assigned&status=todo&assignee=${member.id}&priority=3&project=demo`)
+    const fetchMock = setupFetch([issue({ id: 'a', title: 'Assigned todo', status: 'todo', priority: 3, assignee_id: member.id, project_id: 'p1' })])
+    renderPage()
+    expect(await screen.findByText('Assigned todo')).toBeInTheDocument()
+    expect(screen.getByTestId('issues-search')).toHaveValue('assigned')
+    expect(screen.getByTestId('issues-status-filter')).toHaveValue('todo')
+    expect(screen.getByTestId('issues-assignee-filter')).toHaveValue(member.id)
+    expect(screen.getByTestId('issues-priority-filter')).toHaveValue('3')
+    expect(screen.getByTestId('issues-project-filter')).toHaveValue('demo')
+    const sent = new URL(String(fetchMock.mock.calls.find(([path]) => String(path).includes('/issues?'))?.[0]), 'http://localhost')
+    expect(sent.searchParams.get('q')).toBe('assigned')
+    expect(sent.searchParams.get('assignee_id')).toBe(member.id)
+    expect(sent.searchParams.get('priority')).toBe('3')
+  })
+
   it('filters by search, status, assignee, and priority, then clears them', async () => {
     const target = issue({
       id: 'target',
@@ -309,8 +325,10 @@ describe('IssuesPage', () => {
     expect(await screen.findByText('Assigned todo')).toBeInTheDocument()
     expect(screen.queryByText('Done work')).toBeNull()
     expect(screen.getByTestId('issues-count')).toHaveTextContent('1 of 2 issues')
+    expect(window.location.search).toBe(`?q=assigned&status=todo&assignee=${member.id}&priority=3`)
 
     await user.click(screen.getByTestId('issues-clear-filters'))
+    expect(window.location.search).toBe('')
     expect(screen.getByTestId('issues-search')).toHaveValue('')
     expect(screen.getByTestId('issues-status-filter')).toHaveValue('')
     expect(screen.getByTestId('issues-assignee-filter')).toHaveValue('')

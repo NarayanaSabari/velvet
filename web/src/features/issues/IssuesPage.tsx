@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { NavLink } from '../../app/nav'
@@ -17,7 +17,33 @@ import { membersQuery, projectsQuery, useWorkLinks } from '../work/workLinks'
 const ISSUE_STATUSES = Object.keys(STATUS_LABELS) as IssueStatus[]
 type StatusFilter = IssueStatus | 'open' | ''
 const ISSUE_PRIORITIES = [0, 1, 2, 3, 4] as const
-const controlClass = 'ui-control min-h-10 w-full px-2 py-1 text-sm leading-5 md:min-h-8'
+const controlClass = 'ui-control w-full px-2 py-1 text-sm leading-5'
+
+const FILTER_KEYS = { search: 'q', status: 'status', assignee: 'assignee', priority: 'priority', project: 'project' } as const
+type Filters = { search: string; status: StatusFilter; assignee: string; priority: string; project: string }
+
+function readFilters(): Filters {
+  const query = new URLSearchParams(window.location.search)
+  const status = query.get('status') ?? ''
+  const priority = query.get('priority') ?? ''
+  return {
+    search: query.get('q') ?? '',
+    status: status === 'open' || (ISSUE_STATUSES as readonly string[]).includes(status) ? (status as StatusFilter) : '',
+    assignee: query.get('assignee') ?? '',
+    priority: (ISSUE_PRIORITIES as readonly number[]).map(String).includes(priority) ? priority : '',
+    project: query.get('project') ?? '',
+  }
+}
+
+function writeFilters(filters: Filters) {
+  const url = new URL(window.location.href)
+  for (const [field, key] of Object.entries(FILTER_KEYS)) {
+    const value = filters[field as keyof Filters]
+    if (value) url.searchParams.set(key, value)
+    else url.searchParams.delete(key)
+  }
+  if (url.href !== window.location.href) window.history.replaceState(window.history.state, '', url)
+}
 
 function assigneeName(issue: Issue, members: Map<string, User>) {
   if (!issue.assignee_id) return 'Unassigned'
@@ -51,7 +77,7 @@ function IssueRow({
         to={`/w/${slug}/issues/${issue.key}`}
         className="block px-2 py-3 hover:bg-grey-100 focus-visible:bg-grey-100"
       >
-        <div className="grid min-w-0 gap-2 md:grid-cols-[5rem_minmax(0,1fr)] md:items-center xl:grid-cols-[5rem_minmax(0,1fr)_8rem_3rem_11rem_12rem_minmax(0,10rem)_5rem] xl:gap-x-4">
+        <div className="grid min-w-0 gap-2 md:grid-cols-[5rem_minmax(0,1fr)] md:items-center xl:grid-cols-[5rem_minmax(16rem,3fr)_8rem_3rem_minmax(0,1fr)_minmax(0,1fr)_5rem_fit-content(10rem)] xl:gap-x-4">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 md:contents">
             <span className="shrink-0 font-mono text-xs text-grey-500" data-testid={`issue-key-${issue.id}`}>
               {issue.key}
@@ -85,7 +111,7 @@ function IssueRow({
               {milestone}
             </span>
             <span
-              className="flex min-w-0 flex-wrap gap-1"
+              className="flex min-w-0 flex-wrap gap-1 xl:order-last"
               aria-label={issue.labels?.length ? `Labels: ${issue.labels.map((label) => label.name).join(', ')}` : undefined}
               data-testid={`issue-labels-${issue.id}`}
             >
@@ -109,15 +135,17 @@ export function IssuesPage({ slug }: { slug: string }) {
   const queryClient = useQueryClient()
   const { workspace } = useSession(slug)
   const canWrite = workspace?.role === 'admin' || workspace?.role === 'member'
-  const [search, setSearch] = useState('')
-  const [status, setStatus] = useState<StatusFilter>(() => new URLSearchParams(window.location.search).get('status') === 'open' ? 'open' : '')
-  const [assignee, setAssignee] = useState('')
-  const [priority, setPriority] = useState('')
-  // The Projects page links here with ?project=<key>, so a project's open
-  // count lands on exactly the issues it counted.
-  const [project, setProject] = useState(
-    () => new URLSearchParams(window.location.search).get('project') ?? '',
-  )
+  // Filters live in the URL so reload and shared links keep them. The
+  // Projects page links here with ?project=<key>&status=open.
+  const [initial] = useState(readFilters)
+  const [search, setSearch] = useState(initial.search)
+  const [status, setStatus] = useState<StatusFilter>(initial.status)
+  const [assignee, setAssignee] = useState(initial.assignee)
+  const [priority, setPriority] = useState(initial.priority)
+  const [project, setProject] = useState(initial.project)
+  useEffect(() => {
+    writeFilters({ search, status, assignee, priority, project })
+  }, [search, status, assignee, priority, project])
   const [creatingIssue, setCreatingIssue] = useState(false)
 
   const params = new URLSearchParams({ limit: '50', include_counts: 'true', fields: 'summary' })
@@ -233,7 +261,7 @@ export function IssuesPage({ slug }: { slug: string }) {
       <section className="ui-surface bg-grey-100 p-3" aria-label="Issue filters">
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))_auto]">
           <label className="block min-w-0 text-sm">
-            <span className="mb-1 block text-grey-500">Search issues</span>
+            <span className="mb-1 block text-grey-700">Search issues</span>
             <input
               className={controlClass}
               type="search"
@@ -244,7 +272,7 @@ export function IssuesPage({ slug }: { slug: string }) {
             />
           </label>
           <label className="block min-w-0 text-sm">
-            <span className="mb-1 block text-grey-500">Filter by status</span>
+            <span className="mb-1 block text-grey-700">Filter by status</span>
             <select
               className={controlClass}
               value={status}
@@ -259,7 +287,7 @@ export function IssuesPage({ slug }: { slug: string }) {
             </select>
           </label>
           <label className="block min-w-0 text-sm">
-            <span className="mb-1 block text-grey-500">Filter by assignee</span>
+            <span className="mb-1 block text-grey-700">Filter by assignee</span>
             <select
               className={controlClass}
               value={assignee}
@@ -274,7 +302,7 @@ export function IssuesPage({ slug }: { slug: string }) {
             </select>
           </label>
           <label className="block min-w-0 text-sm">
-            <span className="mb-1 block text-grey-500">Filter by project</span>
+            <span className="mb-1 block text-grey-700">Filter by project</span>
             <select
               className={controlClass}
               value={project}
@@ -289,7 +317,7 @@ export function IssuesPage({ slug }: { slug: string }) {
             </select>
           </label>
           <label className="block min-w-0 text-sm">
-            <span className="mb-1 block text-grey-500">Filter by priority</span>
+            <span className="mb-1 block text-grey-700">Filter by priority</span>
             <select
               className={controlClass}
               value={priority}
