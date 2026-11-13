@@ -170,11 +170,13 @@
     padding: 0;
   }
 
+  /* Task boxes are read-only state, not controls: marked renders them disabled.
+     24px keeps the mark legible on phones. */
   .markdown input[type='checkbox'] {
-    width: 1rem;
-    height: 1rem;
+    width: 1.5rem;
+    height: 1.5rem;
     margin-right: 0.375rem;
-    vertical-align: -0.125rem;
+    vertical-align: -0.375rem;
   }
 }
 

@@ -84,7 +84,7 @@ export function Mentions({ slug }: { slug: string }) {
                   </span>
                   <RelativeTime iso={comment.created_at} />
                   {href ? (
-                    <NavLink to={href} className="underline">
+                    <NavLink to={href} className="inline-flex min-h-11 items-center underline sm:min-h-0">
                       {mention.target_label}
                     </NavLink>
                   ) : (

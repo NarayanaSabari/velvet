@@ -27,8 +27,8 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function IssueLine({ slug, issue }: { slug: string; issue: Issue }) {
   return (
-    <div className="flex items-start gap-2 py-1">
-      <NavLink to={`/w/${slug}/issues/${issue.key}`} className="flex min-w-0 flex-1 gap-2">
+    <div className="flex items-center gap-2 sm:items-start sm:py-1">
+      <NavLink to={`/w/${slug}/issues/${issue.key}`} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 sm:min-h-0 sm:items-start">
         <span className="shrink-0 text-grey-700">{issue.key}</span>
         <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{issue.title}</span>
       </NavLink>
@@ -58,8 +58,8 @@ function MilestoneSummary({ slug, milestone }: { slug: string; milestone: Milest
   const counts = milestone.issue_counts ?? {}
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
   return (
-    <div className="flex items-start gap-2 py-1">
-      <NavLink to={`/w/${slug}/milestones/${milestone.id}`} className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+    <div className="flex items-center gap-2 sm:items-start sm:py-1">
+      <NavLink to={`/w/${slug}/milestones/${milestone.id}`} className="flex min-h-11 min-w-0 flex-1 items-center [overflow-wrap:anywhere] sm:block sm:min-h-0">
         {milestone.name}
       </NavLink>
       <span className="shrink-0 text-grey-500">

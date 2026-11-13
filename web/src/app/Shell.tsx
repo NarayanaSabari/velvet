@@ -434,7 +434,7 @@ export function Shell({
     <div className="min-h-screen bg-paper sm:flex sm:items-start">
       <a
         href="#main-content"
-        className="sr-only z-50 rounded-[var(--radius-control)] border border-ink bg-paper px-3 py-2 text-sm focus:fixed focus:top-2 focus:left-2 focus:not-sr-only"
+        className="sr-only z-50 rounded-[var(--radius-control)] border border-ink bg-paper px-3 py-2 text-sm focus:fixed focus:top-2 focus:left-2 focus:not-sr-only focus:inline-flex focus:min-h-11 focus:items-center"
       >
         Skip to content
       </a>

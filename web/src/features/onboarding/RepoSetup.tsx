@@ -76,7 +76,7 @@ export function RepoSetup({ workspace, baseUrl }: { workspace: Membership; baseU
             <p className="text-xs text-grey-500">
               This writes velvet.yaml, which holds no secret, so commit it. Teammates run the same command to get their own key.
               Projects: {active.map((project) => project.key).join(', ')}.{' '}
-              <button type="button" className="inline-flex min-h-6 items-center underline underline-offset-4" onClick={() => setCreating(true)}>New project</button>
+              <button type="button" className="inline-flex min-h-11 items-center underline underline-offset-4 sm:min-h-6" onClick={() => setCreating(true)}>New project</button>
             </p>
           </li>
           <li className="space-y-2">

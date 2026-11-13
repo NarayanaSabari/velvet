@@ -86,7 +86,7 @@ function AccountRow({ name, slug, current, account, removable, source, loading, 
   return <>
     <tr data-testid={slug ? `github-account-row-${slug}` : 'github-account-row-global'} className="align-top">
       <th scope="row" className="px-2 py-3 font-normal">
-        {slug ? <a href={`/w/${slug}/settings/profile/github`} className="inline-flex min-h-10 items-center underline underline-offset-4">{name}</a>
+        {slug ? <a href={`/w/${slug}/settings/profile/github`} className="inline-flex min-h-11 items-center underline underline-offset-4 sm:min-h-10">{name}</a>
           : <span className="block py-2">{name}</span>}
         {current ? <span className="block text-xs text-grey-700">Current organisation</span> : null}
       </th>

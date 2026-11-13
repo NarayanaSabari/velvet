@@ -170,7 +170,7 @@ function UnlinkedRow({ pr, slug, canWrite }: { pr: PullRequest; slug: string; ca
   return (
     <li className="border-t border-grey-200 px-3 py-3 text-sm first:border-t-0">
       <div className="flex flex-wrap items-baseline gap-2">
-        <a className="text-grey-500 underline" href={pr.html_url} target="_blank" rel="noreferrer">
+        <a className="inline-flex min-h-11 items-center text-grey-500 underline sm:min-h-0" href={pr.html_url} target="_blank" rel="noreferrer">
           #{pr.number}
         </a>
         <span className="min-w-[12rem] flex-1 break-words font-medium [overflow-wrap:anywhere]">{pr.title}</span>

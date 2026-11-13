@@ -184,7 +184,7 @@ export function ProjectsPage({ slug }: { slug: string }) {
                 </div>
                 <NavLink
                   to={`/w/${slug}/issues?project=${encodeURIComponent(project.key)}&status=open`}
-                  className="text-sm underline"
+                  className="inline-flex min-h-11 items-center text-sm underline sm:min-h-0"
                 >
                   {openCount(project)} open
                 </NavLink>

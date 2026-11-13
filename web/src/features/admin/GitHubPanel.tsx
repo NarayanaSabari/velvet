@@ -128,7 +128,7 @@ export function GitHubPanel({ slug, repos }: {
             <details className="mt-3 border-t border-grey-200 pt-3">
               <summary className="inline-flex min-h-11 cursor-pointer items-center underline underline-offset-4 sm:min-h-8">Disconnect GitHub</summary>
               <p className="mt-2">To disconnect, uninstall the App in the GitHub account where it is installed. Your existing work evidence remains available.</p>
-              <a className="mt-2 block underline" href="https://github.com/settings/installations" target="_blank" rel="noreferrer">Open GitHub App settings</a>
+              <a className="mt-2 flex min-h-11 items-center underline sm:block sm:min-h-0" href="https://github.com/settings/installations" target="_blank" rel="noreferrer">Open GitHub App settings</a>
               <p className="mt-2 text-grey-500">For an organisation installation, open that organisation’s settings as an owner.</p>
               <a className="underline" href="https://docs.github.com/en/apps/using-github-apps/reviewing-and-modifying-installed-github-apps" target="_blank" rel="noreferrer">Organisation uninstall instructions</a>
             </details>
@@ -162,7 +162,7 @@ export function GitHubPanel({ slug, repos }: {
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                     <div className="min-w-0 flex-1 basis-56">
                       <a
-                        className={`underline [overflow-wrap:anywhere] ${repo.disconnected_at ? 'text-grey-500' : ''}`}
+                        className={`inline-flex min-h-11 items-center underline [overflow-wrap:anywhere] sm:min-h-0 ${repo.disconnected_at ? 'text-grey-500' : ''}`}
                         href={`https://github.com/${repo.owner}/${repo.name}`}
                         target="_blank"
                         rel="noreferrer"

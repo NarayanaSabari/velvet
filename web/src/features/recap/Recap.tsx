@@ -123,7 +123,7 @@ export function Recap() {
             ))}
           </select>
         </label>
-        <a className="text-sm underline" href={`/api/v1/me/worklog.md?days=${days}`}>
+        <a className="inline-flex min-h-11 items-center text-sm underline sm:min-h-0" href={`/api/v1/me/worklog.md?days=${days}`}>
           Copy as Markdown
         </a>
         </>}
