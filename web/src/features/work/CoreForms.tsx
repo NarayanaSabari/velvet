@@ -5,7 +5,7 @@ import { Button } from '../../ui/Button'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
 import { groupChoices, reconcileLinks, type MilestoneChoice, type ProjectChoice } from './workLinks'
 
-const inputClass = 'w-full border border-grey-300 bg-paper px-2 py-1 text-sm'
+const inputClass = 'ui-control w-full px-2 py-1 text-sm'
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -66,7 +66,7 @@ export function SprintForm({ projects, defaultProjectId = '', onSubmit }: {
   return (
     <form className="space-y-3 border border-grey-200 p-3" onSubmit={(event) => void submit(event)}>
       <Field label="Project">
-        <select className={inputClass} required value={projectId}
+        <select autoFocus className={inputClass} required value={projectId}
           onChange={(event) => setInput({ ...input, project_id: event.target.value })}>
           <option value="" disabled>Choose a project</option>
           {projects.map((project) => (
@@ -135,7 +135,7 @@ export function MilestoneForm({ onSubmit, members = [] }: {
   return (
     <form className="space-y-3 border border-grey-200 p-3" onSubmit={(event) => void submit(event)}>
       <Field label="Milestone name">
-        <input className={inputClass} required value={name} onChange={(event) => setName(event.target.value)} />
+        <input autoFocus className={inputClass} required value={name} onChange={(event) => setName(event.target.value)} />
       </Field>
       <Field label="Milestone description">
         <textarea className={inputClass} rows={3} value={description}
@@ -196,7 +196,7 @@ export function MilestoneEditForm({
   return (
     <form className="space-y-3 border border-grey-200 p-3" onSubmit={(event) => void submit(event)}>
       <Field label="Milestone name">
-        <input className={inputClass} required value={name} onChange={(event) => setName(event.target.value)} />
+        <input autoFocus className={inputClass} required value={name} onChange={(event) => setName(event.target.value)} />
       </Field>
       <Field label="Milestone description">
         <textarea className={inputClass} rows={4} value={description}
@@ -313,7 +313,7 @@ export function IssueForm({
   return (
     <form className="space-y-3 border border-grey-200 p-3" onSubmit={(event) => void submit(event)}>
       <Field label="Issue title">
-        <input className={inputClass} required value={title} onChange={(event) => setTitle(event.target.value)} />
+        <input autoFocus className={inputClass} required value={title} onChange={(event) => setTitle(event.target.value)} />
       </Field>
       <Field label="Issue description">
         <textarea className={inputClass} rows={3} value={description}
@@ -331,7 +331,7 @@ export function IssueForm({
         <Field label="Priority">
           <select className={inputClass} value={priority}
             onChange={(event) => setPriority(Number(event.target.value))}>
-            {[0, 1, 2, 3, 4].map((value) => <option key={value} value={value}>{value}</option>)}
+            {[0, 1, 2, 3, 4].map((value) => <option key={value} value={value}>P{value}</option>)}
           </select>
         </Field>
       </div>
@@ -388,7 +388,7 @@ export function IssueEditForm({
   return (
     <form className="space-y-3 border border-grey-200 p-3" onSubmit={(event) => void submit(event)}>
       <Field label="Title">
-        <input className={inputClass} required value={title} onChange={(event) => setTitle(event.target.value)} />
+        <input autoFocus className={inputClass} required value={title} onChange={(event) => setTitle(event.target.value)} />
       </Field>
       <Field label="Description">
         <textarea className={inputClass} rows={5} value={description}
@@ -397,7 +397,7 @@ export function IssueEditForm({
       <Field label="Priority">
         <select className={inputClass} value={priority}
           onChange={(event) => setPriority(Number(event.target.value))}>
-          {[0, 1, 2, 3, 4].map((value) => <option key={value} value={value}>{value}</option>)}
+          {[0, 1, 2, 3, 4].map((value) => <option key={value} value={value}>P{value}</option>)}
         </select>
       </Field>
       <Actions busy={busy} label="Save issue" error={failed} />

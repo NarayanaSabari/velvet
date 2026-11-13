@@ -172,3 +172,15 @@ describe('List', () => {
     expect(screen.getAllByRole('option')[0]).toHaveClass('border-l-ink')
   })
 })
+
+describe('EmptyState', () => {
+  it('uses readable message contrast and offers a compact line', async () => {
+    
+    const { EmptyState } = await import('./EmptyState')
+    const { container, rerender } = render(<EmptyState title="No issues" message="Create one" />)
+    expect(screen.getByText('Create one').className).toContain('text-grey-700')
+    rerender(<EmptyState compact title="No links" message="ignored" />)
+    expect(container.querySelector('.ui-surface')).toBeNull()
+    expect(screen.getByText('No links').tagName).toBe('P')
+  })
+})

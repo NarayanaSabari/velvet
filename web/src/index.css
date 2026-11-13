@@ -48,6 +48,19 @@
     transition: transform 160ms ease-out;
   }
 
+  /* 44px touch targets on phones, compact from sm up. Call-site min-h-* utilities still win. */
+  .ui-button,
+  .ui-control {
+    min-height: 2.75rem;
+  }
+
+  @media (min-width: 40rem) {
+    .ui-button,
+    .ui-control {
+      min-height: 2rem;
+    }
+  }
+
   .ui-control {
     min-width: 0;
     max-width: 100%;
