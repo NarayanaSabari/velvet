@@ -50,7 +50,7 @@ export function LeaveOrganisation({
       type="button"
       role={menuItem ? 'menuitem' : undefined}
       tabIndex={menuItem ? -1 : undefined}
-      className={menuItem ? 'block w-full rounded-[6px] px-2 py-1.5 text-left text-grey-500 hover:bg-grey-100 focus-visible:bg-grey-100' : 'text-grey-500 underline'}
+      className={menuItem ? 'flex min-h-11 w-full items-center rounded-[var(--radius-control)] px-2 py-1.5 text-left sm:min-h-0 text-grey-500 hover:bg-grey-100 focus-visible:bg-grey-100' : 'text-grey-500 underline'}
       onClick={() => setConfirming(true)}
     >Leave organisation</button>}
     {leave.error ? <p role="alert" className="mt-2 text-blocked">{leave.error.message}</p> : null}

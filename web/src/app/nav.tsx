@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from 'react'
 
+import { isNavLinkActive } from './navActive'
+
 export interface NavLinkProps {
   to: string
   children: ReactNode
@@ -17,25 +19,8 @@ export interface NavLinkProps {
   role?: AriaRole
   tabIndex?: number
   onClick?: MouseEventHandler<HTMLAnchorElement>
-}
-
-function normalisePath(path: string) {
-  const withoutQuery = path.split(/[?#]/, 1)[0] ?? '/'
-  if (withoutQuery.length <= 1) return '/'
-  return withoutQuery.replace(/\/+$/, '')
-}
-
-function isNavLinkActive(to: string, pathname?: string) {
-  if (to.startsWith('#') || /^https?:\/\//.test(to)) return false
-
-  const target = normalisePath(to)
-  const current = normalisePath(
-    pathname ?? (typeof window === 'undefined' ? '/' : window.location.pathname),
-  )
-
-  // The workspace root should not remain selected while a deeper page is open.
-  if (/^\/w\/[^/]+$/.test(target)) return current === target
-  return current === target || current.startsWith(`${target}/`)
+  /** Extra path prefixes that also mark this link current. */
+  alsoActiveFor?: string[]
 }
 
 /**
@@ -43,7 +28,7 @@ function isNavLinkActive(to: string, pathname?: string) {
  * stays testable on its own. The router provides the real implementation.
  */
 const NavLinkContext = createContext<(props: NavLinkProps) => ReactNode>(
-  ({ to, children, className, role, tabIndex, onClick }) => (
+  ({ to, children, className, role, tabIndex, onClick }: NavLinkProps) => (
     <a href={to} className={className} role={role} tabIndex={tabIndex} onClick={onClick}>
       {children}
     </a>
@@ -54,14 +39,15 @@ export const NavLinkProvider = NavLinkContext.Provider
 
 export function NavLink(props: NavLinkProps) {
   const Impl = useContext(NavLinkContext)
-  const active = isNavLinkActive(props.to)
+  const { alsoActiveFor = [], ...linkProps } = props
+  const active = [props.to, ...alsoActiveFor].some((to) => isNavLinkActive(to))
   const className = [
     props.className,
     active ? props.activeClassName : undefined,
   ]
     .filter(Boolean)
     .join(' ')
-  const element = Impl({ ...props, className })
+  const element = Impl({ ...linkProps, className })
 
   if (!isValidElement(element)) return <>{element}</>
 

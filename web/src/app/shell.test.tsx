@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { SignOutButton } from '../features/auth/SignOutButton'
 import { Shell } from './Shell'
+import { isNavLinkActive } from './navActive'
 
 function renderShell(slug?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -102,6 +103,41 @@ describe('Shell', () => {
     expect(sprints).toHaveAttribute('aria-current', 'page')
     expect(sprints).toHaveClass('bg-paper', 'font-medium', 'border-grey-200')
     expect(within(navigation).getAllByRole('link').filter((link) => link.getAttribute('aria-current') === 'page')).toEqual([sprints])
+  })
+
+  it('keeps Sprints current on milestone pages and marks More for pages inside it', async () => {
+    window.history.replaceState({}, '', '/w/lab/milestones/m1')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        user: { id: 'u1', github_login: 'sabari', name: 'Sabari', avatar_url: '' },
+        memberships: [{ id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'member' }],
+      }),
+    } as Response))
+
+    const { unmount } = renderShell('lab')
+    await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
+    const desktop = screen.getByRole('navigation', { name: 'Workspace navigation' })
+    expect(within(desktop).getByRole('link', { name: 'Sprints' })).toHaveAttribute('aria-current', 'page')
+    const mobile = screen.getByRole('navigation', { name: 'Mobile navigation' })
+    expect(within(mobile).getByRole('link', { name: 'Sprints' })).toHaveAttribute('aria-current', 'page')
+    expect(within(mobile).getByRole('button', { name: 'More' })).not.toHaveAttribute('aria-describedby')
+    unmount()
+
+    window.history.replaceState({}, '', '/w/lab/reports')
+    renderShell('lab')
+    await waitFor(() => expect(screen.getAllByText('Lab').length).toBeGreaterThan(0))
+    const more = within(screen.getByRole('navigation', { name: 'Mobile navigation' })).getByRole('button', { name: 'More' })
+    expect(more).not.toHaveAttribute('aria-current')
+    expect(more).toHaveAccessibleDescription('Current page is in this menu')
+    expect(more).toHaveClass('bg-grey-100', 'font-medium', 'text-ink')
+  })
+
+  it('does not prefix-match a link that carries a query', () => {
+    expect(isNavLinkActive('/w/lab/issues?project=web', { pathname: '/w/lab/issues/AUD-1', search: '' })).toBe(false)
+    expect(isNavLinkActive('/w/lab/issues?project=web', { pathname: '/w/lab/issues', search: '?project=web' })).toBe(true)
+    expect(isNavLinkActive('/w/lab/issues', { pathname: '/w/lab/issues/AUD-1', search: '' })).toBe(true)
   })
 
   it('groups desktop navigation into labelled sections with the work log kept apart', async () => {

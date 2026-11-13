@@ -49,7 +49,16 @@ export function AdminLayout({ slug, page, children }: {
 
   if (session.isLoading) return <LoadingState />
   if (!isAdmin || !session.workspace) {
-    return <EmptyState title="Admin access required" message="Only organisation admins can manage members and repository connections." />
+    return (
+      <div className="w-full min-w-0">
+        <PageHeader eyebrow="Administration" title="Admin access required" />
+        <EmptyState
+          title="Only admins can open this page"
+          message="Only organisation admins can manage members and repository connections."
+        />
+        <NavLink to={`/w/${slug}`} className="mt-3 inline-block text-sm underline">Back to dashboard</NavLink>
+      </div>
+    )
   }
 
   const current = ADMIN_PAGES.find((candidate) => candidate.id === page)!

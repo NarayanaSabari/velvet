@@ -14,6 +14,7 @@ import { LoadingState } from '../ui/QueryState'
 import { userLabel } from '../lib/userLabel'
 import type { Membership, Role } from '../lib/types'
 import { NavLink } from './nav'
+import { isNavLinkActive } from './navActive'
 
 interface NavItem {
   label: string
@@ -57,8 +58,10 @@ const NAV_ITEM =
 const NAV_ACTIVE =
   'border-grey-200 bg-paper font-medium shadow-[0_1px_2px_rgba(0,0,0,0.06)] hover:bg-paper focus-visible:bg-paper'
 const NAV_ICON = 'size-4 shrink-0 text-grey-500 group-hover:text-ink group-aria-[current=page]:text-ink'
+// Rows are 44px on phones, where the More menu lives, and compact from sm up
+// where only the desktop account menu uses them.
 const MENU_ITEM =
-  'block rounded-[var(--radius-control)] px-2 py-1.5 text-sm hover:bg-grey-100 focus-visible:bg-grey-100'
+  'flex min-h-11 items-center rounded-[var(--radius-control)] px-2 py-1.5 text-sm hover:bg-grey-100 focus-visible:bg-grey-100 sm:min-h-0'
 const TAB_ITEM =
   'group flex min-h-12 flex-col items-center justify-center gap-1 rounded-[var(--radius-control)] px-1 py-1 text-xs leading-tight text-grey-700 hover:bg-grey-100 focus-visible:bg-grey-100'
 const TAB_ICON = 'size-5 shrink-0 text-grey-500 group-aria-[current=page]:text-ink'
@@ -127,9 +130,9 @@ function WorkspaceSwitcher({
   )
 }
 
-function SidebarLink({ to, item }: { to: string; item: NavItem }) {
+function SidebarLink({ to, item, alsoActiveFor }: { to: string; item: NavItem; alsoActiveFor?: string[] }) {
   return (
-    <NavLink to={to} className={NAV_ITEM} activeClassName={NAV_ACTIVE}>
+    <NavLink to={to} alsoActiveFor={alsoActiveFor} className={NAV_ITEM} activeClassName={NAV_ACTIVE}>
       <Icon name={item.icon} className={NAV_ICON} />
       <span className="min-w-0 truncate">{item.label}</span>
     </NavLink>
@@ -319,14 +322,22 @@ function MoreMenu({
   const [openedByKeyboard, setOpenedByKeyboard] = useState(false)
   const [leaveConfirming, setLeaveConfirming] = useState(false)
   const { containerRef, triggerRef, menuRef, onMenuKeyDown } = usePopupMenu(open, setOpen, setLeaveConfirming)
+  // A button is not a page, so it does not take aria-current. It carries the
+  // selected look of a tab and a description saying the current page is inside.
+  const currentInside = [
+    `${base}/feed`, `${base}/projects`, `${base}/unlinked`, `${base}/reports`,
+    `${base}/admin`, `${base}/settings/profile`, '/me/worklog',
+  ].some((to) => isNavLinkActive(to))
 
   return (
     <div ref={containerRef} className="relative">
       <button
         ref={triggerRef}
         type="button"
-        className={`${TAB_ITEM} aria-expanded:bg-grey-100 aria-expanded:text-ink`}
+        className={`${TAB_ITEM} aria-expanded:bg-grey-100 aria-expanded:text-ink${currentInside ? ' bg-grey-100 font-medium text-ink' : ''}`}
+        data-active={currentInside ? 'true' : undefined}
         aria-label="More"
+        aria-describedby={currentInside ? 'mobile-more-current' : undefined}
         aria-expanded={open}
         aria-haspopup="menu"
         aria-controls="mobile-more-menu"
@@ -336,9 +347,10 @@ function MoreMenu({
           setOpen((isOpen) => !isOpen)
         }}
       >
-        <Icon name="more" className={TAB_ICON} />
+        <Icon name="more" className={`${TAB_ICON}${currentInside ? ' text-ink' : ''}`} />
         <span>More</span>
       </button>
+      {currentInside ? <span id="mobile-more-current" hidden>Current page is in this menu</span> : null}
 
       <div
         ref={menuRef}
@@ -455,7 +467,7 @@ export function Shell({
           <SidebarSection id="sidebar-workspace" label="Workspace">
             {WORKSPACE_NAV.map((item) => (
               <li key={item.label}>
-                <SidebarLink to={base + item.path} item={item} />
+                <SidebarLink to={base + item.path} item={item} alsoActiveFor={item.path === '/sprints' ? [`${base}/milestones`] : undefined} />
               </li>
             ))}
             {workspace.role === 'admin' ? (
@@ -515,6 +527,7 @@ export function Shell({
             <NavLink
               key={item.label}
               to={base + item.path}
+              alsoActiveFor={item.path === '/sprints' ? [`${base}/milestones`] : undefined}
               className={TAB_ITEM}
               activeClassName="bg-grey-100 font-medium text-ink"
             >

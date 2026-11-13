@@ -7,7 +7,8 @@ import {
   type KeyboardEvent,
 } from 'react'
 
-import { api, listAllWorkspaceIssues } from '../../lib/api'
+import { api } from '../../lib/api'
+import { Button } from '../../ui/Button'
 import type { Issue, Membership, Milestone, Role } from '../../lib/types'
 import { COMMAND_PALETTE_TEST_IDS } from './paletteTestIds'
 
@@ -142,13 +143,7 @@ function NewIssueForm({
           <p className="text-xs tracking-wide text-grey-500 uppercase">Command</p>
           <h2 className="text-base">New issue</h2>
         </div>
-        <button
-          type="button"
-          className="rounded-[6px] px-2 py-1 text-sm text-grey-500 hover:bg-grey-100 hover:text-ink"
-          onClick={onBack}
-        >
-          Back
-        </button>
+        <Button variant="ghost" onClick={onBack}>Back</Button>
       </div>
 
       <label className="block text-sm">
@@ -182,13 +177,9 @@ function NewIssueForm({
       </label>
 
       <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          className="rounded-[6px] border border-ink bg-ink px-3 py-1.5 text-sm text-paper hover:bg-grey-700 disabled:opacity-40"
-          disabled={saving || !title.trim()}
-        >
+        <Button type="submit" variant="primary" disabled={saving || !title.trim()}>
           {saving ? 'Creating…' : 'Create issue'}
-        </button>
+        </Button>
         {error ? <p className="text-sm text-blocked" role="alert">Could not create issue. Try again.</p> : null}
       </div>
     </form>
@@ -211,6 +202,7 @@ export function CommandPalette({
   navigate: Navigate
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
   const [issuePrefix, setIssuePrefix] = useState('ENG')
   const [query, setQuery] = useState('')
@@ -257,6 +249,24 @@ export function CommandPalette({
     previousFocusRef.current?.focus()
   }, [open])
 
+  // aria-modal alone does not stop focus or pointer input reaching the page,
+  // so everything outside the dialog is made inert while it is open.
+  useEffect(() => {
+    if (!open || !rootRef.current) return
+    const made: HTMLElement[] = []
+    for (let node: HTMLElement | null = rootRef.current; node && node !== document.body; node = node.parentElement) {
+      for (const sibling of node.parentElement?.children ?? []) {
+        if (sibling !== node && sibling instanceof HTMLElement && !sibling.inert) {
+          sibling.inert = true
+          made.push(sibling)
+        }
+      }
+    }
+    return () => {
+      for (const element of made) element.inert = false
+    }
+  }, [open])
+
   useEffect(() => {
     const trimmed = query.trim()
     if (!open || !trimmed || ISSUE_KEY_PATTERN.test(trimmed)) {
@@ -265,8 +275,11 @@ export function CommandPalette({
 
     let cancelled = false
     const timer = window.setTimeout(() => {
-      void listAllWorkspaceIssues(slug)
-        .then((result) => {
+      // The server filters by key, title, and description, so only one small
+      // page crosses the wire instead of every issue in the organisation.
+      const params = new URLSearchParams({ q: trimmed, limit: '20' })
+      void api.get<{ issues: Issue[] }>(`/w/${slug}/issues?${params.toString()}`)
+        .then(({ issues: result }) => {
           if (cancelled) return
           const prefix = result.find((issue) => issue.key.includes('-'))?.key.split('-')[0]
           if (prefix) setIssuePrefix(prefix)
@@ -292,6 +305,7 @@ export function CommandPalette({
     const items: PaletteCommand[] = [
       { id: 'dashboard', label: 'Dashboard', keywords: ['home'], run: () => navigate(base) },
       { id: 'issues', label: 'Issues', keywords: ['tickets', 'work'], run: () => navigate(`${base}/issues`) },
+      { id: 'projects', label: 'Projects', keywords: ['repositories', 'products'], run: () => navigate(`${base}/projects`) },
       { id: 'feed', label: 'Team feed', keywords: ['activity'], run: () => navigate(`${base}/feed`) },
       { id: 'sprints', label: 'Sprints', keywords: ['iterations'], run: () => navigate(`${base}/sprints`) },
       { id: 'mentions', label: 'Mentions', keywords: ['notifications'], run: () => navigate(`${base}/mentions`) },
@@ -306,6 +320,7 @@ export function CommandPalette({
           ]
         : []),
       { id: 'profile', label: 'Profile', keywords: ['account', 'settings'], run: () => navigate(`${base}/settings/profile`) },
+      { id: 'worklog', label: 'My work log', keywords: ['worklog', 'time', 'history', 'across organisations'], run: () => navigate('/me/worklog') },
       { id: 'agent-config', label: 'Agent config', keywords: ['connect', 'coding agent', 'cli', 'velvet init', 'repository', 'claude', 'codex', 'cursor'], run: () => navigate(`${base}/settings/profile/agent-config`) },
       ...(canWrite
         ? [{
@@ -345,12 +360,13 @@ export function CommandPalette({
       const command: PaletteCommand = {
         id: `issue-${issue.id}`,
         label: `${issue.key} ${issue.title}`,
-        detail: issue.title,
         keywords: [issue.key, issue.title],
         run: () => navigate(`/w/${slug}/issues/${issue.key}`),
       }
       const score = matchScore(command, trimmed)
-      return score === null ? [] : [{ ...command, score: score + 1 }]
+      // The server already matched the query, including in descriptions the
+      // palette cannot see, so keep every result it returned.
+      return [{ ...command, score: (score ?? 4) + 1 }]
     })
 
     const directMatch = trimmed.match(ISSUE_KEY_PATTERN)
@@ -418,6 +434,7 @@ export function CommandPalette({
 
   return (
     <div
+      ref={rootRef}
       data-testid={COMMAND_PALETTE_TEST_IDS.root}
       className="fixed inset-0 z-50"
       data-palette-open="true"
@@ -429,7 +446,7 @@ export function CommandPalette({
         onClick={close}
       />
       <div
-        className="relative z-10 mx-3 mt-[16vh] overflow-hidden rounded-[8px] border border-grey-300 bg-paper shadow-[0_16px_40px_rgba(0,0,0,0.16)] sm:mx-auto sm:mt-[18vh] sm:max-w-[34rem]"
+        className="relative z-10 mx-3 mt-[16vh] overflow-hidden rounded-[var(--radius-surface)] border border-grey-300 bg-paper shadow-[0_16px_40px_rgba(0,0,0,0.16)] sm:mx-auto sm:mt-[18vh] sm:max-w-[34rem]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="command-palette-title"
@@ -493,7 +510,7 @@ export function CommandPalette({
                   type="button"
                   role="option"
                   aria-selected={index === selectedIndex}
-                  className={`flex w-full items-center gap-3 rounded-[6px] px-3 py-2 text-left text-sm ${
+                  className={`flex w-full items-center gap-3 rounded-[var(--radius-control)] px-3 py-2 text-left text-sm ${
                     index === selectedIndex ? 'bg-grey-100 text-ink' : 'text-grey-700 hover:bg-grey-100'
                   }`}
                   onMouseEnter={() => setSelectedIndex(index)}

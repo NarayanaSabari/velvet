@@ -140,7 +140,37 @@ describe('CommandPalette', () => {
     await user.type(input, 'login')
 
     expect(await screen.findByRole('option', { name: /ENG-42 Fix login flow/ })).toBeInTheDocument()
-    expect(fetch).toHaveBeenCalledWith('/api/v1/w/lab/issues?limit=200', expect.anything())
+    expect(fetch).toHaveBeenCalledWith('/api/v1/w/lab/issues?q=login&limit=20', expect.anything())
+  })
+
+  it('shows an issue title once and makes the page behind inert', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ issues: [{ id: 'i1', key: 'ENG-7', number: 7, title: 'Only once' }] }),
+    } as Response))
+    const outside = document.createElement('button')
+    document.body.append(outside)
+    const user = userEvent.setup()
+    renderPalette({ initialOpen: true })
+
+    expect(outside.inert).toBe(true)
+    await user.type(screen.getByTestId(COMMAND_PALETTE_TEST_IDS.input), 'once')
+    const option = await screen.findByRole('option', { name: 'ENG-7 Only once' })
+    expect(option.textContent).toBe('ENG-7 Only once')
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(outside.inert).toBe(false))
+    outside.remove()
+  })
+
+  it('offers Projects and My work log', async () => {
+    const user = userEvent.setup()
+    const { navigate } = renderPalette({ initialOpen: true })
+    expect(screen.getByRole('option', { name: /^Projects/ })).toBeInTheDocument()
+    await user.type(screen.getByTestId(COMMAND_PALETTE_TEST_IDS.input), 'work log')
+    await user.keyboard('{Enter}')
+    expect(navigate).toHaveBeenCalledWith('/me/worklog')
   })
 
   it('closes with Escape', async () => {
