@@ -146,6 +146,10 @@ The current mobile tabs expose Dashboard, Issues, Sprints, Mentions, and More, w
 
 Active navigation must expose `aria-current="page"` on exactly one link and a visible non-color-only selected treatment.
 
+Milestone pages mark Sprints as current. When the current page sits inside the mobile More menu, the More button takes the selected treatment and an accessible description, not `aria-current`, because it is a button and not a link to the page.
+
+A link whose target carries a query string is current only on exactly that path and query.
+
 Page content must remain `min-w-0` inside the shell so long titles and controls cannot widen the document.
 
 ### List and index pages
@@ -168,7 +172,7 @@ The sprint page is the one place issues may appear as cards: its Issues section 
 The board has five columns in workflow order (Backlog, Todo, In progress, In review, Done), folds Cancelled under Done, and shows only the latest three Done cards until Show all is chosen.
 Dragging a card and choosing from its status menu both change status, so the keyboard path is never weaker than the pointer path, and viewers see the board without either control.
 A move applies at once, reports itself with Undo, and reverts with a plain message if the server refuses it.
-Below the `sm` breakpoint the switch is hidden and the grouped list is shown, because five columns do not fit a phone.
+Below the `lg` breakpoint (1024px) the switch is hidden and the grouped list is shown, because five columns are not readable in less width.
 
 A list must have a useful accessible name, a predictable tab stop, stable row identity, and a direct keyboard and pointer activation path.
 
@@ -302,7 +306,9 @@ Prefer the existing primitives before adding a local variant.
 
 Primary actions use paper-colored text on an ink fill, secondary actions use a neutral border, ghost actions remain quiet, and danger actions use the blocked semantic color only for destructive intent.
 
-`web/src/ui/EmptyState.tsx` is the shared empty, no-data, and no-results structure.
+`web/src/ui/EmptyState.tsx` is the shared empty, no-data, and no-results structure. Its `compact` form is one muted line for narrow rails and for sections stacked on a detail page, so a new issue does not open as a column of large boxes.
+
+A page keeps its heading while it loads and when loading fails, so the person always knows where they are and can retry in place.
 
 `web/src/ui/StatusBadge.tsx` names every issue status in text and uses color only as reinforcement.
 
@@ -310,7 +316,9 @@ Primary actions use paper-colored text on an ink fill, secondary actions use a n
 
 Use the existing form patterns in `web/src/features/work/CoreForms.tsx` with a visible label above each control, native validation where appropriate, and a clear submit state.
 
-The Issues filter toolbar keeps search, status, assignee, priority, and Clear filters as one semantic group.
+The Issues filter toolbar keeps search, status, assignee, project, priority, and Clear filters as one semantic group.
+
+Every active issue filter is written to the address (`q`, `status`, `assignee`, `project`, `priority`) so a reload or a shared link keeps the same view.
 
 The current toolbar stacks controls below `md`, uses two columns at `md`, and uses a wider search field plus three compact filters and a clear action at `xl`.
 
@@ -363,6 +371,8 @@ Validate at least 4.5:1 contrast for normal text, 3:1 for large text and meaning
 Check disabled text and focus indicators separately because opacity can erase otherwise valid contrast.
 
 Aim for 44px by 44px touch targets on touch surfaces and never ship a target below 24px by 24px without the applicable spacing exception.
+
+Below `sm`, `.ui-button` and `.ui-control` are at least 44px tall. That rule in `web/src/index.css` is deliberately outside the cascade layers so a call-site `min-h-*` utility cannot shrink a phone target.
 
 The mobile navigation uses `min-h-12`, or 48px, while several desktop controls are visually compact at 28px to 32px, so measure the actual hit area instead of assuming compliance.
 
