@@ -8,7 +8,7 @@ RUN pnpm run build
 
 # The velvet CLI is served as plain files next to the SPA, so `install.sh`
 # can download it from the same origin people already sign in to.
-FROM golang:1.26.10-alpine AS cli
+FROM golang:1.26.11-alpine AS cli
 ARG VERSION=dev
 WORKDIR /src
 COPY cli/go.mod cli/go.sum ./
