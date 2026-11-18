@@ -1,17 +1,9 @@
 name: Desktop preview checks
 
+# Paused while the desktop app is on hold. Run by hand from the Actions tab.
+# To resume, restore the push and pull_request triggers for desktop/**, api/**
+# and this file.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'desktop/**'
-      - 'api/**'
-      - '.github/workflows/desktop.yml'
-  pull_request:
-    paths:
-      - 'desktop/**'
-      - 'api/**'
-      - '.github/workflows/desktop.yml'
   workflow_dispatch:
 
 permissions:
