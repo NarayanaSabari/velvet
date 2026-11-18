@@ -7,8 +7,9 @@ import { Markdown } from '../../ui/Markdown'
 import { RelativeTime } from '../../ui/RelativeTime'
 import { EmptyState } from '../../ui/EmptyState'
 import { Button } from '../../ui/Button'
+import { CommentImages } from '../images/CommentImages'
 
-function CommentBody({ comment }: { comment: Comment }) {
+function CommentBody({ comment, slug }: { comment: Comment; slug?: string }) {
   return (
     <div className="flex gap-2 py-2 text-sm">
       <Avatar user={comment.author} size="md" />
@@ -22,7 +23,10 @@ function CommentBody({ comment }: { comment: Comment }) {
           {comment.deleted_at ? (
             <span className="text-grey-500 italic">Comment deleted</span>
           ) : (
-            <Markdown source={comment.body} />
+            <>
+              <Markdown source={comment.body} />
+              {slug ? <CommentImages images={comment.images} slug={slug} /> : null}
+            </>
           )}
         </div>
       </div>
@@ -86,9 +90,10 @@ export function ReplyEditor({ commentId, onReply }: {
   )
 }
 
-export function CommentThread({ comments, onReply }: {
+export function CommentThread({ comments, onReply, slug }: {
   comments: Comment[]
   onReply?: (commentId: string, body: string) => Promise<unknown>
+  slug?: string
 }) {
   if (comments.length === 0) {
     return <EmptyState title="No updates yet" message="The first comment starts the log." />
@@ -97,11 +102,11 @@ export function CommentThread({ comments, onReply }: {
     <div className="divide-y divide-grey-200 rounded-[var(--radius-surface)] border border-grey-200 px-3">
       {comments.map((comment) => (
         <div key={comment.id}>
-          <CommentBody comment={comment} />
+          <CommentBody comment={comment} slug={slug} />
           {comment.replies?.length ? (
             <div className="ml-4 border-l-2 border-grey-200 pb-2 pl-4">
               {comment.replies.map((reply) => (
-                <CommentBody key={reply.id} comment={reply} />
+                <CommentBody key={reply.id} comment={reply} slug={slug} />
               ))}
             </div>
           ) : null}

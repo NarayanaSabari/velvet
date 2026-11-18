@@ -291,3 +291,39 @@ test('JPEG and WebP agent references can be viewed, downloaded and explicitly re
     expect((await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1`)).json()).status).toBe('backlog')
   }
 })
+
+test('an agent proves a comment with screenshots shown inside it, and assigns by name', async ({ page, baseURL }) => {
+  const bytes = await sharedScreenshot(page, 'Comment proof: sign-in works.')
+  await mkdir(resolve('test-results'), { recursive: true })
+  const path = resolve('test-results', `comment-proof-${suffix}.png`)
+  await writeFile(path, bytes)
+  const repo = linkedRepo(baseURL!, email, slug, 'portal')
+  const proofCaption = 'Sign-in screen after the fix'
+  const posted = await repo.run(['comments', 'IMG-1', 'add', '--image', `${path}#${proofCaption}`, 'Proof: sign-in works.'])
+  expect(posted.code, posted.err).toBe(0)
+  expect(posted.out).toContain('1 image(s)')
+
+  // Inside the comment, not in the Images section.
+  const section = (await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1/images`)).json()).images as ImageAttachment[]
+  expect(section.find((image) => image.caption === proofCaption)).toBeUndefined()
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto(`/w/${slug}/issues/IMG-1`)
+  const timeline = page.getByTestId('issue-timeline-section')
+  await expect(timeline.getByText('Proof: sign-in works.')).toBeVisible()
+  const proof = timeline.getByRole('img', { name: proofCaption, exact: true })
+  await expect(proof).toBeVisible()
+  await expect.poll(() => proof.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth === 640)).toBe(true)
+  await page.screenshot({ path: 'test-results/images-in-comment.png', fullPage: true })
+
+  // Assign by part of a name instead of a user ID.
+  const members = await repo.run(['members'])
+  expect(members.code, members.err).toBe(0)
+  expect(members.out).toContain(viewerEmail)
+  const assigned = await repo.run(['edit', 'IMG-1', '--assignee', 'Image viewer'])
+  expect(assigned.code, assigned.err).toBe(0)
+  const ambiguous = await repo.run(['edit', 'IMG-1', '--assignee', 'Image'])
+  expect(ambiguous.code).not.toBe(0)
+  expect(ambiguous.err).toContain('matches 2 members')
+  const viewerID = sql(`SELECT id FROM app_user WHERE email = '${viewerEmail}'`)
+  expect((await (await page.request.get(`/api/v1/w/${slug}/issues/IMG-1`)).json()).assignee_id).toBe(viewerID)
+})

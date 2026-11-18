@@ -118,7 +118,25 @@ func (s *Server) listComments(w http.ResponseWriter, r *http.Request, targetType
 		writeCommentError(w, err)
 		return
 	}
+	if targetType == "issue" || targetType == "milestone" {
+		images, err := s.store.ListCommentImages(r.Context(), ws.WorkspaceID, targetType, targetID)
+		if err != nil {
+			writeCommentError(w, err)
+			return
+		}
+		attachCommentImages(comments, images, ws.Slug)
+	}
 	WriteJSON(w, http.StatusOK, map[string]any{"comments": comments})
+}
+
+func attachCommentImages(comments []store.Comment, images map[uuid.UUID][]store.ImageAttachment, slug string) {
+	for i := range comments {
+		for j := range images[comments[i].ID] {
+			imageLinks(&images[comments[i].ID][j], slug)
+		}
+		comments[i].Images = images[comments[i].ID]
+		attachCommentImages(comments[i].Replies, images, slug)
+	}
 }
 
 func (s *Server) createComment(w http.ResponseWriter, r *http.Request, targetType string, targetID uuid.UUID) {

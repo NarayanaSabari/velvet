@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -16,6 +17,8 @@ func runTicketCommand(e *env, cmd string, args []string, in io.Reader) (bool, er
 	switch cmd {
 	case "edit":
 		return true, e.editTicket(args)
+	case "members":
+		return true, e.members(args)
 	case "comments":
 		return true, e.ticketComments(args, in)
 	case "evidence":
@@ -32,7 +35,7 @@ var ticketUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{
 
 func (e env) editTicket(args []string) error {
 	if len(args) < 2 || !looksLikeKey(args[0]) {
-		return fail(exitUsage, "usage: velvet edit KEY [--title TEXT] [--desc TEXT] [--priority 0..4] [--assignee UUID|none] [--milestone UUID|none]")
+		return fail(exitUsage, "usage: velvet edit KEY [--title TEXT] [--desc TEXT] [--priority 0..4] [--assignee NAME|EMAIL|me|UUID|none] [--milestone UUID|none]")
 	}
 	key := strings.ToUpper(args[0])
 	fs := flag.NewFlagSet("edit", flag.ContinueOnError)
@@ -40,7 +43,7 @@ func (e env) editTicket(args []string) error {
 	title := fs.String("title", "", "ticket title")
 	desc := fs.String("desc", "", "description; empty clears it")
 	priority := fs.Int("priority", 0, "0 (none) to 4")
-	assignee := fs.String("assignee", "", "user UUID, or none to clear")
+	assignee := fs.String("assignee", "", "name, email, GitHub login, me, UUID, or none to clear")
 	milestone := fs.String("milestone", "", "milestone UUID, or none to clear")
 	fs.String("labels", "", "unsupported by the ticket API")
 	if err := fs.Parse(args[1:]); err != nil {
@@ -51,6 +54,7 @@ func (e env) editTicket(args []string) error {
 	}
 	payload := map[string]any{}
 	var invalid error
+	setAssignee := false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "title":
@@ -67,22 +71,32 @@ func (e env) editTicket(args []string) error {
 			payload["priority"] = *priority
 		case "labels":
 			invalid = fail(exitUsage, "--labels is not supported by the ticket API")
-		case "assignee", "milestone":
-			value := *assignee
-			if f.Name == "milestone" {
-				value = *milestone
-			}
+		case "assignee":
+			setAssignee = true
+		case "milestone":
+			value := *milestone
 			if value == "none" {
-				payload[f.Name+"_id"] = nil
+				payload["milestone_id"] = nil
 			} else if ticketUUID.MatchString(value) {
-				payload[f.Name+"_id"] = value
+				payload["milestone_id"] = value
 			} else {
-				invalid = fail(exitUsage, "--%s requires a UUID or none to clear", f.Name)
+				invalid = fail(exitUsage, "--milestone requires a UUID or none to clear")
 			}
 		}
 	})
 	if invalid != nil {
 		return invalid
+	}
+	if setAssignee {
+		id, err := e.resolveAssignee(*assignee)
+		if err != nil {
+			return err
+		}
+		if id == nil {
+			payload["assignee_id"] = nil
+		} else {
+			payload["assignee_id"] = *id
+		}
 	}
 	if len(payload) == 0 {
 		return fail(exitUsage, "provide at least one edit flag")
@@ -144,9 +158,11 @@ func (e env) ticketComments(args []string, in io.Reader) error {
 	fs.SetOutput(e.errOut)
 	var kind, parent string
 	var yes bool
+	var images imageFlags
 	if op == "add" {
 		fs.StringVar(&kind, "kind", "", "progress, decision, blocker, or note")
 		fs.StringVar(&parent, "parent", "", "parent comment UUID")
+		fs.Var(&images, "image", "PATH#caption to attach to the new comment; repeatable")
 	}
 	if op == "delete" {
 		fs.BoolVar(&yes, "yes", false, "confirm deletion without prompting")
@@ -164,6 +180,14 @@ func (e env) ticketComments(args []string, in io.Reader) error {
 		}
 		if parent != "" && !ticketUUID.MatchString(parent) {
 			return fail(exitUsage, "--parent requires a comment UUID")
+		}
+		if len(images) > 0 && strings.HasPrefix(target, "/projects/") {
+			return fail(exitUsage, "--image needs a ticket KEY or --milestone; project notes cannot hold images")
+		}
+		for _, img := range images {
+			if err := checkImageFile(img.path); err != nil {
+				return err
+			}
 		}
 	}
 	path := e.scoped(target + "/comments")
@@ -219,10 +243,44 @@ func (e env) ticketComments(args []string, in io.Reader) error {
 	if op == "delete" {
 		body = nil
 	}
-	if err := e.api.Do(method, path, nil, body, nil); err != nil {
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := e.api.Do(method, path, nil, body, &created); err != nil {
 		return apiError(err)
 	}
+	for _, img := range images {
+		var out struct {
+			ID string `json:"id"`
+		}
+		if err := e.api.Upload(e.scoped(target+"/images"), img.path, img.caption, &out, map[string]string{"comment_id": created.ID}); err != nil {
+			return fail(exitAPI, "comment %s posted, but %s did not upload: %s", created.ID, img.path, apiError(err))
+		}
+	}
+	if len(images) > 0 {
+		fmt.Fprintf(e.out, "Comment %s succeeded with %d image(s). Comment ID %s.\n", op, len(images), created.ID)
+		return nil
+	}
 	fmt.Fprintf(e.out, "Comment %s succeeded.\n", op)
+	return nil
+}
+
+type commentImage struct{ path, caption string }
+
+// imageFlags collects repeated --image PATH#caption values. Without a caption
+// the file name is used.
+type imageFlags []commentImage
+
+func (f *imageFlags) String() string { return "" }
+func (f *imageFlags) Set(value string) error {
+	path, caption, _ := strings.Cut(value, "#")
+	if path == "" {
+		return fmt.Errorf("--image needs a file path")
+	}
+	if strings.TrimSpace(caption) == "" {
+		caption = filepath.Base(path)
+	}
+	*f = append(*f, commentImage{path, caption})
 	return nil
 }
 

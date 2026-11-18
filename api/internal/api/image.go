@@ -79,14 +79,15 @@ func validImageFields(filename, caption string) (string, string, error) {
 
 // Stream parts into bounded memory. No multipart temp files or arbitrary URL
 // fetches are involved, and client-supplied MIME types are never trusted.
-func readImageMultipart(w http.ResponseWriter, r *http.Request) (imageupload.Image, string, string, error) {
+func readImageMultipart(w http.ResponseWriter, r *http.Request) (imageupload.Image, string, string, *uuid.UUID, error) {
 	r.Body = http.MaxBytesReader(w, r.Body, imageupload.MaxBytes+(64<<10))
 	reader, err := r.MultipartReader()
 	if err != nil {
-		return imageupload.Image{}, "", "", errors.New("multipart/form-data is required")
+		return imageupload.Image{}, "", "", nil, errors.New("multipart/form-data is required")
 	}
 	var data []byte
 	var filename, caption string
+	var commentID *uuid.UUID
 	seenFile, seenCaption := false, false
 	for {
 		part, err := reader.NextPart()
@@ -94,56 +95,69 @@ func readImageMultipart(w http.ResponseWriter, r *http.Request) (imageupload.Ima
 			break
 		}
 		if err != nil {
-			return imageupload.Image{}, "", "", err
+			return imageupload.Image{}, "", "", nil, err
 		}
 		switch part.FormName() {
 		case "file":
 			if seenFile || part.FileName() == "" {
-				return imageupload.Image{}, "", "", errors.New("exactly one file is required")
+				return imageupload.Image{}, "", "", nil, errors.New("exactly one file is required")
 			}
 			seenFile = true
 			filename = part.FileName()
 			data, err = io.ReadAll(io.LimitReader(part, imageupload.MaxBytes+1))
 			if err != nil {
-				return imageupload.Image{}, "", "", err
+				return imageupload.Image{}, "", "", nil, err
 			}
 			if len(data) > imageupload.MaxBytes {
-				return imageupload.Image{}, "", "", imageupload.ErrLimit
+				return imageupload.Image{}, "", "", nil, imageupload.ErrLimit
 			}
 		case "caption":
 			if seenCaption || part.FileName() != "" {
-				return imageupload.Image{}, "", "", errors.New("unexpected caption field")
+				return imageupload.Image{}, "", "", nil, errors.New("unexpected caption field")
 			}
 			seenCaption = true
 			raw, err := io.ReadAll(io.LimitReader(part, 8001))
 			if err != nil {
-				return imageupload.Image{}, "", "", err
+				return imageupload.Image{}, "", "", nil, err
 			}
 			if len(raw) > 8000 {
-				return imageupload.Image{}, "", "", errors.New("caption is too long")
+				return imageupload.Image{}, "", "", nil, errors.New("caption is too long")
 			}
 			caption = string(raw)
+		case "comment_id":
+			if commentID != nil || part.FileName() != "" {
+				return imageupload.Image{}, "", "", nil, errors.New("unexpected comment_id field")
+			}
+			raw, err := io.ReadAll(io.LimitReader(part, 64))
+			if err != nil {
+				return imageupload.Image{}, "", "", nil, err
+			}
+			id, err := uuid.Parse(strings.TrimSpace(string(raw)))
+			if err != nil {
+				return imageupload.Image{}, "", "", nil, errors.New("comment_id must be a UUID")
+			}
+			commentID = &id
 		default:
-			return imageupload.Image{}, "", "", errors.New("only file and caption fields are accepted")
+			return imageupload.Image{}, "", "", nil, errors.New("only file, caption and comment_id fields are accepted")
 		}
 		part.Close()
 	}
 	if !seenFile {
-		return imageupload.Image{}, "", "", errors.New("file is required")
+		return imageupload.Image{}, "", "", nil, errors.New("file is required")
 	}
 	filename, caption, err = validImageFields(filename, caption)
 	if err != nil {
-		return imageupload.Image{}, "", "", err
+		return imageupload.Image{}, "", "", nil, err
 	}
 	img, err := imageupload.SanitizeContext(r.Context(), data)
-	return img, filename, caption, err
+	return img, filename, caption, commentID, err
 }
 func (s *Server) handleCreateImage(w http.ResponseWriter, r *http.Request) {
 	target, id, ok := s.imageTarget(w, r)
 	if !ok {
 		return
 	}
-	img, filename, caption, err := readImageMultipart(w, r)
+	img, filename, caption, commentID, err := readImageMultipart(w, r)
 	if err != nil {
 		writeImageInputError(w, err)
 		return
@@ -151,7 +165,7 @@ func (s *Server) handleCreateImage(w http.ResponseWriter, r *http.Request) {
 	ws, _ := CurrentWorkspace(r.Context())
 	user, _ := CurrentUser(r.Context())
 	since, _ := s.store.LatestActivityID(r.Context(), ws.WorkspaceID)
-	out, err := s.store.CreateImage(r.Context(), store.ImageInput{WorkspaceID: ws.WorkspaceID, ActorID: user.ID, TargetID: id, TargetType: target, Filename: filename, Caption: caption, Source: commentSource(r.Context()), APITokenID: currentAPIToken(r.Context()), Image: img})
+	out, err := s.store.CreateImage(r.Context(), store.ImageInput{WorkspaceID: ws.WorkspaceID, ActorID: user.ID, TargetID: id, TargetType: target, Filename: filename, Caption: caption, Source: commentSource(r.Context()), APITokenID: currentAPIToken(r.Context()), CommentID: commentID, Image: img})
 	if err != nil {
 		writeImageError(w, err)
 		return
@@ -219,6 +233,8 @@ func writeImageError(w http.ResponseWriter, err error) {
 		WriteError(w, http.StatusRequestEntityTooLarge, "image_quota", "organisation image quota is 512 MiB")
 	case errors.Is(err, store.ErrImageCount):
 		WriteError(w, http.StatusRequestEntityTooLarge, "image_count", "image limit is 100 per issue or milestone and 1000 per organisation; remove an existing image before uploading")
+	case errors.Is(err, store.ErrCommentImageTarget):
+		WriteError(w, http.StatusUnprocessableEntity, "invalid_comment", err.Error())
 	default:
 		writeStoreError(w, err, "image")
 	}

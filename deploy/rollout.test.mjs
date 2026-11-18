@@ -7,7 +7,9 @@ import { spawnSync } from 'node:child_process'
 
 const root = resolve(import.meta.dirname, '..')
 
-test('native checks cover API changes on pull requests and main pushes without release access', () => {
+// Skipped while desktop CI is paused (desktop.yml runs only by hand). Remove
+// the skip when the push and pull_request triggers come back.
+test('native checks cover API changes on pull requests and main pushes without release access', { skip: 'desktop CI paused' }, () => {
   const workflow = readFileSync(join(root, '.github/workflows/desktop.yml'), 'utf8')
   const push = workflow.match(/^  push:\n([\s\S]*?)(?=^  \w|^\S)/m)?.[1]
   const pullRequest = workflow.match(/^  pull_request:\n([\s\S]*?)(?=^  \w|^\S)/m)?.[1]

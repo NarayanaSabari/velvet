@@ -1,6 +1,8 @@
 // The API's snake_case JSON is used verbatim rather than camelCased, so there
 // is no mapping layer to drift out of sync with the Go structs.
 
+import type { ImageAttachment } from '../features/images/ImagesSection'
+
 export type IssueStatus =
   | 'backlog'
   | 'todo'
@@ -140,6 +142,7 @@ export interface Comment {
   edited_at: string | null
   deleted_at: string | null
   replies?: Comment[]
+  images?: ImageAttachment[]
 }
 
 export interface Milestone {

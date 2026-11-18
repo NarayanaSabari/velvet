@@ -29,11 +29,14 @@ func tokenScope(r *http.Request) store.TokenScope {
 // scopedRoutes is every route a project-scoped key may call, keyed by the
 // exact pattern the mux matched.
 var scopedRoutes = map[string]bool{
-	"GET /api/v1/me":                                      true,
-	"DELETE /api/v1/me/token":                             true,
-	"GET /api/v1/me/worklog":                              true,
-	"GET /api/v1/me/worklog.md":                           true,
-	"GET /api/v1/w/{slug}/projects/{key}":                 true,
+	"GET /api/v1/me":                      true,
+	"DELETE /api/v1/me/token":             true,
+	"GET /api/v1/me/worklog":              true,
+	"GET /api/v1/me/worklog.md":           true,
+	"GET /api/v1/w/{slug}/projects/{key}": true,
+	// Assignee lookup by name or email. Exposes the organisation's member
+	// names and emails, which any assignee picker already shows.
+	"GET /api/v1/w/{slug}/members":                        true,
 	"GET /api/v1/w/{slug}/projects/{key}/comments":        true,
 	"POST /api/v1/w/{slug}/projects/{key}/comments":       true,
 	"GET /api/v1/w/{slug}/issues":                         true,

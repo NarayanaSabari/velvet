@@ -69,13 +69,16 @@ Work log:
 Tickets:
   issues [--status S] [--mine]            List this project's tickets
   issue KEY                               Show a ticket and its recent work log
-  edit KEY [--title TEXT] [--desc TEXT] [--priority N] [--assignee ID|none] [--milestone ID|none]
-                                          Edit fields without changing ticket status
+  edit KEY [--title TEXT] [--desc TEXT] [--priority N] [--assignee WHO|none] [--milestone ID|none]
+                                          Edit fields without changing ticket status.
+                                          WHO is a name, email, GitHub login, me or user ID
   comments (KEY|--project|--milestone ID) (list|add|edit|delete) ...
-                                          Read and manage comments, delete requires --yes
+                                          Read and manage comments, delete requires --yes.
+                                          add --image PATH#caption attaches screenshots
   evidence KEY list                       List linked evidence
-  new TITLE [--desc D] [--milestone ID] [--priority N]
+  new TITLE [--desc D] [--milestone ID] [--priority N] [--assignee WHO]
                                           File a ticket in this project
+  members                                 List people who can be assigned
   status KEY STATUS                       Change a ticket's status (only when asked)
   key-from-branch                         Print the ticket key named by the current branch
 
@@ -93,8 +96,9 @@ Planning:
   mentions (list|read) [flags]             Read project mentions and mark them read
   admin (login|whoami|logout|RESOURCE ACTION) ...
                                           Separately approved account administration
-  upload-image (KEY | --milestone ID) PATH --caption TEXT
-                                          Attach an image without changing status
+  upload-image (KEY | --milestone ID) PATH --caption TEXT [--comment ID]
+                                          Attach an image without changing status,
+                                          shown inside the comment when --comment is set
 
 Run 'velvet <command> --help' for details. Version ` + "%s\n"
 
@@ -192,7 +196,7 @@ func apiError(err error) error {
 var repoCommands = map[string]bool{
 	"log": true, "attach": true, "recap": true,
 	"edit": true, "comments": true, "evidence": true, "sprint": true, "milestone": true, "images": true, "image": true, "reports": true, "mentions": true,
-	"issues": true, "issue": true, "new": true, "status": true, "sprints": true, "milestones": true, "upload-image": true,
+	"issues": true, "issue": true, "new": true, "status": true, "sprints": true, "milestones": true, "upload-image": true, "members": true,
 }
 
 func run(args []string, out, errOut io.Writer, in io.Reader) error {
@@ -477,6 +481,7 @@ func (e env) newIssue(args []string) error {
 	desc := fs.String("desc", "", "description")
 	milestone := fs.String("milestone", "", "milestone id")
 	priority := fs.Int("priority", 0, "0 (none) to 4")
+	assignee := fs.String("assignee", "", "name, email, GitHub login, me or UUID")
 	if err := fs.Parse(args); err != nil {
 		return fail(exitUsage, "%s", err)
 	}
@@ -484,11 +489,20 @@ func (e env) newIssue(args []string) error {
 		title = strings.Join(fs.Args(), " ")
 	}
 	if strings.TrimSpace(title) == "" {
-		return fail(exitUsage, "usage: velvet new TITLE [--desc D] [--milestone ID] [--priority N]")
+		return fail(exitUsage, "usage: velvet new TITLE [--desc D] [--milestone ID] [--priority N] [--assignee NAME|EMAIL|me]")
 	}
 	payload := map[string]any{"title": title, "description": *desc, "priority": *priority}
 	if *milestone != "" {
 		payload["milestone_id"] = *milestone
+	}
+	if *assignee != "" {
+		id, err := e.resolveAssignee(*assignee)
+		if err != nil {
+			return err
+		}
+		if id != nil {
+			payload["assignee_id"] = *id
+		}
 	}
 	var created issue
 	if err := e.api.Do(http.MethodPost, e.scoped("/issues"), nil, payload, &created); err != nil {
@@ -609,7 +623,7 @@ func (e env) milestones(args []string) error {
 }
 
 func (e env) uploadImage(args []string) error {
-	key, milestone, path, caption := "", "", "", ""
+	key, milestone, path, caption, comment := "", "", "", "", ""
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--milestone":
@@ -617,6 +631,11 @@ func (e env) uploadImage(args []string) error {
 				return fail(exitUsage, "--milestone needs an id")
 			}
 			milestone, i = args[i+1], i+1
+		case "--comment":
+			if i+1 >= len(args) || !ticketUUID.MatchString(args[i+1]) {
+				return fail(exitUsage, "--comment needs a comment UUID")
+			}
+			comment, i = args[i+1], i+1
 		case "--caption":
 			if i+1 >= len(args) {
 				return fail(exitUsage, "--caption needs text")
@@ -633,8 +652,30 @@ func (e env) uploadImage(args []string) error {
 		}
 	}
 	if (key == "") == (milestone == "") || path == "" || strings.TrimSpace(caption) == "" {
-		return fail(exitUsage, "usage: velvet upload-image (KEY | --milestone ID) PATH --caption TEXT")
+		return fail(exitUsage, "usage: velvet upload-image (KEY | --milestone ID) PATH --caption TEXT [--comment ID]")
 	}
+	if err := checkImageFile(path); err != nil {
+		return err
+	}
+	target := e.scoped("/issues/" + url.PathEscape(key) + "/images")
+	if milestone != "" {
+		target = e.scoped("/milestones/" + url.PathEscape(milestone) + "/images")
+	}
+	var image struct {
+		ID string `json:"id"`
+	}
+	var fields map[string]string
+	if comment != "" {
+		fields = map[string]string{"comment_id": comment}
+	}
+	if err := e.api.Upload(target, path, caption, &image, fields); err != nil {
+		return apiError(err)
+	}
+	fmt.Fprintf(e.out, "Uploaded image %s. Status unchanged.\n", image.ID)
+	return nil
+}
+
+func checkImageFile(path string) error {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return fail(exitUsage, "%s", err)
@@ -645,16 +686,5 @@ func (e env) uploadImage(args []string) error {
 	if info.Size() == 0 || info.Size() > 10<<20 {
 		return fail(exitUsage, "images must be between 1 byte and 10 MiB")
 	}
-	target := e.scoped("/issues/" + url.PathEscape(key) + "/images")
-	if milestone != "" {
-		target = e.scoped("/milestones/" + url.PathEscape(milestone) + "/images")
-	}
-	var image struct {
-		ID string `json:"id"`
-	}
-	if err := e.api.Upload(target, path, caption, &image); err != nil {
-		return apiError(err)
-	}
-	fmt.Fprintf(e.out, "Uploaded image %s. Status unchanged.\n", image.ID)
 	return nil
 }

@@ -73,7 +73,10 @@ jobs:
 
       - name: Audit dependencies
         working-directory: web
-        run: pnpm audit --audit-level=low
+        # GHSA-fc5q-39xc-vjpf (picomatch ReDoS) has no patched release yet and
+        # only reaches dev tooling (vite, vitest), never the shipped bundle.
+        # Drop the --ignore once picomatch publishes a fix.
+        run: pnpm audit --audit-level=low --ignore GHSA-fc5q-39xc-vjpf
 
       - name: Typecheck
         working-directory: web
