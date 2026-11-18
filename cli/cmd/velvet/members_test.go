@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -75,5 +77,50 @@ func TestEditAmbiguousAssigneeNeverPatches(t *testing.T) {
 	_, err := runTicketCommand(e, "edit", []string{"LAB-1", "--assignee", "rak"}, nil)
 	if err == nil || !strings.Contains(err.Error(), "Rakesh Kumar <rakesh@aesthatiq.com>") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestCommentAddWithImages(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/proof.png"
+	if err := os.WriteFile(path, []byte("png"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var uploads []map[string]string
+	e, out := ticketTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "POST" && r.URL.Path == "/api/v1/w/lab/issues/LAB-1/comments":
+			w.WriteHeader(201)
+			_ = json.NewEncoder(w).Encode(map[string]string{"id": ticketTestID})
+		case r.Method == "POST" && r.URL.Path == "/api/v1/w/lab/issues/LAB-1/images":
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Fatal(err)
+			}
+			uploads = append(uploads, map[string]string{"caption": r.FormValue("caption"), "comment_id": r.FormValue("comment_id")})
+			w.WriteHeader(201)
+			_ = json.NewEncoder(w).Encode(map[string]string{"id": "img"})
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	})
+	args := []string{"LAB-1", "add", "--image", path + "#Login screen", "--image", path, "Proof"}
+	if _, err := runTicketCommand(e, "comments", args, nil); err != nil {
+		t.Fatal(err)
+	}
+	want := []map[string]string{{"caption": "Login screen", "comment_id": ticketTestID}, {"caption": "proof.png", "comment_id": ticketTestID}}
+	if !reflect.DeepEqual(uploads, want) {
+		t.Fatalf("uploads %#v", uploads)
+	}
+	if !strings.Contains(out.String(), "2 image(s)") {
+		t.Fatalf("output %s", out)
+	}
+}
+
+func TestCommentImageMissingFileNeverPosts(t *testing.T) {
+	e, _ := ticketTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+	})
+	if _, err := runTicketCommand(e, "comments", []string{"LAB-1", "add", "--image", "/nope.png", "x"}, nil); err == nil {
+		t.Fatal("want error")
 	}
 }

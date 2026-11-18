@@ -98,8 +98,9 @@ func (c *Client) Text(path string, query url.Values) (string, error) {
 	return buf.String(), nil
 }
 
-// Upload posts one file as multipart field "file" with a caption.
-func (c *Client) Upload(path, file, caption string, out any) error {
+// Upload posts one image as multipart field "file" with a caption. fields adds
+// optional form values such as comment_id.
+func (c *Client) Upload(path, file, caption string, out any, fields map[string]string) error {
 	f, err := os.Open(file)
 	if err != nil {
 		return err
@@ -109,6 +110,11 @@ func (c *Client) Upload(path, file, caption string, out any) error {
 	form := multipart.NewWriter(&buf)
 	if err := form.WriteField("caption", caption); err != nil {
 		return err
+	}
+	for k, v := range fields {
+		if err := form.WriteField(k, v); err != nil {
+			return err
+		}
 	}
 	part, err := form.CreateFormFile("file", filepath.Base(file))
 	if err != nil {

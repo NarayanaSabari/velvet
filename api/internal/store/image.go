@@ -17,36 +17,38 @@ const ImageTargetLimit = 100
 const ImageWorkspaceLimit = 1000
 
 var ErrImageQuota = errors.New("organisation image quota exceeded")
+var ErrCommentImageTarget = errors.New("comment must be your own, not deleted, and on the same issue or milestone")
 var ErrImageCount = errors.New("image attachment limit reached: 100 per issue or milestone, 1000 per organisation")
 
 type ImageAttachment struct {
-	ID           uuid.UUID `json:"id"`
-	Filename     string    `json:"filename"`
-	Caption      string    `json:"caption"`
-	ContentType  string    `json:"content_type"`
-	ByteSize     int       `json:"byte_size"`
-	Width        int       `json:"width"`
-	Height       int       `json:"height"`
-	CreatedAt    time.Time `json:"created_at"`
-	UploaderID   uuid.UUID `json:"uploader_id"`
-	UploaderName string    `json:"uploader_name"`
-	Source       string    `json:"source"`
-	ContentURL   string    `json:"content_url"`
-	DownloadURL  string    `json:"download_url"`
+	ID           uuid.UUID  `json:"id"`
+	Filename     string     `json:"filename"`
+	Caption      string     `json:"caption"`
+	ContentType  string     `json:"content_type"`
+	ByteSize     int        `json:"byte_size"`
+	Width        int        `json:"width"`
+	Height       int        `json:"height"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UploaderID   uuid.UUID  `json:"uploader_id"`
+	UploaderName string     `json:"uploader_name"`
+	Source       string     `json:"source"`
+	CommentID    *uuid.UUID `json:"comment_id"`
+	ContentURL   string     `json:"content_url"`
+	DownloadURL  string     `json:"download_url"`
 }
 
 type ImageInput struct {
 	WorkspaceID, ActorID, TargetID        uuid.UUID
 	TargetType, Filename, Caption, Source string
-	APITokenID                            *uuid.UUID
+	APITokenID, CommentID                 *uuid.UUID
 	Image                                 imageupload.Image
 }
 
-const imageCols = `i.id,i.filename,i.caption,i.content_type,i.byte_size,i.width,i.height,i.created_at,i.uploader_id,COALESCE(NULLIF(u.name,''),u.email,''),i.source`
+const imageCols = `i.id,i.filename,i.caption,i.content_type,i.byte_size,i.width,i.height,i.created_at,i.uploader_id,COALESCE(NULLIF(u.name,''),u.email,''),i.source,i.comment_id`
 
 func scanImage(row pgx.Row) (ImageAttachment, error) {
 	var out ImageAttachment
-	err := row.Scan(&out.ID, &out.Filename, &out.Caption, &out.ContentType, &out.ByteSize, &out.Width, &out.Height, &out.CreatedAt, &out.UploaderID, &out.UploaderName, &out.Source)
+	err := row.Scan(&out.ID, &out.Filename, &out.Caption, &out.ContentType, &out.ByteSize, &out.Width, &out.Height, &out.CreatedAt, &out.UploaderID, &out.UploaderName, &out.Source, &out.CommentID)
 	return out, mapErr(err)
 }
 func imageTargetIDs(in ImageInput) (*uuid.UUID, *uuid.UUID) {
@@ -82,7 +84,21 @@ func imageWriter(ctx context.Context, tx pgx.Tx, in ImageInput) error {
 			return ErrForbidden
 		}
 	}
-	return checkCommentTarget(ctx, tx, in.WorkspaceID, in.TargetType, in.TargetID)
+	if err := checkCommentTarget(ctx, tx, in.WorkspaceID, in.TargetType, in.TargetID); err != nil {
+		return err
+	}
+	if in.CommentID == nil {
+		return nil
+	}
+	// The comment must be live, on the same target, and written by the uploader.
+	var ok bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM comment WHERE id=$1 AND workspace_id=$2 AND target_type=$3::comment_target AND target_id=$4 AND author_id=$5 AND deleted_at IS NULL)`, in.CommentID, in.WorkspaceID, in.TargetType, in.TargetID, in.ActorID).Scan(&ok); err != nil {
+		return err
+	}
+	if !ok {
+		return ErrCommentImageTarget
+	}
+	return nil
 }
 
 func (s *Store) ListImages(ctx context.Context, workspaceID uuid.UUID, targetType string, targetID uuid.UUID) ([]ImageAttachment, error) {
@@ -91,7 +107,7 @@ func (s *Store) ListImages(ctx context.Context, workspaceID uuid.UUID, targetTyp
 		if err := checkCommentTarget(ctx, tx, workspaceID, targetType, targetID); err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `SELECT `+imageCols+` FROM image_attachment i JOIN app_user u ON u.id=i.uploader_id WHERE i.workspace_id=$1 AND (($2='issue' AND i.issue_id=$3) OR ($2='milestone' AND i.milestone_id=$3)) ORDER BY i.created_at,i.id`, workspaceID, targetType, targetID)
+		rows, err := tx.Query(ctx, `SELECT `+imageCols+` FROM image_attachment i JOIN app_user u ON u.id=i.uploader_id WHERE i.workspace_id=$1 AND i.comment_id IS NULL AND (($2='issue' AND i.issue_id=$3) OR ($2='milestone' AND i.milestone_id=$3)) ORDER BY i.created_at,i.id`, workspaceID, targetType, targetID)
 		if err != nil {
 			return err
 		}
@@ -108,6 +124,25 @@ func (s *Store) ListImages(ctx context.Context, workspaceID uuid.UUID, targetTyp
 	return out, err
 }
 
+// ListCommentImages returns images attached to comments on one target, keyed
+// by comment ID, in upload order.
+func (s *Store) ListCommentImages(ctx context.Context, workspaceID uuid.UUID, targetType string, targetID uuid.UUID) (map[uuid.UUID][]ImageAttachment, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+imageCols+` FROM image_attachment i JOIN app_user u ON u.id=i.uploader_id WHERE i.workspace_id=$1 AND i.comment_id IS NOT NULL AND (($2='issue' AND i.issue_id=$3) OR ($2='milestone' AND i.milestone_id=$3)) ORDER BY i.created_at,i.id`, workspaceID, targetType, targetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[uuid.UUID][]ImageAttachment{}
+	for rows.Next() {
+		image, err := scanImage(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[*image.CommentID] = append(out[*image.CommentID], image)
+	}
+	return out, rows.Err()
+}
+
 func insertImage(ctx context.Context, tx pgx.Tx, in ImageInput) (ImageAttachment, error) {
 	var out ImageAttachment
 	if err := imageWriter(ctx, tx, in); err != nil {
@@ -116,7 +151,7 @@ func insertImage(ctx context.Context, tx pgx.Tx, in ImageInput) (ImageAttachment
 	hash := sha256.Sum256(in.Image.Data)
 	digest := hex.EncodeToString(hash[:])
 	issueID, milestoneID := imageTargetIDs(in)
-	out, err := scanImage(tx.QueryRow(ctx, `SELECT `+imageCols+` FROM image_attachment i JOIN app_user u ON u.id=i.uploader_id WHERE i.workspace_id=$1 AND i.issue_id IS NOT DISTINCT FROM $2::uuid AND i.milestone_id IS NOT DISTINCT FROM $3::uuid AND i.uploader_id=$4 AND i.digest=$5 AND i.caption=$6`, in.WorkspaceID, issueID, milestoneID, in.ActorID, digest, in.Caption))
+	out, err := scanImage(tx.QueryRow(ctx, `SELECT `+imageCols+` FROM image_attachment i JOIN app_user u ON u.id=i.uploader_id WHERE i.workspace_id=$1 AND i.issue_id IS NOT DISTINCT FROM $2::uuid AND i.milestone_id IS NOT DISTINCT FROM $3::uuid AND i.uploader_id=$4 AND i.digest=$5 AND i.caption=$6 AND i.comment_id IS NOT DISTINCT FROM $7::uuid`, in.WorkspaceID, issueID, milestoneID, in.ActorID, digest, in.Caption, in.CommentID))
 	if err == nil {
 		return out, nil
 	}
@@ -134,11 +169,14 @@ func insertImage(ctx context.Context, tx pgx.Tx, in ImageInput) (ImageAttachment
 	if used+int64(len(in.Image.Data)) > ImageQuotaBytes {
 		return out, ErrImageQuota
 	}
-	out, err = scanImage(tx.QueryRow(ctx, `WITH inserted AS (INSERT INTO image_attachment(workspace_id,issue_id,milestone_id,uploader_id,api_token_id,source,filename,caption,content_type,byte_size,width,height,data,digest) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *) SELECT `+imageCols+` FROM inserted i JOIN app_user u ON u.id=i.uploader_id`, in.WorkspaceID, issueID, milestoneID, in.ActorID, in.APITokenID, in.Source, in.Filename, in.Caption, in.Image.ContentType, len(in.Image.Data), in.Image.Width, in.Image.Height, in.Image.Data, digest))
+	out, err = scanImage(tx.QueryRow(ctx, `WITH inserted AS (INSERT INTO image_attachment(workspace_id,issue_id,milestone_id,uploader_id,api_token_id,source,filename,caption,content_type,byte_size,width,height,data,digest,comment_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *) SELECT `+imageCols+` FROM inserted i JOIN app_user u ON u.id=i.uploader_id`, in.WorkspaceID, issueID, milestoneID, in.ActorID, in.APITokenID, in.Source, in.Filename, in.Caption, in.Image.ContentType, len(in.Image.Data), in.Image.Width, in.Image.Height, in.Image.Data, digest, in.CommentID))
 	if err != nil {
 		return out, err
 	}
 	meta := map[string]any{"image_id": out.ID.String(), "caption": in.Caption, "filename": in.Filename, "source": in.Source}
+	if in.CommentID != nil {
+		meta["comment_id"] = in.CommentID.String()
+	}
 	if in.APITokenID != nil {
 		meta["api_token_id"] = in.APITokenID.String()
 	}

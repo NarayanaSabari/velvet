@@ -11,7 +11,7 @@ Agent plugin (`plugin.json` version 1.0.0) that teaches coding agents to keep a 
   - [tickets](./skills/tickets/SKILL.md): find, create, edit, assign, comment, list evidence.
   - [sprints](./skills/sprints/SKILL.md): sprints and milestones.
   - [recap](./skills/recap/SKILL.md): `velvet recap --days N`, reports, mentions.
-  - [attach-image](./skills/attach-image/SKILL.md): `velvet upload-image` to one ticket or milestone.
+  - [attach-image](./skills/attach-image/SKILL.md): `velvet upload-image` to one ticket or milestone, or inside a comment.
   - [management](./skills/management/SKILL.md): account-wide admin via `velvet admin login`.
 
 ## Invariants

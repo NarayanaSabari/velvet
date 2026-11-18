@@ -4,7 +4,9 @@
 Image attachments for issues and milestones.
 
 ## Interface
-- `ImagesSection({ slug, target, targetId })`, `ImageAttachment` (`ImagesSection.tsx`).
+- `ImagesSection({ slug, target, targetId })`, `ImageAttachment` (`ImagesSection.tsx`). Lists only images not attached to a comment.
+- `CommentImages({ images, slug })` (`CommentImages.tsx`): thumbnails under a comment, linking to the full image.
+- `uploadCommentImages(slug, target, targetId, commentId, files)` (`uploadCommentImages.ts`): multipart upload with `comment_id`; caption is the file name.
 - `protectedImageUrl(value, slug, id, kind)` (`protectedImageUrl.ts`).
 
 ## Invariants
@@ -17,4 +19,4 @@ Image attachments for issues and milestones.
 - Successful deletion immediately removes the image from the cached response, then invalidates that image query.
 
 ## Verification
-- Run: `cd web && pnpm exec vitest run src/features/images`
+- Run: `cd web && pnpm exec vitest run src/features/images src/features/comments`

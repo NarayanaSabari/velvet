@@ -25,6 +25,16 @@ velvet upload-image --milestone MILESTONE_ID /absolute/path/to/design.webp --cap
 The caption is one sentence on why the image matters.
 The file is sent straight from disk, so never put image bytes or base64 in the conversation.
 
+When the image proves a specific update, attach it to that comment so it shows inside the comment instead of the Images section:
+
+```bash
+velvet comments ENG-42 add --image /abs/login.png#"Sign-in screen after the fix" --image /abs/error.png "Proof: sign-in works."
+velvet upload-image ENG-42 /abs/extra.png --caption "Mobile view" --comment COMMENT_UUID
+```
+
+`--image` takes `PATH#caption` and repeats. Without `#caption` the file name is the caption.
+Only your own comments on the same ticket or milestone can hold images. Never link screenshots from private GitHub or other sites, because Velvet cannot load them.
+
 It prints `Uploaded image ... Status unchanged.` on success.
 Uploading the same file with the same caption again reuses the first upload, so a retry after an interrupted transfer is safe.
 Exit code 6 with "valid PNG, JPEG or WebP" means the file is not a supported image.

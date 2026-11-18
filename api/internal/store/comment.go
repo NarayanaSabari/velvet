@@ -24,12 +24,13 @@ type Comment struct {
 	// Source says whether a person or an agent wrote this. It is derived from
 	// the authentication method, never from the request body, so a client
 	// cannot claim to be something it is not.
-	Source    string    `json:"source"`
-	Kind      *string   `json:"kind"`
-	CreatedAt string    `json:"created_at"`
-	EditedAt  *string   `json:"edited_at"`
-	DeletedAt *string   `json:"deleted_at"`
-	Replies   []Comment `json:"replies,omitempty"`
+	Source    string            `json:"source"`
+	Kind      *string           `json:"kind"`
+	CreatedAt string            `json:"created_at"`
+	EditedAt  *string           `json:"edited_at"`
+	DeletedAt *string           `json:"deleted_at"`
+	Replies   []Comment         `json:"replies,omitempty"`
+	Images    []ImageAttachment `json:"images,omitempty"`
 }
 
 type CreateCommentInput struct {

@@ -14,6 +14,7 @@ import { useReturnFocus } from '../issues/useReturnFocus'
 import { CommentComposer } from '../comments/CommentComposer'
 import { ImagesSection } from '../images/ImagesSection'
 import { CommentThread } from '../comments/CommentThread'
+import { uploadCommentImages } from '../images/uploadCommentImages'
 import { IssueList } from '../issues/IssueList'
 import { useSession } from '../auth/useSession'
 import {
@@ -236,6 +237,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
         ) : milestoneComments.length ? (
           <CommentThread
             comments={milestoneComments}
+            slug={slug}
             onReply={canWrite
               ? (parentId, body) => addReply.mutateAsync({ parentId, body })
               : undefined}
@@ -247,6 +249,13 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
           <CommentComposer
             placeholder="Where does this stand?"
             onSubmit={(body) => addComment.mutateAsync(body)}
+            onAttach={async (commentId, files) => {
+              try {
+                await uploadCommentImages(slug, 'milestones', milestoneId, commentId, files)
+              } finally {
+                void queryClient.invalidateQueries({ queryKey: ['comments', slug, 'milestone', milestoneId] })
+              }
+            }}
           />
         ) : null}
       </section>

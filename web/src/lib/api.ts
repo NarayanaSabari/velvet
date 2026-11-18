@@ -21,12 +21,14 @@ export function isNotFound(error: unknown): boolean {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const form = body instanceof FormData
   const res = await fetch(BASE + path, {
     method,
     // The session lives in an HttpOnly cookie; the SPA never holds a session token.
     credentials: 'same-origin',
-    headers: method === 'GET' ? {} : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    // The browser sets the multipart boundary itself for FormData.
+    headers: method === 'GET' || form ? {} : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : form ? body : JSON.stringify(body),
   })
 
   if (!res.ok) {

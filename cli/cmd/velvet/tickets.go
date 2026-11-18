@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -157,9 +158,11 @@ func (e env) ticketComments(args []string, in io.Reader) error {
 	fs.SetOutput(e.errOut)
 	var kind, parent string
 	var yes bool
+	var images imageFlags
 	if op == "add" {
 		fs.StringVar(&kind, "kind", "", "progress, decision, blocker, or note")
 		fs.StringVar(&parent, "parent", "", "parent comment UUID")
+		fs.Var(&images, "image", "PATH#caption to attach to the new comment; repeatable")
 	}
 	if op == "delete" {
 		fs.BoolVar(&yes, "yes", false, "confirm deletion without prompting")
@@ -177,6 +180,14 @@ func (e env) ticketComments(args []string, in io.Reader) error {
 		}
 		if parent != "" && !ticketUUID.MatchString(parent) {
 			return fail(exitUsage, "--parent requires a comment UUID")
+		}
+		if len(images) > 0 && strings.HasPrefix(target, "/projects/") {
+			return fail(exitUsage, "--image needs a ticket KEY or --milestone; project notes cannot hold images")
+		}
+		for _, img := range images {
+			if err := checkImageFile(img.path); err != nil {
+				return err
+			}
 		}
 	}
 	path := e.scoped(target + "/comments")
@@ -232,10 +243,44 @@ func (e env) ticketComments(args []string, in io.Reader) error {
 	if op == "delete" {
 		body = nil
 	}
-	if err := e.api.Do(method, path, nil, body, nil); err != nil {
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := e.api.Do(method, path, nil, body, &created); err != nil {
 		return apiError(err)
 	}
+	for _, img := range images {
+		var out struct {
+			ID string `json:"id"`
+		}
+		if err := e.api.Upload(e.scoped(target+"/images"), img.path, img.caption, &out, map[string]string{"comment_id": created.ID}); err != nil {
+			return fail(exitAPI, "comment %s posted, but %s did not upload: %s", created.ID, img.path, apiError(err))
+		}
+	}
+	if len(images) > 0 {
+		fmt.Fprintf(e.out, "Comment %s succeeded with %d image(s). Comment ID %s.\n", op, len(images), created.ID)
+		return nil
+	}
 	fmt.Fprintf(e.out, "Comment %s succeeded.\n", op)
+	return nil
+}
+
+type commentImage struct{ path, caption string }
+
+// imageFlags collects repeated --image PATH#caption values. Without a caption
+// the file name is used.
+type imageFlags []commentImage
+
+func (f *imageFlags) String() string { return "" }
+func (f *imageFlags) Set(value string) error {
+	path, caption, _ := strings.Cut(value, "#")
+	if path == "" {
+		return fmt.Errorf("--image needs a file path")
+	}
+	if strings.TrimSpace(caption) == "" {
+		caption = filepath.Base(path)
+	}
+	*f = append(*f, commentImage{path, caption})
 	return nil
 }
 

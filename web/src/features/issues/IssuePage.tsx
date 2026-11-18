@@ -17,6 +17,8 @@ import { StatusBadge, STATUS_LABELS } from '../../ui/StatusBadge'
 import { EmptyState } from '../../ui/EmptyState'
 import { CommentComposer } from '../comments/CommentComposer'
 import { ImagesSection } from '../images/ImagesSection'
+import { CommentImages } from '../images/CommentImages'
+import { uploadCommentImages } from '../images/uploadCommentImages'
 import { ReplyEditor } from '../comments/CommentThread'
 import { EvidenceCard } from '../evidence/EvidenceCard'
 import { StatusDot, StatusSelect } from './StatusSelect'
@@ -59,9 +61,10 @@ function label(status: string | null): string {
  * changes, commits, PRs, and reviews are one narrative, because reading them
  * separately loses the order in which the work actually happened.
  */
-export function IssueTimeline({ entries, onReply }: {
+export function IssueTimeline({ entries, onReply, slug }: {
   entries: TimelineEntry[]
   onReply?: (commentId: string, body: string) => Promise<unknown>
+  slug?: string
 }) {
   const sorted = [...entries].sort((a, b) => a.at.localeCompare(b.at))
 
@@ -82,7 +85,10 @@ export function IssueTimeline({ entries, onReply }: {
                   </span>
                   <div className="mt-0.5 flex gap-2">
                     <Avatar user={entry.author} />
-                    <Markdown source={entry.body} />
+                    <div className="min-w-0 flex-1">
+                      <Markdown source={entry.body} />
+                      {slug ? <CommentImages images={entry.images} slug={slug} /> : null}
+                    </div>
                   </div>
                 </>
               ) : entry.kind === 'status' ? (
@@ -400,6 +406,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
         {entries.length ? (
           <IssueTimeline
             entries={entries}
+            slug={slug}
             onReply={canWrite
               ? (parentId, body) => addReply.mutateAsync({ parentId, body })
               : undefined}
@@ -407,7 +414,18 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
         ) : (
           <EmptyState compact title={canWrite ? 'No updates yet.' : 'No updates yet. Ask a teammate to add the first one.'} />
         )}
-        {canWrite ? <CommentComposer onSubmit={(body) => addComment.mutateAsync(body)} /> : null}
+        {canWrite ? (
+          <CommentComposer
+            onSubmit={(body) => addComment.mutateAsync(body)}
+            onAttach={async (commentId, files) => {
+              try {
+                await uploadCommentImages(slug, 'issues', issueKey, commentId, files)
+              } finally {
+                invalidate()
+              }
+            }}
+          />
+        ) : null}
       </section>
     </div>
   )

@@ -1,7 +1,8 @@
 import type { Activity, Comment, Evidence, User } from '../../lib/types'
+import type { ImageAttachment } from '../images/ImagesSection'
 
 export type TimelineEntry =
-  | { kind: 'comment'; id: string; at: string; body: string; author: User | null; parentId?: string | null }
+  | { kind: 'comment'; id: string; at: string; body: string; author: User | null; parentId?: string | null; images?: ImageAttachment[] }
   | { kind: 'status'; id: string; at: string; from: string | null; to: string | null }
   | { kind: 'pr'; id: string; at: string; number: number; state: string }
   | { kind: 'commit'; id: string; at: string; message: string; author: string }
@@ -21,6 +22,7 @@ export function buildTimeline(
       body: c.deleted_at ? '_Comment deleted_' : c.body,
       author: c.author ?? null,
       parentId: c.parent_id,
+      images: c.deleted_at ? undefined : c.images,
     })),
   )
 

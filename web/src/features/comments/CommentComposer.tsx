@@ -10,17 +10,23 @@ function submitShortcut() {
 
 export function CommentComposer({
   onSubmit,
+  onAttach,
   placeholder = 'Write an update…',
 }: {
   onSubmit: (body: string) => void | Promise<unknown>
+  /** Uploads screenshots to the comment onSubmit created. Shows "Attach images" when set. */
+  onAttach?: (commentId: string, files: File[]) => Promise<unknown>
   placeholder?: string
 }) {
   const [body, setBody] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [attachFailed, setAttachFailed] = useState(false)
   const [preview, setPreview] = useState(false)
   const editorId = useId()
   const editor = useRef<HTMLTextAreaElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
   const draftVersion = useRef(0)
 
   function insertDiagram() {
@@ -43,8 +49,10 @@ export function CommentComposer({
     const submittedDraftVersion = draftVersion.current
     setBusy(true)
     setFailed(false)
+    setAttachFailed(false)
+    let created: unknown
     try {
-      await onSubmit(body)
+      created = await onSubmit(body)
       // Clearing only after the submission resolves is what stops a network
       // hiccup from destroying someone's long update.
       if (draftVersion.current === submittedDraftVersion) {
@@ -52,9 +60,20 @@ export function CommentComposer({
       }
     } catch {
       setFailed(true)
-    } finally {
       setBusy(false)
+      return
     }
+    const id = (created as { id?: string } | undefined)?.id
+    if (onAttach && files.length && id) {
+      try {
+        await onAttach(id, files)
+        setFiles([])
+      } catch {
+        // The comment is posted, so only the images are kept for a retry.
+        setAttachFailed(true)
+      }
+    }
+    setBusy(false)
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -76,6 +95,23 @@ export function CommentComposer({
             Preview
           </Button>
           <Button variant="ghost" className="ml-auto" onClick={insertDiagram}>+ Diagram</Button>
+          {onAttach ? (
+            <>
+              <Button variant="ghost" onClick={() => picker.current?.click()}>+ Images</Button>
+              <input
+                ref={picker}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                multiple
+                hidden
+                aria-label="Attach images"
+                onChange={(e) => {
+                  setFiles((current) => [...current, ...Array.from(e.target.files ?? [])])
+                  e.target.value = ''
+                }}
+              />
+            </>
+          ) : null}
         </div>
         <textarea
           ref={editor}
@@ -98,6 +134,16 @@ export function CommentComposer({
           </div>
         ) : null}
       </div>
+      {files.length ? (
+        <ul className="mt-2 flex flex-wrap gap-2 text-xs" aria-label="Images to attach">
+          {files.map((file, index) => (
+            <li key={`${file.name}-${index}`} className="flex items-center gap-1 rounded-[var(--radius-control)] border border-grey-200 px-2 py-1">
+              <span className="max-w-48 truncate">{file.name}</span>
+              <Button variant="ghost" aria-label={`Remove ${file.name}`} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}>×</Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <p id={`${editorId}-help`} className="mt-1 text-xs text-grey-500">Markdown and Mermaid diagrams supported.</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button variant="primary" disabled={busy} onClick={() => void submit()}>
@@ -107,6 +153,11 @@ export function CommentComposer({
         {failed ? (
           <span role="alert" className="text-xs text-blocked">
             Could not post. Your draft is still here - try again.
+          </span>
+        ) : null}
+        {attachFailed ? (
+          <span role="alert" className="text-xs text-blocked">
+            Comment posted, but the images did not upload. They stay listed for your next comment.
           </span>
         ) : null}
       </div>
