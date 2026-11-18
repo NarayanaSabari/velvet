@@ -69,13 +69,15 @@ Work log:
 Tickets:
   issues [--status S] [--mine]            List this project's tickets
   issue KEY                               Show a ticket and its recent work log
-  edit KEY [--title TEXT] [--desc TEXT] [--priority N] [--assignee ID|none] [--milestone ID|none]
-                                          Edit fields without changing ticket status
+  edit KEY [--title TEXT] [--desc TEXT] [--priority N] [--assignee WHO|none] [--milestone ID|none]
+                                          Edit fields without changing ticket status.
+                                          WHO is a name, email, GitHub login, me or user ID
   comments (KEY|--project|--milestone ID) (list|add|edit|delete) ...
                                           Read and manage comments, delete requires --yes
   evidence KEY list                       List linked evidence
-  new TITLE [--desc D] [--milestone ID] [--priority N]
+  new TITLE [--desc D] [--milestone ID] [--priority N] [--assignee WHO]
                                           File a ticket in this project
+  members                                 List people who can be assigned
   status KEY STATUS                       Change a ticket's status (only when asked)
   key-from-branch                         Print the ticket key named by the current branch
 
@@ -192,7 +194,7 @@ func apiError(err error) error {
 var repoCommands = map[string]bool{
 	"log": true, "attach": true, "recap": true,
 	"edit": true, "comments": true, "evidence": true, "sprint": true, "milestone": true, "images": true, "image": true, "reports": true, "mentions": true,
-	"issues": true, "issue": true, "new": true, "status": true, "sprints": true, "milestones": true, "upload-image": true,
+	"issues": true, "issue": true, "new": true, "status": true, "sprints": true, "milestones": true, "upload-image": true, "members": true,
 }
 
 func run(args []string, out, errOut io.Writer, in io.Reader) error {
@@ -477,6 +479,7 @@ func (e env) newIssue(args []string) error {
 	desc := fs.String("desc", "", "description")
 	milestone := fs.String("milestone", "", "milestone id")
 	priority := fs.Int("priority", 0, "0 (none) to 4")
+	assignee := fs.String("assignee", "", "name, email, GitHub login, me or UUID")
 	if err := fs.Parse(args); err != nil {
 		return fail(exitUsage, "%s", err)
 	}
@@ -484,11 +487,20 @@ func (e env) newIssue(args []string) error {
 		title = strings.Join(fs.Args(), " ")
 	}
 	if strings.TrimSpace(title) == "" {
-		return fail(exitUsage, "usage: velvet new TITLE [--desc D] [--milestone ID] [--priority N]")
+		return fail(exitUsage, "usage: velvet new TITLE [--desc D] [--milestone ID] [--priority N] [--assignee NAME|EMAIL|me]")
 	}
 	payload := map[string]any{"title": title, "description": *desc, "priority": *priority}
 	if *milestone != "" {
 		payload["milestone_id"] = *milestone
+	}
+	if *assignee != "" {
+		id, err := e.resolveAssignee(*assignee)
+		if err != nil {
+			return err
+		}
+		if id != nil {
+			payload["assignee_id"] = *id
+		}
 	}
 	var created issue
 	if err := e.api.Do(http.MethodPost, e.scoped("/issues"), nil, payload, &created); err != nil {

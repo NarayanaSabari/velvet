@@ -31,7 +31,8 @@ Tell the user the new key.
 ## Edit and assign
 
 `velvet edit ENG-42 --title "Clear title" --desc "Expected result" --priority 2` changes only supplied fields.
-Use `--assignee USER_UUID` or `--milestone MILESTONE_UUID` to assign or schedule an existing ticket.
+Use `--assignee` with an email, GitHub login, part of a name, `me`, or a user UUID. Run `velvet members` to see who can be assigned. A name that matches more than one person fails and lists the matches, so retry with the email.
+Use `--milestone MILESTONE_UUID` to schedule an existing ticket. `velvet new` also accepts `--assignee`.
 Use `none` to clear either field, and `--desc ""` to clear the description.
 Read the target first and change only what the user requested.
 Labels and moving a ticket to another project are not supported.

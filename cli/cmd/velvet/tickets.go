@@ -16,6 +16,8 @@ func runTicketCommand(e *env, cmd string, args []string, in io.Reader) (bool, er
 	switch cmd {
 	case "edit":
 		return true, e.editTicket(args)
+	case "members":
+		return true, e.members(args)
 	case "comments":
 		return true, e.ticketComments(args, in)
 	case "evidence":
@@ -32,7 +34,7 @@ var ticketUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{
 
 func (e env) editTicket(args []string) error {
 	if len(args) < 2 || !looksLikeKey(args[0]) {
-		return fail(exitUsage, "usage: velvet edit KEY [--title TEXT] [--desc TEXT] [--priority 0..4] [--assignee UUID|none] [--milestone UUID|none]")
+		return fail(exitUsage, "usage: velvet edit KEY [--title TEXT] [--desc TEXT] [--priority 0..4] [--assignee NAME|EMAIL|me|UUID|none] [--milestone UUID|none]")
 	}
 	key := strings.ToUpper(args[0])
 	fs := flag.NewFlagSet("edit", flag.ContinueOnError)
@@ -40,7 +42,7 @@ func (e env) editTicket(args []string) error {
 	title := fs.String("title", "", "ticket title")
 	desc := fs.String("desc", "", "description; empty clears it")
 	priority := fs.Int("priority", 0, "0 (none) to 4")
-	assignee := fs.String("assignee", "", "user UUID, or none to clear")
+	assignee := fs.String("assignee", "", "name, email, GitHub login, me, UUID, or none to clear")
 	milestone := fs.String("milestone", "", "milestone UUID, or none to clear")
 	fs.String("labels", "", "unsupported by the ticket API")
 	if err := fs.Parse(args[1:]); err != nil {
@@ -51,6 +53,7 @@ func (e env) editTicket(args []string) error {
 	}
 	payload := map[string]any{}
 	var invalid error
+	setAssignee := false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "title":
@@ -67,22 +70,32 @@ func (e env) editTicket(args []string) error {
 			payload["priority"] = *priority
 		case "labels":
 			invalid = fail(exitUsage, "--labels is not supported by the ticket API")
-		case "assignee", "milestone":
-			value := *assignee
-			if f.Name == "milestone" {
-				value = *milestone
-			}
+		case "assignee":
+			setAssignee = true
+		case "milestone":
+			value := *milestone
 			if value == "none" {
-				payload[f.Name+"_id"] = nil
+				payload["milestone_id"] = nil
 			} else if ticketUUID.MatchString(value) {
-				payload[f.Name+"_id"] = value
+				payload["milestone_id"] = value
 			} else {
-				invalid = fail(exitUsage, "--%s requires a UUID or none to clear", f.Name)
+				invalid = fail(exitUsage, "--milestone requires a UUID or none to clear")
 			}
 		}
 	})
 	if invalid != nil {
 		return invalid
+	}
+	if setAssignee {
+		id, err := e.resolveAssignee(*assignee)
+		if err != nil {
+			return err
+		}
+		if id == nil {
+			payload["assignee_id"] = nil
+		} else {
+			payload["assignee_id"] = *id
+		}
 	}
 	if len(payload) == 0 {
 		return fail(exitUsage, "provide at least one edit flag")

@@ -125,6 +125,8 @@ func TestScopedKeyWorksInsideItsProject(t *testing.T) {
 		{http.MethodPost, base + "/projects/own/comments", map[string]string{"body": "Project note.", "kind": "note"}},
 		{http.MethodGet, base + "/sprints", nil},
 		{http.MethodGet, base + "/milestones", nil},
+		// Members are readable so agents can assign by name or email.
+		{http.MethodGet, base + "/members", nil},
 		{http.MethodGet, "/api/v1/me/worklog?days=7", nil},
 	} {
 		rec := s.as(ok.method, ok.path, ok.body)
@@ -216,7 +218,6 @@ func TestScopedKeyCannotLeaveItsProject(t *testing.T) {
 		{"recap another project", http.MethodGet, "/api/v1/me/worklog?project=other", nil, http.StatusForbidden},
 		{"recap another organisation", http.MethodGet, "/api/v1/me/worklog?workspace=" + s.foreignSlug, nil, http.StatusForbidden},
 		{"another organisation", http.MethodGet, "/api/v1/w/" + s.foreignSlug + "/issues", nil, http.StatusNotFound},
-		{"members", http.MethodGet, base + "/members", nil, http.StatusForbidden},
 		{"admin: rename organisation", http.MethodPatch, base, map[string]string{"name": "Hijacked"}, http.StatusForbidden},
 		{"create a project", http.MethodPost, base + "/projects", map[string]string{"key": "new", "name": "New"}, http.StatusForbidden},
 		{"list projects", http.MethodGet, base + "/projects", nil, http.StatusForbidden},
