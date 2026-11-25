@@ -191,6 +191,8 @@ test('onboarding and Agent config stay usable on a phone', async ({ page }) => {
   await setup.getByLabel('Project name').fill('A phone project with a rather long descriptive name')
   await setup.getByRole('button', { name: 'Create project' }).click()
   await expect(setup.getByTestId('cli-install')).toBeVisible()
+  // The steps are collapsible, so open the agent step to reach its file tabs.
+  await setup.getByRole('button', { name: /^4\. Tell your agent/ }).click()
   for (const tab of ['AGENTS.md', 'CLAUDE.md', 'Cursor rule']) {
     await setup.getByRole('tab', { name: tab }).click()
     expect(await overflow(), `${tab} widened the page`).toBeLessThanOrEqual(0)

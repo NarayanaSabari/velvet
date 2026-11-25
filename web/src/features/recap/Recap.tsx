@@ -1,4 +1,4 @@
-import { Heading } from '@astryxdesign/core/Heading'
+import { Heading } from '../../ui/Heading'
 import { List, ListItem } from '@astryxdesign/core/List'
 
 import { useMemo, useState } from 'react'

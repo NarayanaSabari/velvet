@@ -107,7 +107,8 @@ export function SprintStrip({ rows, slug, lead, leadWidth = '12rem' }: {
     <div className="min-w-0" data-testid="sprint-strip">
       <div className="grid items-end" style={{ gridTemplateColumns: `${leadWidth} minmax(0, 1fr)` }}>
         <span />
-        <div className="relative h-6 border-b border-grey-200" aria-hidden="true">
+        {/* Clipped: a tick near the end would push its label past the page. */}
+        <div className="relative h-6 overflow-hidden border-b border-grey-200" aria-hidden="true">
           {ticks.map((tick) => (
             <span key={tick.day} className="absolute bottom-1 -translate-x-px border-l border-grey-300 pl-1.5 text-xs whitespace-nowrap text-grey-500" style={{ left: at(tick.day) }}>
               {tick.label}

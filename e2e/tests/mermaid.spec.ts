@@ -86,7 +86,7 @@ test('mixed Markdown renders multiple diagrams without executing diagram links',
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
   const diagram = page.getByRole('region', { name: 'Mermaid diagram', exact: true }).first()
   await diagram.getByRole('button', { name: 'Copy source' }).click()
-  await expect(diagram.getByRole('status')).toHaveText('Source copied')
+  await expect(diagram.getByRole('status').filter({ hasText: 'Source copied' })).toBeVisible()
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('sequenceDiagram')
 })
 

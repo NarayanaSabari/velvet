@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { Button as AstryxButton } from '@astryxdesign/core/Button'
 import { Card } from '@astryxdesign/core/Card'
-import { Heading } from '@astryxdesign/core/Heading'
+import { Heading } from '../../ui/Heading'
 import { Text } from '@astryxdesign/core/Text'
 
 import { Button } from '../../ui/Button'

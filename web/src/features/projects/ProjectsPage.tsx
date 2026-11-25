@@ -3,7 +3,7 @@ import { FormDialog } from '../../ui/FormDialog'
 import { ErrorNote } from '../../ui/ErrorNote'
 import { Badge } from '@astryxdesign/core/Badge'
 import { Card } from '@astryxdesign/core/Card'
-import { Heading } from '@astryxdesign/core/Heading'
+import { Heading } from '../../ui/Heading'
 import { Link } from '@astryxdesign/core/Link'
 import { Text } from '@astryxdesign/core/Text'
 

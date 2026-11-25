@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
-import { Heading } from '@astryxdesign/core/Heading'
+import { Heading } from '../../ui/Heading'
 import { Lightbox } from '@astryxdesign/core/Lightbox'
 import { Link } from '@astryxdesign/core/Link'
 import { List, ListItem } from '@astryxdesign/core/List'

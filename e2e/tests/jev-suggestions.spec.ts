@@ -82,7 +82,7 @@ test('a suggested issue links an unlinked PR in one click and leaves status alon
   expect(sql(`SELECT count(*) FROM pr_link`)).toBe('0')
 
   await page.getByRole('button', { name: `Link to ${key}` }).click()
-  await expect(page.getByText('Nothing unlinked')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Nothing unlinked' })).toBeVisible()
 
   expect(sql(`SELECT link_source FROM pr_link`)).toBe('suggested')
   expect(sql(`SELECT status FROM issue WHERE key = '${key}'`)).toBe('backlog')

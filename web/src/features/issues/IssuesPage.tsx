@@ -108,7 +108,7 @@ function IssueRow({
           {issue.key}
         </span>
         <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="min-w-0 break-words text-sm font-medium text-ink" data-testid={`issue-title-${issue.id}`}>
+          <span className="min-w-0 flex-[1_1_14rem] break-words text-sm font-medium text-ink" data-testid={`issue-title-${issue.id}`}>
             {issue.title}
           </span>
           <span

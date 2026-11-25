@@ -2,7 +2,7 @@ import { ErrorNote } from '../../ui/ErrorNote'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { Heading } from '@astryxdesign/core/Heading'
+import { Heading } from '../../ui/Heading'
 import { Text } from '@astryxdesign/core/Text'
 
 import { api } from '../../lib/api'

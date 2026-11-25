@@ -29,7 +29,7 @@ async function readPageGeometry(page: Page, kind: 'issues' | 'feed'): Promise<Pa
         ].map((selector) => document.querySelector(selector))
       // Scoped to the page itself: the shell's organisation switcher is also a
       // select, but it belongs to the sidebar rather than the page's controls.
-      : [...document.querySelectorAll('main select')]
+      : [...document.querySelectorAll('main [role="combobox"], main select')]
     const rect = (element: Element | null) => {
       const box = element?.getBoundingClientRect()
       return box ? { left: box.left, right: box.right, top: box.top, height: box.height } : null
@@ -40,7 +40,8 @@ async function readPageGeometry(page: Page, kind: 'issues' | 'feed'): Promise<Pa
       root: rootBox ? { left: rootBox.left, right: rootBox.right } : null,
       heading: headingBox ? { top: headingBox.top, height: headingBox.height } : null,
       controlHeights: controls.flatMap((control) => {
-        const box = rect(control)
+        // Astryx fields draw the touch target on their pressable container.
+        const box = rect(control?.closest('[data-pressable-container], [data-astryx-pressable]') ?? control)
         return box ? [box.height] : []
       }),
       documentWidth: document.documentElement.scrollWidth,
@@ -259,7 +260,7 @@ test('matches Team feed alignment and control density at wide and responsive wid
         await expect(page.getByTestId('issues-list')).toBeVisible()
       } else {
         await expect(page.getByTestId('issues-empty')).toBeVisible()
-        await expect(feedPage.getByText('Nothing here yet')).toBeVisible()
+        await expect(feedPage.getByRole('heading', { name: 'Nothing here yet' })).toBeVisible()
       }
 
       const geometry = await assertSiblingGeometry(page, feedPage, 4)

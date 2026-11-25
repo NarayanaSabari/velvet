@@ -97,7 +97,7 @@ test('sprint, milestone, and issue can be created through the UI', async ({ sign
   // A sprint belongs to a project, so an organisation with none is sent to
   // create one first rather than shown a form that cannot succeed.
   await page.goto('/w/lab/sprints')
-  await expect(page.getByText('No projects yet')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'No projects yet' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'New sprint' })).toHaveCount(0)
 
   sprintProject('web', 'Web')
@@ -236,7 +236,7 @@ test('the sprint board shows progress and the latest milestone comment', async (
 
   await page.goto(`/w/lab/sprints/${sprints[0].id}`)
 
-  await expect(page.getByText('Ship auth')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Ship auth' })).toBeVisible()
   // The latest comment carries more than the counts: a milestone at 0/1 with
   // "blocked on vendor access" is understood, silence is not.
   await expect(page.getByText('Blocked on vendor access.')).toBeVisible()

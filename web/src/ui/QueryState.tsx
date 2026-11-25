@@ -43,16 +43,17 @@ export function ErrorState({
   onRetry?: () => void
   retrying?: boolean
 }) {
+  // The alert is the message alone, as before the Astryx move, so the retry
+  // button's label is not read into it. The button sits under the banner.
   return (
-    <ErrorNote
-      action={onRetry ? (
+    <div className="space-y-2">
+      <ErrorNote>{message}</ErrorNote>
+      {onRetry ? (
         <Button disabled={retrying} onClick={onRetry}>
           {retrying ? 'Retrying…' : 'Try again'}
         </Button>
-      ) : undefined}
-    >
-      {message}
-    </ErrorNote>
+      ) : null}
+    </div>
   )
 }
 

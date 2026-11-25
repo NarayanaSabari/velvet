@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react'
 
 import { Button } from '@astryxdesign/core/Button'
-import { Heading } from '@astryxdesign/core/Heading'
+import { Heading } from '../../ui/Heading'
 import { Text } from '@astryxdesign/core/Text'
 
 import { NavLink } from '../../app/nav'

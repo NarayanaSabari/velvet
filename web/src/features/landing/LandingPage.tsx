@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { Heading } from '@astryxdesign/core/Heading'
+import { Heading } from '../../ui/Heading'
 import { Text } from '@astryxdesign/core/Text'
 
 import { PublicPageLayout } from './PublicPageLayout'

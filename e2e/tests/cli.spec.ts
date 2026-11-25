@@ -267,7 +267,8 @@ test('velvet logout revokes setup access and every child repository key', async 
   await expect(page.getByText(`Derived project key · ${slug} / web`, { exact: true })).toBeVisible()
   const countBefore = sql(`SELECT count(*) FROM api_token WHERE user_id = (SELECT id FROM app_user WHERE email = '${email}')`)
   await setup.getByRole('button', { name: /^Revoke / }).click()
-  const confirmation = setup.getByRole('group')
+  // The confirmation is a modal alert dialog, outside the token row.
+  const confirmation = page.getByRole('alertdialog')
   await expect(confirmation).toContainText('all project keys derived from it')
   await expect(confirmation).toContainText('Every repository using those keys will stop working.')
   for (const [width, height, colorScheme] of [[1280, 900, 'light'], [390, 844, 'dark']] as const) {

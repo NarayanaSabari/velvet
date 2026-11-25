@@ -70,7 +70,7 @@ test('each project runs its own sprint, one active at a time', async ({ page }) 
   await page.getByLabel('Starts on').fill('2026-09-01')
   await page.getByLabel('Ends on').fill('2026-09-30')
   await page.getByRole('button', { name: 'Create sprint' }).click()
-  await expect(page.getByText('Choose a project.')).toBeVisible()
+  await expect(page.getByTestId('form-dialog').getByText('Choose a project.').first()).toBeVisible()
 
   // Two projects can each run a sprint with the same name.
   await createSprint(page, 'Web app', 'September 2026', '2026-09-01', '2026-09-30')
@@ -129,7 +129,7 @@ test('a ticket links to a project and a milestone that always agree', async ({ p
   // A new ticket from the Issues page, with a milestone that brings its project.
   await page.goto(`/w/${slug}/issues`)
   await page.getByRole('button', { name: 'New issue' }).first().click()
-  const form = page.getByRole('region', { name: 'New issue' })
+  const form = page.getByRole('dialog', { name: 'New issue' })
   await form.getByLabel('Issue title').fill('Throttle burst traffic')
   await chooseOption(dropdown(form, 'Milestone'), { label: 'Rate limits' })
   await expectChosen(dropdown(form, 'Project'), 'Public API')
@@ -144,8 +144,12 @@ test('a ticket links to a project and a milestone that always agree', async ({ p
   const milestone = page.getByTestId('issue-milestone-picker')
   await expect(project).toHaveText('Public API')
   await expect(milestone).toHaveText('Rate limits')
-  await expect(milestone.locator('optgroup[label="Public API · September 2026"]')).toHaveCount(1)
-  await expect(milestone.locator('optgroup[label="Web app · October 2026"]')).toHaveCount(1)
+  // The options are grouped by project and milestone month in the open list.
+  const milestoneList = page.locator(`[id="${await milestone.getAttribute('aria-controls')}"]`)
+  await milestone.click()
+  await expect(milestoneList.getByRole('group', { name: 'Public API · September 2026' })).toHaveCount(1)
+  await expect(milestoneList.getByRole('group', { name: 'Web app · October 2026' })).toHaveCount(1)
+  await page.keyboard.press('Escape')
 
   // Choosing a milestone in another project moves the ticket to that project.
   await chooseOption(milestone, { label: 'Onboarding polish' })

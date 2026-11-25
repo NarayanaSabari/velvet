@@ -73,7 +73,10 @@ test('dragging a card saves its status, and Undo puts it back', async ({ page, b
   await expect(page).toHaveURL(/[?&]view=board/)
 
   const board = page.getByTestId('sprint-kanban')
-  await expect(board.getByRole('heading', { level: 3 })).toHaveText([/Backlog\s*1/, /Todo\s*1/, /In progress\s*1/, /In review\s*0/, /Done\s*1/])
+  await expect(board.getByRole('heading', { level: 3 })).toHaveText(['Backlog', 'Todo', 'In progress', 'In review', 'Done'])
+  for (const [status, label] of [['backlog', '1 backlog'], ['todo', '1 todo'], ['in_progress', '1 in progress'], ['in_review', '0 in review'], ['done', '1 done']] as const) {
+    await expect(page.getByTestId(`kanban-column-${status}`).getByLabel(`${label} issues`, { exact: true })).toHaveText(label.split(' ')[0]!)
+  }
   await expect(page.getByTestId('kanban-cancelled')).toContainText('Cancelled · 1')
 
   const saved = page.waitForResponse((response) =>

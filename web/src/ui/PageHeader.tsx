@@ -1,5 +1,5 @@
 import type { ReactNode, Ref } from 'react'
-import { Heading } from '@astryxdesign/core/Heading'
+import { Heading } from './Heading'
 import { Text } from '@astryxdesign/core/Text'
 
 /** A page's title block. The type is Astryx's; the layout is Velvet's. */

@@ -3,7 +3,7 @@ import { useState, type DragEvent } from 'react'
 import { Badge } from '@astryxdesign/core/Badge'
 import { Card } from '@astryxdesign/core/Card'
 import { Collapsible } from '@astryxdesign/core/Collapsible'
-import { Heading } from '@astryxdesign/core/Heading'
+import { Heading } from '../../ui/Heading'
 import { Text } from '@astryxdesign/core/Text'
 import { Toast } from '@astryxdesign/core/Toast'
 

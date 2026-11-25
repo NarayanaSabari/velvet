@@ -38,10 +38,10 @@ async function documentOverflows(page: import('@playwright/test').Page) {
 
 test('a project can be created, filed against, and archived', async ({ signedIn: page, request }) => {
   await page.goto('/w/lab/projects')
-  await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Projects' })).toBeVisible()
 
   // The empty state explains what a project is for rather than just saying none.
-  await expect(page.getByText('No active projects')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'No active projects' })).toBeVisible()
 
   await page.getByRole('button', { name: 'New project' }).click()
   await page.getByLabel('Project name').fill('Velvet worklog')
@@ -92,7 +92,7 @@ test('a project can be created, filed against, and archived', async ({ signedIn:
   await expect(page.getByText('Archive Velvet worklog?')).toHaveCount(0)
   await page.getByTestId('project-row-velvet').getByRole('button', { name: 'Archive' }).click()
   await page.getByRole('button', { name: 'Confirm archive' }).click()
-  await expect(page.getByText('No active projects')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'No active projects' })).toBeVisible()
   await page.getByLabel('Show archived').check()
   await expect(page.getByTestId('project-row-velvet')).toBeVisible()
   await page.getByTestId('project-row-velvet').getByRole('button', { name: 'Restore' }).click()
