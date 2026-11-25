@@ -59,7 +59,7 @@ function row(slug = 'lab') {
   return within(screen.getByTestId(`github-account-row-${slug}`))
 }
 const removeName = 'Remove organisation link for Lab'
-const confirmName = 'Confirm remove organisation link for Lab'
+const confirmName = 'Remove link'
 const changeName = 'Change GitHub account for Lab'
 
 beforeEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.mocked(navigateTo).mockClear() })
@@ -127,7 +127,7 @@ describe('Table-based GitHub account management', () => {
     const user = userEvent.setup()
     await user.click(await screen.findByRole('button', { name: removeName }))
     await user.click(screen.getByRole('button', { name: confirmName }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Removal failed')
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toHaveTextContent('Removal failed'))
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
     view.recover()
     await user.click(screen.getByRole('button', { name: confirmName }))
@@ -149,10 +149,9 @@ describe('Table-based GitHub account management', () => {
     resolveLoad()
     await user.click(await screen.findByRole('button', { name: removeName }))
     await user.click(screen.getByRole('button', { name: confirmName }))
-    expect(await screen.findByRole('button', { name: 'Removing…' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    await waitFor(() => expect(screen.getByRole('button', { name: confirmName })).toHaveAttribute('aria-busy', 'true'))
     await user.keyboard('{Escape}')
-    expect(screen.getByRole('group', { name: 'Confirm organisation link removal for Lab' })).toBeVisible()
+    expect(screen.getByRole('alertdialog', { name: 'Remove the GitHub link for Lab?' })).toBeVisible()
     resolveRemove()
     await screen.findByTestId('github-account-row-lab')
     expect(await row().findByText('Global fallback')).toBeVisible()
@@ -177,7 +176,7 @@ describe('Table-based GitHub account management', () => {
     await user.click(await screen.findByRole('button', { name: removeName }))
     view.switchWorkspace()
     expect(await row('other').findByText('Current organisation')).toBeVisible()
-    expect(screen.queryByRole('group', { name: 'Confirm organisation link removal for Lab' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('alertdialog', { name: 'Remove the GitHub link for Lab?' })).not.toBeInTheDocument()
     expect(view.client.getQueryData(organisationGitHubQuery('lab').queryKey)).toEqual(identity)
     expect(view.client.getQueryData(organisationGitHubQuery('other').queryKey)).toBeNull()
   })
@@ -188,7 +187,7 @@ describe('Table-based GitHub account management', () => {
     const user = userEvent.setup()
     await user.click(await screen.findByRole('button', { name: removeName }))
     await user.click(screen.getByRole('button', { name: confirmName }))
-    await screen.findByRole('button', { name: 'Removing…' })
+    await waitFor(() => expect(screen.getByRole('button', { name: confirmName })).toHaveAttribute('aria-busy', 'true'))
     view.switchWorkspace()
     const link = await row('other').findByRole('link', { name: 'Link GitHub account for Other' })
     const globalTrigger = row('global').getByRole('button', { name: 'Unlink GitHub profile' })
@@ -210,7 +209,7 @@ describe('Table-based GitHub account management', () => {
     await user.keyboard('{Escape}')
     await waitFor(() => expect(row('global').getByRole('button', { name: 'Unlink GitHub profile' })).toHaveFocus())
     await user.click(row('global').getByRole('button', { name: 'Unlink GitHub profile' }))
-    await user.click(screen.getByRole('button', { name: 'Confirm unlink GitHub profile' }))
+    await user.click(screen.getByRole('button', { name: 'Remove link' }))
     await waitFor(() => expect(view.fetch).toHaveBeenCalledWith('/api/v1/me/github', expect.objectContaining({ method: 'DELETE' })))
     await waitFor(() => expect(view.fetch.mock.calls.filter(([url, init]) => url === '/api/v1/w/lab/me/github' && init?.method === 'GET').length).toBeGreaterThan(1))
     expect(await row('global').findByRole('link', { name: 'Link GitHub profile' })).toHaveAttribute('href', '/api/v1/auth/github/link')
@@ -226,10 +225,8 @@ describe('Table-based GitHub account management', () => {
     options.pauseLoad = new Promise<void>((resolve) => { release = resolve })
     try {
       await user.click(screen.getByRole('button', { name: confirmName }))
-      expect(await screen.findByRole('button', { name: 'Removing…' })).toBeDisabled()
-      expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
-      expect(row().queryByRole('button', { name: removeName })).not.toBeInTheDocument()
-      expect(row().queryByRole('link', { name: changeName })).not.toBeInTheDocument()
+      await waitFor(() => expect(screen.getByRole('button', { name: confirmName })).toHaveAttribute('aria-busy', 'true'))
+      expect(row().getByRole('button', { name: removeName })).toBeDisabled()
     } finally { release() }
     expect(await row().findByText('Global fallback')).toBeVisible()
     await waitFor(() => expect(row().getByRole('link', { name: changeName })).toHaveFocus())
@@ -273,7 +270,6 @@ describe('Table-based GitHub account management', () => {
     }))
     await view.client.invalidateQueries({ queryKey: organisationGitHubQuery('lab').queryKey })
     expect(await row().findByRole('alert')).toHaveTextContent('Could not load account.')
-    expect(screen.getByRole('button', { name: confirmName })).toBeDisabled()
     expect(screen.getByText('Refresh the account before removing the link.')).toBeVisible()
     await user.click(screen.getByRole('button', { name: confirmName }))
     expect(view.fetch).not.toHaveBeenCalledWith('/api/v1/w/lab/me/github', expect.objectContaining({ method: 'DELETE' }))

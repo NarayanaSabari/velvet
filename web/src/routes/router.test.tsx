@@ -4,7 +4,11 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { LinkProvider } from '@astryxdesign/core/Link'
+
+import { AppLink } from '../app/AppLink'
 import { createAppRouter } from './router'
+import { findPageStatus, pageAlert, queryPageAlert, queryPageStatus } from '../test-utils'
 
 describe('public auth routes', () => {
   beforeEach(() => vi.unstubAllGlobals())
@@ -35,12 +39,13 @@ const last = { id: 'm2', workspace_id: 'w2', workspace_slug: 'last', workspace_n
 function show(path: string, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   vi.stubGlobal('scrollTo', vi.fn())
   const router = createAppRouter(createMemoryHistory({ initialEntries: [path] }), client)
-  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)
+  // As main.tsx mounts it: links inside Astryx components route through AppLink.
+  render(<LinkProvider component={AppLink}><QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider></LinkProvider>)
   return router
 }
 
 it.each([
-  ['/signin', 'Sign in to Velvet'], ['/expired', 'Link expired'], ['/signin/confirm', 'Link expired'], ['/invite', 'Link expired'],
+  ['/signin', 'Sign in to Velvet'], ['/expired', 'This link no longer works'], ['/signin/confirm', 'This link no longer works'], ['/invite', 'This link no longer works'],
 ])('renders public %s without fetching a session', async (path, heading) => {
   const fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
@@ -109,6 +114,29 @@ it('marks only the current page in the workspace navigation on a nested route', 
   await waitFor(() => expect(within(navigation).getByRole('link', { name: 'Projects' })).toHaveAttribute('aria-current', 'page'))
   expect(within(navigation).getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current')
   expect(within(navigation).getAllByRole('link').filter((link) => link.hasAttribute('aria-current'))).toHaveLength(1)
+})
+
+describe('sign-in pages', () => {
+  it.each([
+    ['/signin', 'Sign in to Velvet', /No password needed/],
+    ['/check-email', 'Check your email', /a link is on its way/],
+    ['/expired', 'This link no longer works', /Each link works once/],
+    ['/auth/recovery', 'GitHub was not connected', /session that expired/],
+  ])('%s leads with its task and one line of help, without a session', async (path, heading, lead) => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    show(path)
+    expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByText(lead)).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('offers asking for another link as the fallback after sending one', async () => {
+    vi.stubGlobal('fetch', vi.fn())
+    show('/check-email')
+    expect(await screen.findByRole('link', { name: 'Request another link' })).toHaveAttribute('href', '/signin')
+  })
 })
 
 describe('Administration pages', () => {
@@ -218,13 +246,13 @@ describe('Profile pages', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'GitHub' })).toBeInTheDocument()
     expect(within(screen.getByRole('navigation', { name: 'Profile sections' })).getByRole('link', { name: 'GitHub' })).toHaveAttribute('aria-current', 'page')
     await user.click(screen.getByRole('button', { name: 'Unlink GitHub profile' }))
-    expect(screen.getByRole('button', { name: 'Confirm unlink GitHub profile' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove link' })).toBeInTheDocument()
     act(() => router.history.back())
     expect(await screen.findByRole('heading', { level: 1, name: 'API tokens' })).toBeInTheDocument()
     expect(screen.queryByText('velvet_shown_once')).not.toBeInTheDocument()
     act(() => router.history.forward())
     expect(await screen.findByRole('button', { name: 'Unlink GitHub profile' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Confirm unlink GitHub profile' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove link' })).not.toBeInTheDocument()
   })
 
   it('rejects unknown sections', async () => {
@@ -281,13 +309,13 @@ it('keeps the public frame visible while the root session check is pending', asy
   vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise<Response>((resolve) => { resolveSession = resolve })))
   show('/')
 
-  expect(await screen.findByRole('status')).toHaveTextContent('Checking your session')
+  expect(await findPageStatus()).toHaveTextContent('Checking your session')
   expect(screen.getByRole('navigation', { name: 'Public navigation' })).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/signin')
   expect(document.title).toBe('Opening Velvet · Velvet')
 
   await act(async () => resolveSession({ ok: false, status: 401, json: async () => ({ error: { code: 'unauthenticated', message: 'sign-in required' } }) } as Response))
-  await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
+  await waitFor(() => expect(queryPageStatus()).toBeNull())
 })
 
 it('retries a failed root session check and clears the route error', async () => {
@@ -298,12 +326,12 @@ it('retries a failed root session check and clears the route error', async () =>
   const router = show('/')
 
   expect(await screen.findByRole('heading', { name: 'Unable to open Velvet' })).toBeInTheDocument()
-  expect(screen.getByRole('alert')).toHaveTextContent('We could not check your session')
+  expect(pageAlert()).toHaveTextContent('We could not check your session')
   expect(screen.queryByText('internal service detail')).not.toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/signin')
   fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
-  await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+  await waitFor(() => expect(queryPageAlert()).toBeNull())
   expect(fetchMock).toHaveBeenCalledTimes(2)
   await waitFor(() => expect(router.state.matches.every((match) => match.status === 'success' && !match.error)).toBe(true))
   expect(screen.getByRole('heading', { name: 'Know what you worked on last week.' })).toBeInTheDocument()
@@ -314,12 +342,12 @@ it('offers safe recovery links without fetching or replaying a GitHub callback',
   vi.stubGlobal('fetch', fetchMock)
   show('/auth/recovery')
 
-  expect(await screen.findByRole('heading', { name: 'Could not connect GitHub' })).toBeInTheDocument()
-  expect(screen.getByText(/start a new connection from your profile or organisation settings/)).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: 'GitHub was not connected' })).toBeInTheDocument()
+  expect(screen.getByText(/Start a new connection from your profile or organisation settings/)).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Return to Velvet' })).toHaveAttribute('href', '/')
   expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/signin')
   expect(fetchMock).not.toHaveBeenCalled()
-  expect(document.title).toBe('Could not connect GitHub · Velvet')
+  expect(document.title).toBe('GitHub was not connected · Velvet')
 })
 
 it.each(['/missing', '/signin/missing', '/orgs/missing', '/workspace', '/me/worklogs'])('shows a public not-found page at %s without requiring a session', async (path) => {

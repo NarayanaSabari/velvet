@@ -1,5 +1,13 @@
-import { useState, type SyntheticEvent } from 'react'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
+import { ErrorNote } from '../../ui/ErrorNote'
+import { useState } from 'react'
 import { useMutation, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
+
+import { Badge } from '@astryxdesign/core/Badge'
+import { Collapsible } from '@astryxdesign/core/Collapsible'
+import { List, ListItem } from '@astryxdesign/core/List'
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList'
+import { Text } from '@astryxdesign/core/Text'
 
 import { api } from '../../lib/api'
 import type { Role, WorkspaceMembership } from '../../lib/types'
@@ -9,13 +17,9 @@ import { Button } from '../../ui/Button'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { clearPrivateQueries, navigateTo, refreshPrivateQueries } from '../auth/sessionNavigation'
 import { ROLE_DESCRIPTIONS, ROLE_LABELS, ROLES } from './roles'
+import { SelectField } from '../../ui/fields'
 
 const ROLE_ORDER: Record<Role, number> = { admin: 0, member: 1, viewer: 2 }
-
-/** Return focus to the row's trigger before its confirmation unmounts. */
-function focusTrigger(event: SyntheticEvent<HTMLElement>) {
-  event.currentTarget.closest('li')?.querySelector<HTMLButtonElement>('[data-confirm-trigger]')?.focus()
-}
 
 /** Admins first, then by name, with the current person leading their group. */
 function sortMembers(members: WorkspaceMembership[], selfId: string | undefined) {
@@ -61,27 +65,28 @@ export function MembersPanel({ slug, selfId, members }: {
   return (
     <section aria-label="Members">
       {members.data ? <p className="mb-1 text-sm text-grey-700" data-testid="member-counts">{counts}</p> : null}
-      <details className="mb-3 text-sm">
-        <summary className="inline-flex min-h-11 cursor-pointer items-center text-grey-700 underline underline-offset-4 sm:min-h-8">What each role can do</summary>
-        <dl className="mt-2 grid max-w-[46rem] gap-x-4 gap-y-1 rounded-[var(--radius-surface)] border border-grey-200 p-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
-          {ROLES.map((role) => (
-            <div key={role} className="contents">
-              <dt className="font-medium">{ROLE_LABELS[role]}</dt>
-              <dd className="mb-1 text-grey-700 sm:mb-0">{ROLE_DESCRIPTIONS[role]}</dd>
-            </div>
-          ))}
-        </dl>
-      </details>
+      <div className="mb-3 max-w-[46rem]">
+        <Collapsible defaultIsOpen={false} chevronPosition="start" trigger={<span className="py-1.5"><Text color="secondary">What each role can do</Text></span>}>
+          <div className="pt-2 pb-1">
+            <MetadataList label={{ position: 'start', width: '6rem' }}>
+              {ROLES.map((role) => (
+                <MetadataListItem key={role} label={ROLE_LABELS[role]}>{ROLE_DESCRIPTIONS[role]}</MetadataListItem>
+              ))}
+            </MetadataList>
+          </div>
+        </Collapsible>
+      </div>
 
       {members.isPending ? <LoadingState label="Loading members…" /> : null}
       {members.error ? (
         <ErrorState message="Could not load members." onRetry={() => void members.refetch()} retrying={members.isRefetching} />
       ) : null}
-      {updateRole.error ? <p role="alert" className="mb-2 text-sm text-blocked">{updateRole.error.message}</p> : null}
-      {remove.error ? <p role="alert" className="mb-2 text-sm text-blocked">{remove.error.message}</p> : null}
+      {updateRole.error ? <ErrorNote className="mb-2">{updateRole.error.message}</ErrorNote> : null}
+      {remove.error ? <ErrorNote className="mb-2">{remove.error.message}</ErrorNote> : null}
 
       {list.length > 0 ? (
-        <ul className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
+        <div className="border-y border-grey-200">
+        <List hasDividers density="balanced" edge="flush" aria-label="Members">
           {list.map((membership) => {
             const label = userLabel(membership.user)
             const isSelf = membership.user.id === selfId
@@ -93,31 +98,29 @@ export function MembersPanel({ slug, selfId, members }: {
               membership.user.github_login && label !== `@${membership.user.github_login}` ? `@${membership.user.github_login}` : null,
             ].filter(Boolean).join(' · ')
             return (
-              <li key={membership.id} className="border-t border-grey-200 px-3 py-3 first:border-t-0" data-testid={`member-${membership.id}`}>
+              <ListItem key={membership.id} itemKey={membership.id} data-testid={`member-${membership.id}`} label={(
+                <div className="py-1">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                   <div className="flex min-w-0 flex-1 basis-56 items-center gap-3">
                     <Avatar user={membership.user} size="lg" />
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="break-words [overflow-wrap:anywhere]">{label}</span>
-                        {isSelf ? <span className="text-xs text-grey-500">You</span> : null}
+                        <Text weight="medium" className="break-words [overflow-wrap:anywhere]">{label}</Text>
+                        {isSelf ? <Badge label="You" /> : null}
                       </div>
                       {secondary ? <div className="text-xs text-grey-500 [overflow-wrap:anywhere]">{secondary}</div> : null}
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    <label>
-                      <span className="sr-only">Role for {label}</span>
-                      <select
-                        className="ui-control min-h-10 px-2 py-1 text-sm md:min-h-8"
-                        value={membership.role}
-                        title={ROLE_DESCRIPTIONS[membership.role]}
-                        disabled={updateRole.isPending || remove.isPending}
-                        onChange={(event) => { remove.reset(); updateRole.mutate({ id: membership.id, role: event.target.value as Role }) }}
-                      >
-                        {ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
-                      </select>
-                    </label>
+                    <SelectField
+                      label={`Role for ${label}`}
+                      hideLabel
+                      value={membership.role}
+                      title={ROLE_DESCRIPTIONS[membership.role]}
+                      disabled={updateRole.isPending || remove.isPending}
+                      onChange={(value) => { remove.reset(); updateRole.mutate({ id: membership.id, role: value as Role }) }}
+                      options={ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] }))}
+                    />
                     <Button
                       variant="danger"
                       data-confirm-trigger
@@ -138,33 +141,24 @@ export function MembersPanel({ slug, selfId, members }: {
                       : 'The only member and admin. An organisation needs at least one admin, so this cannot be removed.'}
                   </p>
                 ) : null}
-                {removing?.id === membership.id ? (
-                  <div
-                    className="mt-3 space-y-2 border-t border-grey-200 pt-3"
-                    role="group"
-                    aria-label={`Confirm removing ${label}`}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Escape' && !remove.isPending) { focusTrigger(event); setRemoving(null) }
-                    }}
-                  >
-                    <p className="text-sm">{isSelf ? 'Leave this organisation?' : `Remove ${label} from this organisation?`}</p>
-                    <p className="text-sm text-grey-500">
-                      {isSelf
-                        ? 'You will lose access to this organisation straight away. Your authored work remains.'
-                        : 'They will lose access to this organisation. Their authored work remains.'}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="danger" disabled={remove.isPending} onClick={() => remove.mutate(removing)}>
-                        {remove.isPending ? 'Removing…' : isSelf ? 'Confirm leave' : 'Confirm removal'}
-                      </Button>
-                      <Button autoFocus disabled={remove.isPending} onClick={(event) => { focusTrigger(event); setRemoving(null) }}>Cancel</Button>
-                    </div>
-                  </div>
-                ) : null}
-              </li>
+                <ConfirmDialog
+                  open={removing?.id === membership.id}
+                  onClose={() => { remove.reset(); setRemoving(null) }}
+                  title={isSelf ? 'Leave this organisation?' : `Remove ${label} from this organisation?`}
+                  description={isSelf
+                    ? 'You will lose access to this organisation straight away. Your authored work remains.'
+                    : 'They will lose access to this organisation. Their authored work remains.'}
+                  actionLabel={isSelf ? 'Confirm leave' : 'Confirm removal'}
+                  pending={remove.isPending}
+                  error={remove.error ? `${remove.error.message} Try again, or cancel.` : null}
+                  onConfirm={() => remove.mutate(membership)}
+                />
+                </div>
+              )} />
             )
           })}
-        </ul>
+        </List>
+        </div>
       ) : null}
     </section>
   )

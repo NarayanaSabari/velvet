@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { Card } from '@astryxdesign/core/Card'
+import { EmptyState as AstryxEmptyState } from '@astryxdesign/core/EmptyState'
 
 export function EmptyState({
   title,
@@ -11,6 +13,8 @@ export function EmptyState({
   action?: ReactNode
   compact?: boolean
 }) {
+  // The compact form is one sentence inside running content, which Astryx's
+  // stacked empty state is not, so it stays a plain line.
   if (compact) {
     return (
       <p className="text-sm text-grey-700">
@@ -21,10 +25,10 @@ export function EmptyState({
     )
   }
   return (
-    <div className="ui-surface bg-grey-100 px-6 py-10 text-center">
-      <p className="font-medium text-ink">{title}</p>
-      {message ? <p className="mx-auto mt-1 max-w-md text-sm text-grey-700">{message}</p> : null}
-      {action ? <div className="mt-3">{action}</div> : null}
-    </div>
+    // The same Astryx card as the not-found state, so "nothing here" and
+    // "not found" read as one family.
+    <Card padding={6}>
+      <AstryxEmptyState title={title} description={message} actions={action} />
+    </Card>
   )
 }

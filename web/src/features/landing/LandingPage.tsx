@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react'
 
+import { Heading } from '@astryxdesign/core/Heading'
+import { Text } from '@astryxdesign/core/Text'
+
 import { PublicPageLayout } from './PublicPageLayout'
 
 function WorkRow({ meta, children }: { meta: ReactNode; children: ReactNode }) {
@@ -17,8 +20,8 @@ function WorkLedger() {
   return (
     <section aria-labelledby="ledger-title" className="landing-ledger">
       <div className="flex items-baseline justify-between gap-2 border-b border-grey-200 py-2">
-        <h2 id="ledger-title" className="text-xs font-medium sm:text-sm">Monday, September 21</h2>
-        <p className="text-xs text-grey-500">Sample work log</p>
+        <Heading level={4} accessibilityLevel={2} id="ledger-title">Monday, September 21</Heading>
+        <Text type="supporting" color="secondary">Sample work log</Text>
       </div>
 
       <div className="landing-client border-b border-grey-200">

@@ -1,18 +1,19 @@
+import { Avatar as AstryxAvatar } from '@astryxdesign/core/Avatar'
+
 import type { User } from '../lib/types'
 import { userLabel } from '../lib/userLabel'
 
-const SIZES = { sm: 'h-4 w-4 text-xs', md: 'h-6 w-6 text-xs', lg: 'h-8 w-8 text-sm' } as const
+// Velvet's three sizes, in the pixel sizes Astryx offers.
+const SIZES = { sm: 16, md: 24, lg: 32 } as const
 
 export function Avatar({ user, size = 'sm' }: { user: User | null; size?: keyof typeof SIZES }) {
   const label = userLabel(user)
-  const cls = `${SIZES[size]} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-grey-300 bg-grey-100 align-middle text-grey-700 object-cover`
-
-  if (user?.avatar_url) {
-    return <img className={cls} src={user.avatar_url} alt={label} title={label} />
-  }
+  // No hover card: Astryx's makes each avatar a keyboard stop, and Velvet's
+  // lists show dozens of them. The name stays as the accessible name and as
+  // a plain hover title.
   return (
-    <span className={cls} title={label} aria-label={label}>
-      {label.slice(0, 1).toUpperCase()}
+    <span title={label} className="inline-flex shrink-0 align-middle">
+      <AstryxAvatar name={label} alt={label} src={user?.avatar_url || undefined} size={SIZES[size]} tooltip={false} />
     </span>
   )
 }

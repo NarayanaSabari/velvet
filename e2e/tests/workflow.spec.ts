@@ -98,9 +98,9 @@ test('the command palette searches an issue title and opens the issue', async ({
   await expect(page.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeVisible()
 
   await page.keyboard.press('Meta+K')
-  await expect(page.getByTestId('command-palette')).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible()
 
-  const input = page.getByTestId('command-palette-input')
+  const input = page.getByRole('combobox', { name: 'Command palette' })
   await input.fill('Implement GitHub OAuth')
   await expect(page.getByRole('option', { name: /ENG-1 Implement GitHub OAuth/ })).toBeVisible()
 
@@ -109,16 +109,12 @@ test('the command palette searches an issue title and opens the issue', async ({
   await expect(page.getByText('Implement GitHub OAuth')).toBeVisible()
 })
 
-test('lists are keyboard navigable with j, k, and Enter', async ({ signedIn: page }) => {
+test('list rows are links that open with the keyboard', async ({ signedIn: page }) => {
   await page.goto('/w/lab/sprints')
 
-  const list = page.getByRole('listbox')
-  await expect(list).toBeVisible()
-  await list.focus()
-
-  await page.keyboard.press('j')
-  // A roving index means the active row is tracked on the listbox itself.
-  await expect(list).toHaveAttribute('aria-activedescendant', /.+/)
+  const row = page.getByRole('list', { name: /sprints$/ }).first().getByRole('link').first()
+  await expect(row).toBeVisible()
+  await row.focus()
 
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/w\/lab\/sprints\/[0-9a-f-]{36}$/)
@@ -287,8 +283,8 @@ test('uses readable type at 100% zoom without disturbing responsive layout', asy
         nav: size('[data-testid="desktop-sidebar-nav"] a'),
         search: size('[data-testid="command-palette-trigger"]'),
         footerButton: size('[data-testid="desktop-sidebar-footer"] button'),
-        formInput: size('section[aria-labelledby="dashboard-new-issue-heading"] input'),
-        formButton: size('section[aria-labelledby="dashboard-new-issue-heading"] button'),
+        formInput: size('[data-testid="form-dialog"] input'),
+        formButton: size('[data-testid="form-dialog"] button'),
         documentWidth: document.documentElement.scrollWidth,
         viewportWidth: window.innerWidth,
         footerPinned: sidebarRect && footerRect && paddingBottom !== null

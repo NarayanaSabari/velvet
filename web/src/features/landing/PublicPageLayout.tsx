@@ -1,7 +1,10 @@
 import { useEffect, type ReactNode } from 'react'
 
+import { Button } from '@astryxdesign/core/Button'
+import { Heading } from '@astryxdesign/core/Heading'
+import { Text } from '@astryxdesign/core/Text'
+
 import { NavLink } from '../../app/nav'
-import { buttonClassName } from '../../ui/buttonStyles'
 import { Wordmark } from '../../ui/Wordmark'
 import './landing.css'
 
@@ -26,15 +29,15 @@ const PROOFS = [
   },
 ] as const
 
-export function PublicPageLayout({ children, signingIn = false, title = 'Know what you worked on', expanded = false }: {
+export function PublicPageLayout({ children, signingIn = false, title = 'Know what you worked on', expanded = false, refined = false }: {
   children: ReactNode
   signingIn?: boolean
   title?: string
   expanded?: boolean
+  /** The refined sign-in pages: the same split, with the task leading instead of the headline. */
+  refined?: boolean
 }) {
   const Headline = signingIn ? 'p' : 'h1'
-  // On sign-in pages the form's h1 follows this column, so it must not open with an h2.
-  const ProjectTitle = signingIn ? 'p' : 'h2'
   useEffect(() => {
     const previousTitle = document.title
     document.title = `${title} · Velvet`
@@ -56,58 +59,37 @@ export function PublicPageLayout({ children, signingIn = false, title = 'Know wh
             <Wordmark />
           </NavLink>
           <nav aria-label="Public navigation" className="flex items-center gap-1 sm:gap-2">
-            <a
-              className={buttonClassName('ghost', 'inline-flex min-h-11 items-center px-3 no-underline')}
-              href={SOURCE_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              View source
-            </a>
-            <NavLink
-              to={signingIn ? '/' : '/signin'}
-              className={buttonClassName('primary', 'inline-flex min-h-11 items-center px-4 no-underline')}
-            >
-              {signingIn ? 'About Velvet' : 'Sign in'}
-            </NavLink>
+            <Button variant="ghost" href={SOURCE_URL} target="_blank" rel="noreferrer" label="View source" />
+            <Button variant="primary" href={signingIn ? '/' : '/signin'} label={signingIn ? 'About Velvet' : 'Sign in'} />
           </nav>
         </div>
       </header>
 
       <main
         id="main-content"
-        className={`landing-layout${signingIn ? ' landing-layout-auth' : ''}${expanded ? ' landing-layout-expanded' : ''}`}
+        className={`landing-layout${signingIn ? ' landing-layout-auth' : ''}${expanded ? ' landing-layout-expanded' : ''}${refined ? ' landing-layout-refined' : ''}`}
       >
         <section className="landing-intro">
           <div className="min-w-0">
             <Headline className="landing-title font-semibold">
               Know what you worked on last week.
             </Headline>
-            <p className="landing-description text-xs text-grey-700 lg:text-base">
+            <Text as="p" color="secondary" display="block" className="landing-description">
               Your notes, tickets, and agent progress. GitHub proof. One work record across organisations.
-            </p>
+            </Text>
             {!signingIn ? <div className="landing-actions mt-4 hidden flex-wrap gap-2 sm:flex lg:mt-6">
-              <NavLink
-                to="/signin"
-                className={buttonClassName('primary', 'inline-flex min-h-11 items-center px-4 no-underline')}
-              >
-                Sign in
-              </NavLink>
-              <a
-                className={buttonClassName('secondary', 'inline-flex min-h-11 items-center px-4 no-underline')}
-                href={SOURCE_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
-                View source
-              </a>
+              <Button variant="primary" size="lg" href="/signin" label="Sign in" />
+              <Button variant="secondary" size="lg" href={SOURCE_URL} target="_blank" rel="noreferrer" label="View source" />
             </div> : null}
-            <p className="mt-2 text-xs text-grey-500 lg:mt-3">
+            <Text as="p" type="supporting" color="secondary" display="block" className="mt-2 lg:mt-3">
               No estimates. No time tracking.
-            </p>
+            </Text>
           </div>
           <div className="landing-project">
-            <ProjectTitle className="text-lg font-medium">One project. A lasting record.</ProjectTitle>
+            {/* On sign-in pages the form's h1 follows this column, so it must not open with an h2. */}
+            {signingIn
+              ? <Text as="p" type="large" weight="semibold" display="block">One project. A lasting record.</Text>
+              : <Heading level={2}>One project. A lasting record.</Heading>}
             <dl className="mt-4 divide-y divide-grey-200 border-y border-grey-200">
               {[
                 ['Project', 'The long-running body of work'],
@@ -133,8 +115,8 @@ export function PublicPageLayout({ children, signingIn = false, title = 'Know wh
               key={proof.title}
               className="min-w-0"
             >
-              <h2 className="text-xs font-medium lg:text-lg">{proof.title}</h2>
-              <p className="mt-1 text-xs text-grey-500 lg:mt-3 lg:text-sm">{proof.body}</p>
+              <Heading level={3} accessibilityLevel={2}>{proof.title}</Heading>
+              <Text as="p" color="secondary" display="block" className="mt-1 lg:mt-2">{proof.body}</Text>
             </article>
           ))}
         </section>

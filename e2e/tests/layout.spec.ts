@@ -165,7 +165,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     )
 
     await page.goto(`/w/lab/milestones/${ids.milestone}`)
-    const milestoneIssues = page.getByRole('listbox')
+    const milestoneIssues = page.getByRole('list', { name: 'Issues' })
     const milestoneIssueTitle = milestoneIssues.getByText(UNBROKEN, { exact: true })
     const milestoneIssueStatus = milestoneIssues.getByText('Backlog', { exact: true })
     await expect(milestoneIssueTitle).toBeVisible()

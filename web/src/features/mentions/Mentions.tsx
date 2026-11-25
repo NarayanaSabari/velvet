@@ -1,3 +1,7 @@
+import { Badge } from '@astryxdesign/core/Badge'
+import { List, ListItem } from '@astryxdesign/core/List'
+import { Text } from '@astryxdesign/core/Text'
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
@@ -67,21 +71,29 @@ export function Mentions({ slug }: { slug: string }) {
       {mentions.length === 0 ? (
         <EmptyState title="No mentions" message="Updates that name you appear here." />
       ) : (
-        <ul className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
+        <div className="border-b border-grey-200">
+        <List hasDividers density="balanced" edge="flush" aria-label="Mentions">
           {mentions.map((mention) => {
             const { comment, read_at: readAt } = mention
             const href = targetHref(mention)
             return (
-              <li
+              <ListItem
                 key={comment.id}
-                className={`border-t border-l-2 border-t-grey-200 px-3 py-3 text-sm first:border-t-0 ${
-                  readAt ? 'border-l-transparent' : 'border-l-ink bg-grey-100 [&_.text-grey-500]:text-grey-700'
-                }`}
-              >
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className={readAt ? 'text-grey-500' : 'font-medium'}>
-                    {userLabel(comment.author)}
+                itemKey={comment.id}
+                align="start"
+                // An unread mention leads with a dot and a heavier name; the
+                // word Unread beside it says the same without colour.
+                startContent={(
+                  <span className="flex h-6 w-2 items-center" aria-hidden="true">
+                    {!readAt ? <span className="h-2 w-2 rounded-full bg-ink" /> : null}
                   </span>
+                )}
+                label={(
+              <div className="min-w-0 py-1">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <Text weight={readAt ? 'normal' : 'semibold'} color={readAt ? 'secondary' : 'primary'}>
+                    {userLabel(comment.author)}
+                  </Text>
                   <RelativeTime iso={comment.created_at} />
                   {href ? (
                     <NavLink to={href} className="inline-flex min-h-11 items-center underline sm:min-h-0">
@@ -90,15 +102,18 @@ export function Mentions({ slug }: { slug: string }) {
                   ) : (
                     <span>{mention.target_label}</span>
                   )}
-                  {!readAt ? <span className="text-xs text-grey-700">Unread</span> : null}
+                  {!readAt ? <Badge label="Unread" /> : null}
                 </div>
                 <div className="mt-1">
                   <Markdown source={comment.body} />
                 </div>
-              </li>
+              </div>
+                )}
+              />
             )
           })}
-        </ul>
+        </List>
+        </div>
       )}
     </div>
   )

@@ -1,7 +1,14 @@
+import { ErrorNote } from '../../ui/ErrorNote'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { Heading } from '@astryxdesign/core/Heading'
+import { List, ListItem } from '@astryxdesign/core/List'
+import { Text } from '@astryxdesign/core/Text'
+import { Token } from '@astryxdesign/core/Token'
+
 import { api, isNotFound } from '../../lib/api'
+import { PanelHeading } from '../../ui/PageHeader'
 import type {
   Activity,
   Comment,
@@ -33,6 +40,7 @@ import { ErrorState, LoadingState, NotFoundState } from '../../ui/QueryState'
 import { NavLink } from '../../app/nav'
 import { useReturnFocus } from './useReturnFocus'
 import { buildTimeline, type TimelineEntry } from './issueTimeline'
+import { TextField } from '../../ui/fields'
 
 /** Below lg the rail falls under the narrative, so status moves up under the
  *  header instead. Without matchMedia (tests) the rail layout is assumed. */
@@ -73,52 +81,49 @@ export function IssueTimeline({ entries, onReply, slug }: {
   }
 
   return (
-    <ul className="divide-y divide-grey-200 border-y border-grey-200">
-      {sorted.map((entry) => (
-        <li key={`${entry.kind}-${entry.id}`} className="py-2 text-sm">
-          <div className="flex items-baseline gap-2">
-            <div className="min-w-0 flex-1">
-              {entry.kind === 'comment' ? (
-                <>
-                  <span className="text-ink">
-                    {userLabel(entry.author)}
-                  </span>
-                  <div className="mt-0.5 flex gap-2">
-                    <Avatar user={entry.author} />
-                    <div className="min-w-0 flex-1">
-                      <Markdown source={entry.body} />
-                      {slug ? <CommentImages images={entry.images} slug={slug} /> : null}
-                    </div>
-                  </div>
-                </>
-              ) : entry.kind === 'status' ? (
-                <span className="text-grey-700">
-                  Status {label(entry.from)} → {label(entry.to)}
-                </span>
-              ) : entry.kind === 'pr' ? (
-                <span className="text-grey-700">
-                  PR <span className="text-ink">#{entry.number}</span> {entry.state}
-                </span>
-              ) : entry.kind === 'commit' ? (
-                <span className="text-grey-700">
-                  {entry.author} pushed {entry.message}
-                </span>
-              ) : entry.kind === 'review' ? (
-                <span className="text-grey-700">
-                  {entry.reviewer} reviewed: {entry.state}
-                </span>
-              ) : (
-                <span className="text-grey-700">{entry.text}</span>
-              )}
-            </div>
-            <RelativeTime iso={entry.at} />
-          </div>
-          {entry.kind === 'comment' && !entry.parentId && onReply ? (
-            <ReplyEditor commentId={entry.id} onReply={onReply} />
-          ) : null}
-        </li>
-      ))}
-    </ul>
+    <div className="border-y border-grey-200">
+      <List hasDividers density="balanced" edge="flush" aria-label="Timeline">
+        {sorted.map((entry) => (
+          <ListItem
+            key={`${entry.kind}-${entry.id}`}
+            itemKey={`${entry.kind}-${entry.id}`}
+            align="start"
+            // A person's comment leads with their face. Everything else is an
+            // event, marked by a dot in the same column so the text lines up.
+            startContent={entry.kind === 'comment' ? <Avatar user={entry.author} size="md" /> : (
+              <span className="flex h-6 w-6 items-center justify-center" aria-hidden="true">
+                <span className="h-1.5 w-1.5 rounded-full bg-grey-300" />
+              </span>
+            )}
+            endContent={<RelativeTime iso={entry.at} />}
+            label={entry.kind === 'comment' ? (
+              <div className="min-w-0">
+                <Text weight="semibold" display="block">{userLabel(entry.author)}</Text>
+                <div className="mt-1 min-w-0">
+                  <Markdown source={entry.body} />
+                  {slug ? <CommentImages images={entry.images} slug={slug} /> : null}
+                </div>
+                {!entry.parentId && onReply ? (
+                  <ReplyEditor commentId={entry.id} onReply={onReply} />
+                ) : null}
+              </div>
+            ) : (
+              <Text color="secondary" display="block">
+                {entry.kind === 'status' ? (
+                  <>Status {label(entry.from)} → {label(entry.to)}</>
+                ) : entry.kind === 'pr' ? (
+                  <>PR <Text color="primary">#{entry.number}</Text> {entry.state}</>
+                ) : entry.kind === 'commit' ? (
+                  <>{entry.author} pushed {entry.message}</>
+                ) : entry.kind === 'review' ? (
+                  <>{entry.reviewer} reviewed: {entry.state}</>
+                ) : entry.text}
+              </Text>
+            )}
+          />
+        ))}
+      </List>
+    </div>
   )
 }
 
@@ -155,11 +160,11 @@ export function IssueEvidenceSection({
 
   return (
     <section className="border-t border-grey-200 pt-4" data-testid="issue-evidence-section">
-      <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Linked PRs / evidence</h2>
+      <PanelHeading>Linked PRs / evidence</PanelHeading>
       {isPending ? (
         <LoadingState label="Loading linked PRs…" />
       ) : hasError ? (
-        <p className="text-sm text-blocked" role="alert">Could not load linked PRs.</p>
+        <ErrorNote>Could not load linked PRs.</ErrorNote>
       ) : pullRequests.length === 0 ? (
         <div data-testid="issue-evidence-empty">
           <EmptyState compact title="No linked PRs." message="Branch as sabari/eng-42-... to link automatically." />
@@ -278,7 +283,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
 
   const pendingHeader = (
     <header className="mb-6 border-b border-grey-200 pb-4">
-      <h1 className="text-lg font-medium tracking-[-0.02em] [overflow-wrap:anywhere]">{issueKey}</h1>
+      <Heading level={1} wordBreak="break-word">{issueKey}</Heading>
     </header>
   )
   if (issue.isPending) return <>{pendingHeader}<LoadingState /></>
@@ -318,7 +323,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
 
   const statusSection = (
       <section className="border-b border-grey-200 pb-4" data-testid="issue-status-section">
-        <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Status</h2>
+        <PanelHeading>Status</PanelHeading>
         {canWrite ? (
           <StatusSelect
             value={data.status}
@@ -332,7 +337,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
           </div>
         )}
         {setStatus.error ? (
-          <p className="mt-2 text-xs text-blocked" role="alert">Could not update status. Try again.</p>
+          <ErrorNote className="mt-2">Could not update status. Try again.</ErrorNote>
         ) : null}
       </section>
   )
@@ -341,8 +346,8 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-3 border-b border-grey-200 pb-4" data-testid="issue-header">
         <div className="min-w-0">
-          <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase" data-testid="issue-eyebrow">
-            <span>{data.key}</span>
+          <Text as="p" type="supporting" color="secondary" display="block" className="mb-1" data-testid="issue-eyebrow">
+            <span className="font-mono">{data.key}</span>
             {project ? (
               <>
                 <span aria-hidden="true"> · </span>
@@ -354,8 +359,8 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
                 </NavLink>
               </>
             ) : null}
-          </p>
-          <h1 className="text-lg font-medium tracking-[-0.02em] [overflow-wrap:anywhere]">{data.title}</h1>
+          </Text>
+          <Heading level={1} wordBreak="break-word">{data.title}</Heading>
         </div>
         {canWrite ? (
           <span ref={editButton} className="shrink-0">
@@ -371,7 +376,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
       </header>
       {editingIssue ? (
         <section id="issue-edit-panel" data-testid="issue-edit-panel">
-          <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Edit issue</h2>
+          <PanelHeading>Edit issue</PanelHeading>
           <IssueEditForm
             issue={data}
             onSubmit={async (input) => {
@@ -402,7 +407,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
       <ImagesSection key={`${slug}/${issueKey}`} slug={slug} target="issues" targetId={issueKey} />
 
       <section data-testid="issue-timeline-section">
-        <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Timeline</h2>
+        <PanelHeading>Timeline</PanelHeading>
         {entries.length ? (
           <IssueTimeline
             entries={entries}
@@ -460,7 +465,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
       </section>
 
       <section className="border-t border-grey-200 pt-4" data-testid="issue-labels-section">
-        <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Labels</h2>
+        <PanelHeading>Labels</PanelHeading>
         {canWrite ? (
           <>
             <IssueLabels
@@ -475,26 +480,25 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
                 if (newLabel.trim()) createLabel.mutate(newLabel.trim())
               }}
             >
-              <label className="min-w-0 flex-1">
-                <span className="sr-only">New label name</span>
-                <input
-                  className="ui-control min-h-9 w-full px-2 py-1 text-sm"
-                  placeholder="New label"
-                  value={newLabel}
-                  onChange={(event) => setNewLabel(event.target.value)}
-                />
-              </label>
+              <TextField
+                className="flex-1"
+                label="New label name"
+                hideLabel
+                placeholder="New label"
+                value={newLabel}
+                onChange={setNewLabel}
+              />
               <Button type="submit" disabled={!newLabel.trim() || createLabel.isPending}>Add label</Button>
             </form>
           </>
         ) : data.labels?.length ? (
           <div className="flex flex-wrap gap-1.5">
             {data.labels.map((label) => (
-              <span key={label.id} className="border border-grey-200 px-1.5 py-1 text-xs">{label.name}</span>
+              <Token key={label.id} label={label.name} size="sm" />
             ))}
           </div>
         ) : (
-          <p className="text-sm text-grey-500">No labels yet. Ask a member to add one.</p>
+          <Text as="p" type="supporting" color="secondary" display="block">No labels yet. Ask a member to add one.</Text>
         )}
       </section>
 
@@ -507,7 +511,7 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
 
       <section className="border-t border-grey-200 pt-4" data-testid="issue-sub-issues-section">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-xs tracking-wide text-grey-500 uppercase">Sub-issues</h2>
+          <PanelHeading className="">Sub-issues</PanelHeading>
           {canWrite && !data.parent_id && !creatingSubIssue ? (
             <Button onClick={() => setCreatingSubIssue(true)}>New sub-issue</Button>
           ) : null}
@@ -529,15 +533,23 @@ export function IssuePage({ slug, issueKey }: { slug: string; issueKey: string }
         ) : null}
 
         {data.children?.length ? (
-          <ul className="mt-3 divide-y divide-grey-200 border-y border-grey-200">
-            {data.children.map((child) => (
-              <li key={child.id} className="py-1.5 text-sm">
-                <NavLink className="underline" to={`/w/${slug}/issues/${child.key}`}>
-                  {child.key} {child.title}
-                </NavLink>
-              </li>
-            ))}
-          </ul>
+          <div className="mt-3 border-y border-grey-200">
+            <List hasDividers density="balanced" edge="flush" aria-label="Sub-issues">
+              {data.children.map((child) => (
+                <ListItem
+                  key={child.id}
+                  itemKey={child.id}
+                  href={`/w/${slug}/issues/${child.key}`}
+                  label={(
+                    <span className="flex min-w-0 items-baseline gap-2">
+                      <span className="shrink-0 font-mono text-xs text-grey-500">{child.key}</span>
+                      <span className="min-w-0 text-sm text-ink [overflow-wrap:anywhere]">{child.title}</span>
+                    </span>
+                  )}
+                />
+              ))}
+            </List>
+          </div>
         ) : (
           <div className="mt-3">
             <EmptyState compact title={data.parent_id ? 'No sub-issues. This issue is already nested.' : 'No sub-issues yet.'} />

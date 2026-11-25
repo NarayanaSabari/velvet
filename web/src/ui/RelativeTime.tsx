@@ -1,33 +1,18 @@
-const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
-  ['year', 365 * 86400],
-  ['month', 30 * 86400],
-  ['week', 7 * 86400],
-  ['day', 86400],
-  ['hour', 3600],
-  ['minute', 60],
-  ['second', 1],
-]
+import { Timestamp } from '@astryxdesign/core/Timestamp'
 
-const RTF = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
-
-function relativeLabel(iso: string, now: number = Date.now()): string {
-  const then = new Date(iso).getTime()
-  if (Number.isNaN(then)) return iso
-  const seconds = (then - now) / 1000
-  for (const [unit, size] of UNITS) {
-    if (Math.abs(seconds) >= size || unit === 'second') {
-      return RTF.format(Math.round(seconds / size), unit)
-    }
-  }
-  return RTF.format(0, 'second')
-}
-
+/**
+ * A moment, shown as how long ago it was. Hovering it shows the exact date
+ * and time.
+ */
 export function RelativeTime({ iso }: { iso: string }) {
+  // Astryx cannot draw a value that is not a date, so that is shown as given.
   const date = new Date(iso)
-  const exact = Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
+  if (Number.isNaN(date.getTime())) return <span className="text-grey-500">{iso}</span>
+  // No hover card: Astryx's makes each time a keyboard stop, and a list has
+  // one per row. The exact time is a plain hover title instead.
   return (
-    <time dateTime={iso} title={exact} className="text-grey-500">
-      {relativeLabel(iso)}
-    </time>
+    <span title={date.toLocaleString()}>
+      <Timestamp value={iso} format="relative" type="inherit" color="secondary" hasTooltip={false} />
+    </span>
   )
 }

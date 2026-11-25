@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Admin } from './Admin'
 import type { AdminPageId } from './adminPages'
+import { chooseOption, dropdown, findDropdown } from '../../test-utils'
 
 function response(body: unknown, status = 200) {
   return Promise.resolve({
@@ -223,7 +224,7 @@ describe('Admin', () => {
     renderAdmin('invitations')
 
     await user.type(await screen.findByLabelText('Invite email'), 'new-user@example.com')
-    await user.selectOptions(screen.getByLabelText('Invite role'), 'viewer')
+    await chooseOption(user, dropdown('Invite role'), 'viewer')
     await user.click(screen.getByRole('button', { name: 'Send invite' }))
 
     await waitFor(() =>
@@ -244,14 +245,14 @@ describe('Admin', () => {
     const user = userEvent.setup()
     renderAdmin('members')
 
-    await user.selectOptions(await screen.findByLabelText('Role for octocat@example.com'), 'viewer')
+    await chooseOption(user, await findDropdown('Role for octocat@example.com'), 'viewer')
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         '/api/v1/w/lab/memberships/m2',
         expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ role: 'viewer' }) }),
       ),
     )
-    await waitFor(() => expect(screen.getByLabelText('Role for octocat@example.com')).toHaveValue('viewer'))
+    await waitFor(() => expect(dropdown('Role for octocat@example.com')).toHaveAttribute('data-value', 'viewer'))
   })
 
   it('resends and revokes pending invitations through their dedicated endpoints', async () => {
@@ -283,7 +284,8 @@ describe('Admin', () => {
       return fallback(input, init)
     }))
     renderAdmin('invitations')
-    expect(await screen.findByText('Loading invitations…')).toHaveAttribute('role', 'status')
+    // The status is the line as a whole: the spinner and its words together.
+    expect((await screen.findByText('Loading invitations…')).closest('[role="status"]')).not.toBeNull()
 
     await act(async () => {
       resolveInvitations(await response({ invites: [{ id: 'i1', workspace_id: 'w1', workspace_name: 'Lab', workspace_slug: 'lab', email: 'pending@example.com', role: 'viewer', expires_at: '2026-09-15T00:00:00Z' }] }))
@@ -344,7 +346,7 @@ describe('Admin', () => {
     expect(screen.getByText(/will lose access to this organisation/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Confirm removal' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/w/lab/memberships/m2', expect.objectContaining({ method: 'DELETE' })))
-    await waitFor(() => expect(screen.queryByLabelText('Role for octocat@example.com')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('combobox', { name: 'Role for octocat@example.com' })).not.toBeInTheDocument())
   })
 
   it('preserves the role and displays the server last-admin refusal', async () => {
@@ -354,9 +356,9 @@ describe('Admin', () => {
       return fallback(input, init)
     }))
     renderAdmin('members')
-    await userEvent.selectOptions(await screen.findByLabelText('Role for Sabari'), 'viewer')
+    await chooseOption(userEvent.setup(), await findDropdown('Role for Sabari'), 'viewer')
     expect(await screen.findByRole('alert')).toHaveTextContent('must retain at least one admin')
-    expect(screen.getByLabelText('Role for Sabari')).toHaveValue('admin')
+    expect(dropdown('Role for Sabari')).toHaveAttribute('data-value', 'admin')
   })
 
   it('explains optional installation and membership-wide evidence visibility', async () => {
@@ -402,7 +404,7 @@ describe('Admin', () => {
       return fallback(input, init)
     }))
     renderAdmin('members')
-    expect(await screen.findByLabelText('Role for email@example.com')).toBeInTheDocument()
+    expect(await findDropdown('Role for email@example.com')).toBeInTheDocument()
     expect(screen.getByText('email@example.com')).toBeInTheDocument()
     expect(screen.queryByText('@email@example.com')).not.toBeInTheDocument()
   })
@@ -470,10 +472,11 @@ describe('Admin', () => {
     renderAdmin(page)
 
     expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
-    expect(await screen.findByLabelText(control)).toBeInTheDocument()
+    // A dropdown's pop-up list carries the same label as its button, so count any match.
+    await waitFor(() => expect(screen.queryAllByLabelText(control).length).toBeGreaterThan(0))
     const others = ['Organisation name', 'Role for octocat@example.com', 'Invite email', 'Project for acme/widgets', 'Type lab to confirm deletion']
       .filter((label) => label !== control)
-    for (const label of others) expect(screen.queryByLabelText(label)).not.toBeInTheDocument()
+    for (const label of others) expect(screen.queryAllByLabelText(label)).toHaveLength(0)
   })
 
   it('shows who each member is, marks you, and explains the roles', async () => {
@@ -508,7 +511,7 @@ describe('Admin', () => {
     renderAdmin('invitations')
 
     expect(await screen.findByText(/Member: Creates and updates tickets/)).toBeInTheDocument()
-    await user.selectOptions(screen.getByLabelText('Invite role'), 'viewer')
+    await chooseOption(user, dropdown('Invite role'), 'viewer')
     expect(screen.getByText(/Viewer: Reads everything but cannot change it/)).toBeInTheDocument()
     expect(screen.getByText(/^Expires/)).toBeInTheDocument()
 
@@ -536,15 +539,15 @@ describe('Admin', () => {
     const user = userEvent.setup()
     renderAdmin('repositories')
 
-    const select = await screen.findByLabelText('Project for acme/widgets')
+    const select = await findDropdown('Project for acme/widgets')
     await waitFor(() => expect(select).toBeEnabled())
-    expect(select).toHaveValue('')
-    await user.selectOptions(select, 'p1')
+    expect(select).toHaveAttribute('data-value', '')
+    await chooseOption(user, select, 'p1')
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/v1/w/lab/repos/r1/project',
       expect.objectContaining({ method: 'PUT', body: JSON.stringify({ project_id: 'p1' }) })))
-    await waitFor(() => expect(screen.getByLabelText('Project for acme/widgets')).toHaveValue('p1'))
+    await waitFor(() => expect(dropdown('Project for acme/widgets')).toHaveAttribute('data-value', 'p1'))
 
-    await user.selectOptions(screen.getByLabelText('Project for acme/widgets'), '')
+    await chooseOption(user, dropdown('Project for acme/widgets'), '')
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/v1/w/lab/repos/r1/project',
       expect.objectContaining({ method: 'PUT', body: JSON.stringify({ project_id: null }) })))
   })

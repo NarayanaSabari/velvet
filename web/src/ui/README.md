@@ -5,17 +5,22 @@ Shared presentational primitives. Reuse these instead of creating parallel conve
 
 ## Interface
 - `Button`, `ButtonProps` (`Button.tsx`), `buttonClassName`, `ButtonVariant` (`buttonStyles.ts`).
-- `List`, `ListProps` (`List.tsx`), `EmptyState` (`EmptyState.tsx`), `PageHeader`, `SectionHeader` (`PageHeader.tsx`).
+- `EmptyState` (`EmptyState.tsx`), `FormDialog` (`FormDialog.tsx`), `ConfirmDialog` (`ConfirmDialog.tsx`), `PageHeader`, `SectionHeader` (`PageHeader.tsx`).
 - `LoadingState`, `ErrorState`, `NotFoundState` (`QueryState.tsx`).
 - `StatusBadge`, `STATUS_LABELS` (`StatusBadge.tsx`), `Avatar`, `Icon`, `IconName`, `RelativeTime`, `Wordmark`.
+- `TextField`, `TextAreaField`, `SelectField`, `SelectOption`, `CheckboxField`, `NativeField` (`fields.tsx`).
 - `Markdown` (`Markdown.tsx`), `MermaidDiagram` (`MermaidDiagram.tsx`), `renderDiagram`, `diagramDocument` (`mermaid.ts`).
 
 ## Invariants
 - `ButtonVariant` is `primary | secondary | danger | ghost`.
 - Visual tokens come from `../index.css` and `design.md`.
+- `Button`, `StatusBadge`, `Avatar`, `EmptyState`, `LoadingState`, `RelativeTime`, and the fields in `fields.tsx` are drawn by Astryx (`@astryxdesign/core`) behind Velvet's own props. The Astryx theme is chosen in `../app/astryxTheme.ts`.
+- `SelectField` is a pop-up list, not a native select. It exposes `data-value` and `data-option-values` on its button so tests can drive it; see `../test-utils.ts` and `e2e/tests/dropdown.ts`.
 - `Markdown` sanitizes parsed HTML with DOMPurify and removes user-supplied `data-mermaid-index` placeholder attributes before creating renderer-owned placeholders (`Markdown.tsx`).
 - `renderDiagram` rejects sources over 20,000 characters, configuration blocks, and external-image syntax. Mermaid uses strict security and a 500-edge cap; returned SVG is sanitized. `diagramDocument` emits a network-blocking CSP (`default-src 'none'`), and `MermaidDiagram` uses empty-sandbox iframes (`mermaid.ts`, `MermaidDiagram.tsx`).
-- `List` selects with `j`/ArrowDown and `k`/ArrowUp, activates with Enter, and exposes selection through `aria-activedescendant` and option `aria-selected` (`List.tsx`).
+- `ErrorNote` (`ErrorNote.tsx`) is how any failure is shown: an error banner announced as an alert, with an optional title and recovery action. `ErrorState` uses it for a failed load with Try again.
+- `SectionNav` (`SectionNav.tsx`) is the list of pages beside a settings area such as Administration or Profile.
+- Lists are Astryx's `List` and `ListItem`, used directly in features; a row that opens something is a link.
 
 ## Side Effects
 - Mermaid renders SVG client-side, subscribes to system color-scheme changes with cleanup, and writes source text to the clipboard on explicit copy actions. Copy failures expose source for manual copying (`MermaidDiagram.tsx`).

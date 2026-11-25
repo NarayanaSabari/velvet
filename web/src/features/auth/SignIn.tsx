@@ -1,49 +1,52 @@
-import { useId, useState } from 'react'
+import { LoadingState } from '../../ui/QueryState'
+import { ErrorNote } from '../../ui/ErrorNote'
+import { Text } from '@astryxdesign/core/Text'
+
+import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { Button } from '../../ui/Button'
 import { PublicAuthPage } from './PublicAuthPage'
 import { navigateTo, cliReturnTo } from './sessionNavigation'
+import { TextField } from '../../ui/fields'
 
 export function SignIn({ message, returnTo, navigate = navigateTo }: { message?: string; returnTo?: string; navigate?: (to: string) => void }) {
   const [email, setEmail] = useState('')
-  const emailId = useId()
   const request = useMutation({
     mutationFn: () => api.post('/auth/email', { email: email.trim(), ...(cliReturnTo(returnTo) ? { return_to: cliReturnTo(returnTo) } : {}) }),
     onSuccess: () => navigate('/check-email'),
   })
   return (
-    <PublicAuthPage title="Sign in to Velvet">
-      <form aria-busy={request.isPending} onSubmit={(event) => {
+    <PublicAuthPage
+      title="Sign in to Velvet"
+      // One line that says the whole deal, in place of three scattered hints.
+      lead={message ?? 'Enter your email and we’ll send you a sign-in link. No password needed.'}
+    >
+      <form aria-busy={request.isPending} className="space-y-4" onSubmit={(event) => {
         event.preventDefault()
         if (!request.isPending && email.trim()) request.mutate()
       }}>
-        <p className="mb-4 text-sm text-grey-700">
-          {message ?? 'Enter your email to continue to your work.'}
-        </p>
-        <label htmlFor={emailId} className="block text-sm font-medium">Email</label>
-        <input
-          id={emailId}
+        <TextField
+          label="Email"
           name="email"
-          className="mt-2 block min-h-12 w-full rounded-[var(--radius-control)] border border-grey-300 bg-paper px-3 py-2 text-sm placeholder:text-grey-500 disabled:opacity-60"
+          size="lg"
           type="email"
           inputMode="email"
           autoComplete="email"
-          autoCapitalize="none"
-          spellCheck={false}
+          literal
           placeholder="you@example.com"
-          aria-describedby={`${emailId}-help`}
           required
           disabled={request.isPending}
           value={email}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={setEmail}
         />
-        <p id={`${emailId}-help`} className="mt-2 text-xs text-grey-500">We’ll email you a link that expires in 15 minutes.</p>
-        <Button className="mt-4 min-h-12 w-full px-4" variant="primary" type="submit" disabled={request.isPending || !email.trim()}>
+        <Button className="min-h-12 w-full px-4" variant="primary" type="submit" disabled={request.isPending || !email.trim()}>
           {request.isPending ? 'Sending…' : 'Send sign-in link'}
         </Button>
-        {request.isPending ? <p role="status" className="mt-3 text-xs text-grey-500">Sending your sign-in link…</p> : null}
-        {request.error ? <p role="alert" className="mt-3 text-xs text-blocked">{request.error.message}</p> : null}
+        {request.isPending ? <LoadingState className="">Sending your sign-in link…</LoadingState> : null}
+        {request.error
+          ? <ErrorNote>{request.error.message}</ErrorNote>
+          : <Text as="p" type="supporting" color="secondary" display="block">The link works once and expires in 15 minutes.</Text>}
       </form>
     </PublicAuthPage>
   )

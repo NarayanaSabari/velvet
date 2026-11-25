@@ -7,7 +7,6 @@ import type { Membership, Role } from '../../lib/types'
 import {
   CommandPalette,
 } from './CommandPalette'
-import { COMMAND_PALETTE_TEST_IDS } from './paletteTestIds'
 
 const membership: Membership = {
   id: 'm1',
@@ -46,7 +45,19 @@ function renderPalette({
 beforeEach(() => {
   vi.unstubAllGlobals()
   window.history.replaceState({}, '', '/')
+  // jsdom has no modal dialogs, so stand in for the two calls Astryx makes.
+  HTMLDialogElement.prototype.showModal = function showModal() { this.open = true }
+  HTMLDialogElement.prototype.close = function close() { this.open = false; this.dispatchEvent(new Event('close')) }
 })
+
+/** The palette's search field, once the palette is open. */
+function paletteInput() {
+  return screen.getByRole('combobox', { name: 'Command palette' })
+}
+
+function paletteOpen() {
+  return screen.queryByRole('dialog', { name: 'Command palette' }) !== null
+}
 
 afterEach(() => {
   vi.useRealTimers()
@@ -58,52 +69,53 @@ describe('CommandPalette', () => {
 
     fireEvent.keyDown(document, { key: 'k', metaKey: true })
 
-    const input = await screen.findByTestId(COMMAND_PALETTE_TEST_IDS.input)
-    expect(input).toHaveFocus()
-    expect(screen.getByTestId(COMMAND_PALETTE_TEST_IDS.root)).toHaveAttribute('data-palette-open', 'true')
+    const input = await screen.findByRole('combobox', { name: 'Command palette' })
+    await waitFor(() => expect(input).toHaveFocus())
+    expect(paletteOpen()).toBe(true)
   })
 
-  it('also opens on Ctrl+K and closes from the backdrop', async () => {
-    const user = userEvent.setup()
+  it('also opens on Ctrl+K', async () => {
     renderPalette()
 
     fireEvent.keyDown(document, { key: 'k', ctrlKey: true })
-    await screen.findByTestId(COMMAND_PALETTE_TEST_IDS.input)
-    await user.click(screen.getByTestId(COMMAND_PALETTE_TEST_IDS.backdrop))
 
-    expect(screen.queryByTestId(COMMAND_PALETTE_TEST_IDS.root)).toBeNull()
+    // Closing by clicking outside is the browser's own behaviour for a modal
+    // dialog, which jsdom does not have, so it is covered end to end.
+    expect(await screen.findByRole('combobox', { name: 'Command palette' })).toBeInTheDocument()
   })
 
   it('filters commands by prefix and fuzzy text', async () => {
     const user = userEvent.setup()
     renderPalette({ initialOpen: true })
-    const input = screen.getByTestId(COMMAND_PALETTE_TEST_IDS.input)
+    const input = paletteInput()
 
     await user.type(input, 'rpts')
 
-    expect(screen.getByRole('option', { name: /Reports/ })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: /^Dashboard/ })).toBeNull()
+    expect(await screen.findByRole('option', { name: /Reports/ })).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('option', { name: /^Dashboard/ })).toBeNull())
   })
 
-  it('wraps selection with arrows and navigates on Enter', async () => {
+  it('moves the highlight with arrows and navigates on Enter', async () => {
     const user = userEvent.setup()
     const { navigate } = renderPalette({ initialOpen: true })
-    const input = screen.getByTestId(COMMAND_PALETTE_TEST_IDS.input)
+    await screen.findByRole('option', { name: /^Dashboard/ })
+    await user.click(paletteInput())
 
-    await user.keyboard('{ArrowDown}')
+    // The first arrow highlights the first row, the second moves to Issues.
+    await user.keyboard('{ArrowDown}{ArrowDown}')
     await user.keyboard('{Enter}')
 
     expect(navigate).toHaveBeenCalledWith('/w/lab/issues')
-    expect(screen.queryByTestId(COMMAND_PALETTE_TEST_IDS.root)).toBeNull()
-    expect(input).not.toBeInTheDocument()
+    await waitFor(() => expect(paletteOpen()).toBe(false))
   })
 
   it('offers agent setup by the words people search for', async () => {
     const user = userEvent.setup()
     const { navigate } = renderPalette({ initialOpen: true })
 
-    await user.type(screen.getByTestId(COMMAND_PALETTE_TEST_IDS.input), 'velvet init')
-    expect(screen.getByRole('option', { name: /Agent config/ })).toBeInTheDocument()
+    await user.type(paletteInput(), 'velvet init')
+    expect(await screen.findByRole('option', { name: /Agent config/ })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1))
     await user.keyboard('{Enter}')
     expect(navigate).toHaveBeenCalledWith('/w/lab/settings/profile/agent-config')
   })
@@ -111,11 +123,11 @@ describe('CommandPalette', () => {
   it('offers a direct command for an issue key', async () => {
     const user = userEvent.setup()
     const { navigate } = renderPalette({ initialOpen: true })
-    const input = screen.getByTestId(COMMAND_PALETTE_TEST_IDS.input)
+    const input = paletteInput()
 
     await user.type(input, 'eng-42')
 
-    expect(screen.getByRole('option', { name: /Go to ENG-42/ })).toBeInTheDocument()
+    expect(await screen.findByRole('option', { name: /Go to ENG-42/ })).toBeInTheDocument()
     await user.keyboard('{Enter}')
     expect(navigate).toHaveBeenCalledWith('/w/lab/issues/ENG-42')
   })
@@ -135,7 +147,7 @@ describe('CommandPalette', () => {
     } as Response))
     const user = userEvent.setup()
     renderPalette({ initialOpen: true })
-    const input = screen.getByTestId(COMMAND_PALETTE_TEST_IDS.input)
+    const input = paletteInput()
 
     await user.type(input, 'login')
 
@@ -143,7 +155,7 @@ describe('CommandPalette', () => {
     expect(fetch).toHaveBeenCalledWith('/api/v1/w/lab/issues?q=login&limit=20', expect.anything())
   })
 
-  it('shows an issue title once and makes the page behind inert', async () => {
+  it('shows an issue title once', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -154,23 +166,48 @@ describe('CommandPalette', () => {
     const user = userEvent.setup()
     renderPalette({ initialOpen: true })
 
-    expect(outside.inert).toBe(true)
-    await user.type(screen.getByTestId(COMMAND_PALETTE_TEST_IDS.input), 'once')
+    await user.type(paletteInput(), 'once')
     const option = await screen.findByRole('option', { name: 'ENG-7 Only once' })
     expect(option.textContent).toBe('ENG-7 Only once')
 
-    await user.keyboard('{Escape}')
-    await waitFor(() => expect(outside.inert).toBe(false))
     outside.remove()
   })
 
   it('offers Projects and My work log', async () => {
     const user = userEvent.setup()
     const { navigate } = renderPalette({ initialOpen: true })
-    expect(screen.getByRole('option', { name: /^Projects/ })).toBeInTheDocument()
-    await user.type(screen.getByTestId(COMMAND_PALETTE_TEST_IDS.input), 'work log')
+    expect(await screen.findByRole('option', { name: /^Projects/ })).toBeInTheDocument()
+    await user.type(paletteInput(), 'work log')
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1))
     await user.keyboard('{Enter}')
     expect(navigate).toHaveBeenCalledWith('/me/worklog')
+  })
+
+  it('opens the new issue form in its own dialog', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ milestones: [], issues: [] }) } as Response))
+    const user = userEvent.setup()
+    renderPalette({ initialOpen: true })
+
+    await user.type(paletteInput(), 'new issue')
+    await screen.findByRole('option', { name: /^New issue/ })
+    await user.keyboard('{Enter}')
+
+    expect(await screen.findByRole('dialog', { name: 'New issue' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Title' })).toBeInTheDocument()
+    await waitFor(() => expect(paletteOpen()).toBe(false))
+  })
+
+  it('still runs a row after an older, slower search finishes', async () => {
+    const user = userEvent.setup()
+    const { navigate } = renderPalette({ initialOpen: true })
+
+    // "re" starts a search that is overtaken by "reports" before it answers.
+    await user.type(paletteInput(), 'reports')
+    await screen.findByRole('option', { name: /^Reports/ })
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    await user.keyboard('{Enter}')
+
+    expect(navigate).toHaveBeenCalledWith('/w/lab/reports')
   })
 
   it('closes with Escape', async () => {
@@ -179,17 +216,17 @@ describe('CommandPalette', () => {
 
     await user.keyboard('{Escape}')
 
-    await waitFor(() => expect(screen.queryByTestId(COMMAND_PALETTE_TEST_IDS.root)).toBeNull())
+    await waitFor(() => expect(paletteOpen()).toBe(false))
   })
 
-  it('hides Administration from members', () => {
+  it('hides Administration from members', async () => {
     renderPalette({
       role: 'member',
       memberships: [{ ...membership, role: 'member' }],
       initialOpen: true,
     })
 
+    expect(await screen.findByRole('option', { name: /^Reports/ })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: /^Administration/ })).toBeNull()
-    expect(screen.getByRole('option', { name: /^Reports/ })).toBeInTheDocument()
   })
 })

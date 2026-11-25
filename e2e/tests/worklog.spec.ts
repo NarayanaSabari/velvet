@@ -1,4 +1,5 @@
 import { test, expect, resetWorkspaceData, seedWorkspace, sprintProject } from './fixtures'
+import { chooseOption, dropdown } from './dropdown'
 
 /**
  * The core work-log loop, driven the way a person drives it.
@@ -103,7 +104,7 @@ test('sprint, milestone, and issue can be created through the UI', async ({ sign
   sprintProject('api', 'API')
   await page.goto('/w/lab/sprints')
   await page.getByText('New sprint').click()
-  await page.getByLabel('Project').selectOption({ label: 'Web' })
+  await chooseOption(dropdown(page, 'Project'), { label: 'Web' })
   await page.getByLabel('Sprint name').fill('September 2026')
   await page.getByLabel('Starts on').fill('2026-09-01')
   await page.getByLabel('Ends on').fill('2026-09-30')
@@ -111,7 +112,7 @@ test('sprint, milestone, and issue can be created through the UI', async ({ sign
 
   // Sprints are listed under the project they belong to.
   await expect(page.getByTestId('sprint-project-web').getByRole('heading', { name: 'Web' })).toBeVisible()
-  await page.getByRole('option', { name: /September 2026/ }).click()
+  await page.getByRole('link', { name: /September 2026/ }).click()
   await expect(page.getByTestId('sprint-project')).toContainText('Web')
   await page.getByRole('button', { name: 'Activate sprint' }).click()
   await page.getByText('New milestone').click()
@@ -206,15 +207,15 @@ test('timestamps render as relative time, not raw database strings', async ({
 test('a status change made in the UI survives a reload', async ({ signedIn: page }) => {
   await page.goto('/w/lab/issues/ENG-1')
 
-  await page.getByRole('button', { name: 'Status' }).click()
+  await page.getByRole('combobox', { name: 'Status' }).click()
   await page.getByRole('option', { name: 'In progress', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Status' })).toHaveAttribute(
+  await expect(page.getByRole('combobox', { name: 'Status' })).toHaveAttribute(
     'data-current-status',
     'in_progress',
   )
 
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Status' })).toHaveAttribute(
+  await expect(page.getByRole('combobox', { name: 'Status' })).toHaveAttribute(
     'data-current-status',
     'in_progress',
   )

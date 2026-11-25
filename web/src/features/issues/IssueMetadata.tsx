@@ -1,10 +1,13 @@
+import { ErrorNote } from '../../ui/ErrorNote'
 import { useState } from 'react'
+
+import { Text } from '@astryxdesign/core/Text'
 
 import { PRIORITIES, priorityOption } from '../../lib/priority'
 import type { User } from '../../lib/types'
 import { Avatar } from '../../ui/Avatar'
-import { MilestoneOptions } from '../work/CoreForms'
-import type { MilestoneChoice, ProjectChoice } from '../work/workLinks'
+import { SelectField } from '../../ui/fields'
+import { milestoneSelectOptions, type MilestoneChoice, type ProjectChoice } from '../work/workLinks'
 
 export interface Choice {
   id: string
@@ -34,7 +37,7 @@ function ChoiceAvatar({ choice }: { choice?: Choice }) {
 }
 
 function metadataLabel(label: string) {
-  return <span className="block text-xs tracking-wide text-grey-500 uppercase">{label}</span>
+  return <Text type="supporting" color="secondary" display="block">{label}</Text>
 }
 
 export function ReadOnlyIssueMetadata({
@@ -112,7 +115,6 @@ export function IssueMetadata({
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   const selectedAssignee = members.find((member) => member.id === assigneeId)
-  const selectClass = 'ui-control min-w-0 max-w-full flex-1 px-2 py-1 text-sm'
 
   async function update(patch: IssueMetadataPatch) {
     setBusy(true)
@@ -128,93 +130,65 @@ export function IssueMetadata({
 
   return (
     <div className="space-y-4" data-testid="issue-metadata">
-      <label className="block text-sm" data-testid="issue-assignee-field" htmlFor="issue-assignee">
-        {metadataLabel('Assignee')}
-        <span className="mt-1 flex items-center gap-2">
+      <div className="flex items-end gap-2" data-testid="issue-assignee-field">
+        <span className="mb-2 inline-flex">
           <ChoiceAvatar choice={selectedAssignee} />
-          <select
-            id="issue-assignee"
-            data-testid="issue-assignee-picker"
-            className={selectClass}
-            aria-label="Assignee"
-            value={assigneeId ?? ''}
-            disabled={busy}
-            onChange={(event) => void update({ assignee_id: event.target.value })}
-          >
-            <option value="">Unassigned</option>
-            {members.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.label}
-              </option>
-            ))}
-          </select>
         </span>
-      </label>
-
-      <label className="block text-sm" data-testid="issue-priority-field" htmlFor="issue-priority">
-        {metadataLabel('Priority')}
-        <select
-          id="issue-priority"
-          data-testid="issue-priority-picker"
-          className={`${selectClass} mt-1`}
-          aria-label="Priority"
-          value={priority}
+        <SelectField
+          className="flex-1"
+          label="Assignee"
+          data-testid="issue-assignee-picker"
+          value={assigneeId ?? ''}
           disabled={busy}
-          onChange={(event) => void update({ priority: Number(event.target.value) })}
-        >
-          {PRIORITIES.map((value) => (
-            <option key={value} value={value}>
-              {priorityOption(value)}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <div className="text-sm">
-        <label className="block" data-testid="issue-project-field" htmlFor="issue-project">
-          {metadataLabel('Project')}
-          <select
-            id="issue-project"
-            data-testid="issue-project-picker"
-            className={`${selectClass} mt-1 block w-full`}
-            aria-label="Project"
-            aria-describedby="issue-project-help"
-            value={projectId ?? ''}
-            disabled={busy}
-            onChange={(event) => void update({ project_id: event.target.value })}
-          >
-            <option value="">No project</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p id="issue-project-help" className="mt-1 text-xs text-grey-500">
-          A milestone belongs to one project, so choosing one sets this too.
-        </p>
+          onChange={(value) => void update({ assignee_id: value })}
+          options={[
+            { value: '', label: 'Unassigned' },
+            ...members.map((member) => ({ value: member.id, label: member.label })),
+          ]}
+        />
       </div>
 
-      <label className="block text-sm" data-testid="issue-milestone-field" htmlFor="issue-milestone">
-        {metadataLabel('Milestone')}
-        <select
-          id="issue-milestone"
+      <div data-testid="issue-priority-field">
+        <SelectField
+          label="Priority"
+          data-testid="issue-priority-picker"
+          value={String(priority)}
+          disabled={busy}
+          onChange={(value) => void update({ priority: Number(value) })}
+          options={PRIORITIES.map((value) => ({ value: String(value), label: priorityOption(value) }))}
+        />
+      </div>
+
+      <div data-testid="issue-project-field">
+        <SelectField
+          label="Project"
+          description="A milestone belongs to one project, so choosing one sets this too."
+          data-testid="issue-project-picker"
+          value={projectId ?? ''}
+          disabled={busy}
+          onChange={(value) => void update({ project_id: value })}
+          options={[
+            { value: '', label: 'No project' },
+            ...projects.map((project) => ({ value: project.id, label: project.label })),
+          ]}
+        />
+      </div>
+
+      <div data-testid="issue-milestone-field">
+        <SelectField
+          label="Milestone"
           data-testid="issue-milestone-picker"
-          className={`${selectClass} mt-1 block w-full`}
-          aria-label="Milestone"
           value={milestoneId ?? ''}
           disabled={busy}
-          onChange={(event) => void update({ milestone_id: event.target.value })}
-        >
-          <MilestoneOptions milestones={milestones} emptyLabel="Unfiled" />
-        </select>
-      </label>
+          onChange={(value) => void update({ milestone_id: value })}
+          options={milestoneSelectOptions(milestones, 'Unfiled')}
+        />
+      </div>
 
       {failed ? (
-        <p className="text-xs text-blocked" role="alert">
+        <ErrorNote>
           Could not update issue. Try again.
-        </p>
+        </ErrorNote>
       ) : null}
     </div>
   )

@@ -90,6 +90,14 @@ func (s *Server) handleListIssues(w http.ResponseWriter, r *http.Request) {
 		}
 		filter.ProjectID = &project
 	}
+	switch query.Get("group") {
+	case "":
+	case "status":
+		filter.GroupByStatus = true
+	default:
+		WriteError(w, http.StatusBadRequest, "invalid_request", "group must be status")
+		return
+	}
 	for _, status := range filter.Statuses {
 		if !store.ValidIssueStatus(status) {
 			WriteError(w, http.StatusBadRequest, "invalid_request", "unknown status "+status)

@@ -74,8 +74,9 @@ test('separate management consent keeps setup and repository authority isolated'
       await expect(page.getByLabel('Organisation', { exact: true })).toHaveCount(0)
       await expect(page.getByLabel('Project', { exact: true })).toHaveCount(0)
       if (flow === 'manage') {
-        await expect(page.getByText(/account-wide management access/)).toContainText('limited by your current organisation memberships and roles')
-        await expect(page.getByText(/account-wide management access/)).toContainText('separate from normal velvet login')
+        await expect(page.getByText('Act across your whole account, not one project.')).toBeVisible()
+        await expect(page.getByText('It is a personal credential, limited by your current memberships and roles.')).toBeVisible()
+        await expect(page.getByText('It is separate from the setup access velvet login gives.')).toBeVisible()
         for (const [width, height] of [[1280, 900], [390, 844]] as const) {
           for (const colorScheme of ['light', 'dark'] as const) {
             await page.setViewportSize({ width, height })
@@ -93,7 +94,7 @@ test('separate management consent keeps setup and repository authority isolated'
       await expect(button).toBeFocused()
       expect(await button.evaluate(el => getComputedStyle(el).outlineStyle)).not.toBe('none')
       await page.keyboard.press('Enter')
-      await expect(page.getByText('Connected.', { exact: true })).toBeVisible()
+      await expect(page.getByRole('heading', { level: 1, name: 'Connected' })).toBeVisible()
       expect(await exited, output).toBe(0)
     } finally {
       if (child.exitCode === null) child.kill()

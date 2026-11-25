@@ -6,6 +6,7 @@ import { IssueEvidenceSection, IssuePageLayout, IssueTimeline } from './IssuePag
 import { buildTimeline } from './issueTimeline'
 import { EvidenceCard } from '../evidence/EvidenceCard'
 import { StatusSelect } from './StatusSelect'
+import { chooseOption, optionLabels } from '../../test-utils'
 
 describe('IssueTimeline', () => {
   it('keeps same-SHA commits from different repositories as distinct rows', () => {
@@ -67,21 +68,30 @@ describe('IssuePageLayout', () => {
 })
 
 describe('StatusSelect', () => {
-  it('moves with arrows and commits the active option with Enter', async () => {
+  it('commits the option chosen from the list', async () => {
     const onChange = vi.fn()
     const user = userEvent.setup()
     render(<StatusSelect value="backlog" onChange={onChange} />)
 
-    const trigger = screen.getByTestId('status-listbox')
-    await user.click(trigger)
-    expect(screen.getByRole('listbox')).toBeInTheDocument()
-
-    await user.keyboard('{ArrowDown}')
-    expect(trigger).toHaveAttribute('aria-activedescendant', expect.stringContaining('-todo'))
-    await user.keyboard('{Enter}')
+    const trigger = screen.getByRole('combobox', { name: 'Status' })
+    expect(trigger).toHaveAttribute('data-current-status', 'backlog')
+    expect(optionLabels(trigger)).toEqual(['Backlog', 'Todo', 'In progress', 'In review', 'Done', 'Cancelled'])
+    await chooseOption(user, trigger, 'todo')
 
     expect(onChange).toHaveBeenCalledWith('todo')
-    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('moves with the arrow keys and commits with Enter', async () => {
+    const onChange = vi.fn()
+    const user = userEvent.setup()
+    render(<StatusSelect value="backlog" onChange={onChange} />)
+
+    const trigger = screen.getByRole('combobox', { name: 'Status' })
+    await user.click(trigger)
+    await user.keyboard('{ArrowDown}{Enter}')
+
+    expect(onChange).toHaveBeenCalledWith('todo')
   })
 
   it('closes with Escape without changing the selection', async () => {
@@ -89,11 +99,10 @@ describe('StatusSelect', () => {
     const user = userEvent.setup()
     render(<StatusSelect value="in_progress" onChange={onChange} />)
 
-    const trigger = screen.getByTestId('status-listbox')
+    const trigger = screen.getByRole('combobox', { name: 'Status' })
     await user.click(trigger)
     await user.keyboard('{ArrowDown}{Escape}')
 
-    expect(screen.queryByRole('listbox')).toBeNull()
     expect(onChange).not.toHaveBeenCalled()
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
   })

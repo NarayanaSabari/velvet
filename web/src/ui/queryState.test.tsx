@@ -9,6 +9,7 @@ import { Mentions } from '../features/mentions/Mentions'
 import { Reports } from '../features/reports/Reports'
 import { IssuePage } from '../features/issues/IssuePage'
 import { ErrorState, LoadingState } from './QueryState'
+import { chooseOption, dropdown, findPageAlert, queryPageAlert, queryPageStatus } from '../test-utils'
 
 beforeEach(() => vi.unstubAllGlobals())
 
@@ -83,12 +84,12 @@ describe('TeamFeed states', () => {
     renderWithClient(<TeamFeed slug="lab" />)
 
     expect(await screen.findByText('Nothing here yet')).toBeInTheDocument()
-    await userEvent.selectOptions(screen.getByLabelText('Verb'), 'commented')
+    await chooseOption(userEvent.setup(), dropdown('Verb'), 'commented')
 
     expect(await screen.findByText('No matching activity')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
     expect(await screen.findByText('Nothing here yet')).toBeInTheDocument()
-    expect(screen.getByLabelText('Verb')).toHaveValue('')
+    expect(dropdown('Verb')).toHaveAttribute('data-value', '')
   })
 })
 
@@ -104,14 +105,14 @@ describe('Reports states', () => {
     })
     renderWithClient(<Reports slug="lab" />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load stale work.')
+    expect(await findPageAlert()).toHaveTextContent('Could not load stale work.')
     expect(await screen.findByText('No activity in this period.')).toBeInTheDocument()
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(queryPageStatus()).toBeNull()
 
     failStale = false
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByText(/nothing has stalled/i)).toBeInTheDocument()
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(queryPageAlert()).toBeNull()
   })
 })
 
@@ -121,7 +122,7 @@ describe('Mentions states', () => {
     stubApi(() => (fail ? failure() : json({ mentions: [] })))
     renderWithClient(<Mentions slug="lab" />)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load mentions.')
+    expect(await findPageAlert()).toHaveTextContent('Could not load mentions.')
     fail = false
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByText('No mentions')).toBeInTheDocument()

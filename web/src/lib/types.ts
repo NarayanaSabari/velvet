@@ -306,6 +306,8 @@ export interface MilestoneCompletionRow {
   sprint_name: string
   project_name?: string
   starts_on: string
+  /** Absent from servers older than the completion chart. */
+  state?: 'upcoming' | 'active' | 'completed'
   planned: number
   completed: number
 }

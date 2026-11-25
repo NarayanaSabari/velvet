@@ -44,8 +44,6 @@
   padding-block: 16px;
 }
 
-.landing-signin-head { padding-block: 12px 16px; }
-
 /* Sign-in pages share the landing split: the headline on the left and the
    form where the sample work log sits. On phones the form follows the
    headline directly, and the proofs are left out so it stays in view. */
@@ -78,8 +76,6 @@
   border-radius: var(--radius-surface);
   padding: 20px;
 }
-
-.landing-layout-auth.landing-layout-expanded .landing-signin-head { padding-top: 0; }
 
 .landing-layout-auth.landing-layout-expanded .landing-signin-form {
   margin-block: 0;
@@ -195,4 +191,61 @@
   .landing-proofs article { padding: 12px; }
   .landing-proofs h2 { font-size: var(--text-base); }
   .landing-proofs p { margin-top: 4px; font-size: var(--text-xs); }
+}
+
+/* The refined sign-in pages keep the split and hand the page to the task:
+   the headline steps down to a supporting size, and the title, its one line
+   of help and the form sit together as one block centred in the panel. */
+.landing-signin-refined {
+  display: grid;
+  /* One row, so the block centres in the whole panel. */
+  grid-template-rows: 1fr;
+  place-items: center;
+  padding: 32px 16px;
+}
+
+/* Every action in the block is the same 48px tall, link or button. */
+.landing-signin-block :is(a, button) {
+  min-height: 3rem;
+}
+
+.landing-signin-block {
+  width: 100%;
+  max-width: 26rem;
+}
+
+.landing-signin-title {
+  font-size: 2rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+@media (min-width: 1024px) {
+  .landing-layout-refined .landing-title {
+    font-size: clamp(2.25rem, 3.2vw, 3rem);
+    line-height: 1.02;
+    letter-spacing: -0.04em;
+    max-width: 13ch;
+  }
+
+  .landing-layout-refined .landing-description { margin-top: 16px; }
+}
+
+/* The refined longer tasks: more room inside the card, the account across the
+   top, then the title. The card's own display is a grid for the old title
+   bar, which this does not use. */
+.landing-layout-auth.landing-layout-expanded .landing-signin-task {
+  display: block;
+  padding: 24px 32px 32px;
+}
+
+.landing-account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 28px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-grey-200);
 }

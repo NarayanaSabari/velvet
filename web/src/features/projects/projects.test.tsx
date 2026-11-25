@@ -60,6 +60,8 @@ describe('ProjectsPage', () => {
       if (url === '/api/v1/w/lab/projects' && (!init?.method || init.method === 'GET')) {
         return response({ projects: [project] })
       }
+      // Each card names its project's current sprint.
+      if (url === '/api/v1/w/lab/sprints') return response({ sprints: [] })
       if (url === '/api/v1/w/lab/projects/velvet' && init?.method === 'PATCH') {
         return response({ error: { code: 'internal', message: 'Could not archive project' } }, 500)
       }
@@ -70,10 +72,10 @@ describe('ProjectsPage', () => {
     renderPage()
     await user.click(await screen.findByRole('button', { name: 'Archive' }))
     expect(screen.getByRole('link', { name: '1 open' })).toHaveAttribute('href', '/w/lab/issues?project=velvet&status=open')
-    await user.click(screen.getByRole('button', { name: 'Confirm archive Velvet worklog' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm archive' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not archive project')
     expect(screen.getByText('Archive Velvet worklog?')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Confirm archive Velvet worklog' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Confirm archive' })).toBeEnabled()
   })
 })

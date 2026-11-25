@@ -1,19 +1,19 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from 'react'
+import { ErrorNote } from '../../ui/ErrorNote'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { CommandPalette as AstryxCommandPalette, CommandPaletteInput } from '@astryxdesign/core/CommandPalette'
+import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog'
+import { Text } from '@astryxdesign/core/Text'
 
 import { api } from '../../lib/api'
 import { Button } from '../../ui/Button'
+import { SelectField, TextField } from '../../ui/fields'
 import type { Issue, Membership, Milestone, Role } from '../../lib/types'
 import { COMMAND_PALETTE_TEST_IDS } from './paletteTestIds'
 
 const ISSUE_KEY_PATTERN = /^[a-z][a-z0-9]{1,9}-\d+$/i
 const ISSUE_NUMBER_PATTERN = /^\d+$/
+/** A short pause before asking the server, so each keystroke is not a request. */
+const SEARCH_DELAY_MS = 150
 
 type Navigate = (to: string) => void
 
@@ -27,6 +27,13 @@ interface PaletteCommand {
 
 interface PaletteResult extends PaletteCommand {
   score: number
+}
+
+/** A result as Astryx's palette lists it. */
+interface PaletteItem {
+  id: string
+  label: string
+  auxiliaryData: { detail?: string }
 }
 
 function normalise(value: string) {
@@ -76,11 +83,9 @@ function sortResults(results: PaletteResult[]) {
 
 function NewIssueForm({
   slug,
-  onBack,
   onCreated,
 }: {
   slug: string
-  onBack: () => void
   onCreated: (issue: Issue) => void
 }) {
   const [title, setTitle] = useState('')
@@ -135,57 +140,43 @@ function NewIssueForm({
   return (
     <form
       data-testid={COMMAND_PALETTE_TEST_IDS.newIssueForm}
-      className="space-y-4"
+      className="space-y-4 p-4"
       onSubmit={(event) => void submit(event)}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs tracking-wide text-grey-500 uppercase">Command</p>
-          <h2 className="text-base">New issue</h2>
-        </div>
-        <Button variant="ghost" onClick={onBack}>Back</Button>
-      </div>
-
-      <label className="block text-sm">
-        <span className="mb-1 block text-grey-500">Title</span>
-        <input
-          data-testid={COMMAND_PALETTE_TEST_IDS.newIssueTitle}
-          className="ui-control w-full px-2 py-1.5 text-sm"
-          autoFocus
-          required
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-        />
-      </label>
-
-      <label className="block text-sm">
-        <span className="mb-1 block text-grey-500">Milestone <span className="text-grey-500">(optional)</span></span>
-        <select
-          data-testid={COMMAND_PALETTE_TEST_IDS.newIssueMilestone}
-          className="ui-control w-full px-2 py-1.5 text-sm"
-          value={milestoneId}
-          onChange={(event) => setMilestoneId(event.target.value)}
-          disabled={loadingMilestones}
-        >
-          <option value="">No milestone</option>
-          {milestones.map((milestone) => (
-            <option key={milestone.id} value={milestone.id}>
-              {milestone.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
+      <TextField
+        data-testid={COMMAND_PALETTE_TEST_IDS.newIssueTitle}
+        label="Title"
+        autoFocus
+        required
+        value={title}
+        onChange={setTitle}
+      />
+      <SelectField
+        data-testid={COMMAND_PALETTE_TEST_IDS.newIssueMilestone}
+        label="Milestone (optional)"
+        value={milestoneId}
+        disabled={loadingMilestones}
+        onChange={setMilestoneId}
+        options={[
+          { value: '', label: 'No milestone' },
+          ...milestones.map((milestone) => ({ value: milestone.id, label: milestone.name })),
+        ]}
+      />
       <div className="flex items-center gap-3">
         <Button type="submit" variant="primary" disabled={saving || !title.trim()}>
           {saving ? 'Creating…' : 'Create issue'}
         </Button>
-        {error ? <p className="text-sm text-blocked" role="alert">Could not create issue. Try again.</p> : null}
+        {error ? <ErrorNote>Could not create issue. Try again.</ErrorNote> : null}
       </div>
     </form>
   )
 }
 
+/**
+ * Search and commands, drawn by Astryx's command palette. Velvet supplies the
+ * results: its own commands, ranked by how well they match, plus issues the
+ * server finds by key, title or description.
+ */
 export function CommandPalette({
   open,
   onOpenChange,
@@ -201,15 +192,11 @@ export function CommandPalette({
   memberships: Membership[]
   navigate: Navigate
 }) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const previousFocusRef = useRef<HTMLElement | null>(null)
-  const [issuePrefix, setIssuePrefix] = useState('ENG')
-  const [query, setQuery] = useState('')
-  const [selectedIndex, setSelectedIndex] = useState(0)
-  const [issueResults, setIssueResults] = useState<Issue[]>([])
-  const [searching, setSearching] = useState(false)
   const [newIssueOpen, setNewIssueOpen] = useState(false)
+  // Every result offered so far, by id, so a chosen row can be run.
+  const shown = useRef(new Map<string, PaletteCommand>())
+  const issuePrefix = useRef('ENG')
+  const latestSearch = useRef(0)
 
   const canWrite = role === 'admin' || role === 'member'
 
@@ -218,87 +205,12 @@ export function CommandPalette({
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         onOpenChange(true)
-        return
-      }
-
-      if (open && event.key === 'Escape') {
-        event.preventDefault()
-        setNewIssueOpen(false)
-        setQuery('')
-        setIssueResults([])
-        setSearching(false)
-        setSelectedIndex(0)
-        onOpenChange(false)
       }
     }
 
     document.addEventListener('keydown', onGlobalKeyDown)
     return () => document.removeEventListener('keydown', onGlobalKeyDown)
-  }, [onOpenChange, open])
-
-  useEffect(() => {
-    if (open) {
-      previousFocusRef.current = document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null
-      inputRef.current?.focus()
-      return
-    }
-
-    inputRef.current?.blur()
-    previousFocusRef.current?.focus()
-  }, [open])
-
-  // aria-modal alone does not stop focus or pointer input reaching the page,
-  // so everything outside the dialog is made inert while it is open.
-  useEffect(() => {
-    if (!open || !rootRef.current) return
-    const made: HTMLElement[] = []
-    for (let node: HTMLElement | null = rootRef.current; node && node !== document.body; node = node.parentElement) {
-      for (const sibling of node.parentElement?.children ?? []) {
-        if (sibling !== node && sibling instanceof HTMLElement && !sibling.inert) {
-          sibling.inert = true
-          made.push(sibling)
-        }
-      }
-    }
-    return () => {
-      for (const element of made) element.inert = false
-    }
-  }, [open])
-
-  useEffect(() => {
-    const trimmed = query.trim()
-    if (!open || !trimmed || ISSUE_KEY_PATTERN.test(trimmed)) {
-      return
-    }
-
-    let cancelled = false
-    const timer = window.setTimeout(() => {
-      // The server filters by key, title, and description, so only one small
-      // page crosses the wire instead of every issue in the organisation.
-      const params = new URLSearchParams({ q: trimmed, limit: '20' })
-      void api.get<{ issues: Issue[] }>(`/w/${slug}/issues?${params.toString()}`)
-        .then(({ issues: result }) => {
-          if (cancelled) return
-          const prefix = result.find((issue) => issue.key.includes('-'))?.key.split('-')[0]
-          if (prefix) setIssuePrefix(prefix)
-          setIssueResults(result)
-          setSelectedIndex(0)
-        })
-        .catch(() => {
-          if (!cancelled) setIssueResults([])
-        })
-        .finally(() => {
-          if (!cancelled) setSearching(false)
-        })
-    }, 150)
-
-    return () => {
-      cancelled = true
-      window.clearTimeout(timer)
-    }
-  }, [open, query, slug])
+  }, [onOpenChange])
 
   const commands = useMemo<PaletteCommand[]>(() => {
     const base = `/w/${slug}`
@@ -327,13 +239,7 @@ export function CommandPalette({
             id: 'new-issue',
             label: 'New issue',
             keywords: ['create', 'ticket'],
-            run: () => {
-              setQuery('')
-              setIssueResults([])
-              setSearching(false)
-              setSelectedIndex(0)
-              setNewIssueOpen(true)
-            },
+            run: () => setNewIssueOpen(true),
           }]
         : []),
       ...(memberships.length > 1
@@ -349,190 +255,143 @@ export function CommandPalette({
     return items
   }, [canWrite, memberships, navigate, role, slug])
 
-  const results = useMemo(() => {
-    const trimmed = query.trim()
-    const staticResults = commands.flatMap((command) => {
-      const score = matchScore(command, trimmed)
-      return score === null ? [] : [{ ...command, score }]
-    })
-
-    const issueCommands = issueResults.flatMap((issue) => {
-      const command: PaletteCommand = {
-        id: `issue-${issue.id}`,
-        label: `${issue.key} ${issue.title}`,
-        keywords: [issue.key, issue.title],
-        run: () => navigate(`/w/${slug}/issues/${issue.key}`),
-      }
-      const score = matchScore(command, trimmed)
-      // The server already matched the query, including in descriptions the
-      // palette cannot see, so keep every result it returned.
-      return [{ ...command, score: (score ?? 4) + 1 }]
-    })
-
-    const directMatch = trimmed.match(ISSUE_KEY_PATTERN)
-    const numberMatch = trimmed.match(ISSUE_NUMBER_PATTERN)
-    const matchingNumber = numberMatch
-      ? issueResults.find((issue) => issue.number === Number(numberMatch[0]))
-      : undefined
-    const directKey = directMatch?.[0].toUpperCase()
-      ?? matchingNumber?.key
-      ?? (numberMatch ? `${issuePrefix}-${numberMatch[0]}` : undefined)
-    const directResult: PaletteResult[] = directKey
-      ? [{
-          id: `go-to-${directKey.toLowerCase()}`,
-          label: `Go to ${directKey}`,
-          detail: 'Open issue',
-          keywords: [directKey],
-          score: -1,
-          run: () => navigate(`/w/${slug}/issues/${directKey}`),
-        }]
-      : []
-
-    return sortResults([...directResult, ...staticResults, ...issueCommands])
-  }, [commands, issuePrefix, issueResults, navigate, query, slug])
-
-  function close() {
-    setNewIssueOpen(false)
-    setQuery('')
-    setIssueResults([])
-    setSearching(false)
-    setSelectedIndex(0)
-    onOpenChange(false)
-  }
-
-  function runResult(result: PaletteResult) {
-    result.run()
-    if (result.id !== 'new-issue') close()
-  }
-
-  function onInputKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === 'ArrowDown' && results.length > 0) {
-      event.preventDefault()
-      setSelectedIndex((index) => (index + 1) % results.length)
-    } else if (event.key === 'ArrowUp' && results.length > 0) {
-      event.preventDefault()
-      setSelectedIndex((index) => (index - 1 + results.length) % results.length)
-    } else if (event.key === 'Home' && results.length > 0) {
-      event.preventDefault()
-      setSelectedIndex(0)
-    } else if (event.key === 'End' && results.length > 0) {
-      event.preventDefault()
-      setSelectedIndex(results.length - 1)
-    } else if (event.key === 'Enter') {
-      event.preventDefault()
-      const result = results[selectedIndex]
-      if (result) runResult(result)
-    } else if (event.key === 'Escape') {
-      event.preventDefault()
-      close()
+  const searchSource = useMemo(() => {
+    function toItems(results: PaletteResult[]): PaletteItem[] {
+      // Added to, never replaced: an older search can finish after a newer
+      // one, and must not make the rows on screen impossible to run.
+      for (const result of results) shown.current.set(result.id, result)
+      return results.map((result) => ({ id: result.id, label: result.label, auxiliaryData: { detail: result.detail } }))
     }
+
+    function rank(query: string, issues: Issue[]): PaletteResult[] {
+      const trimmed = query.trim()
+      const staticResults = commands.flatMap((command) => {
+        const score = matchScore(command, trimmed)
+        return score === null ? [] : [{ ...command, score }]
+      })
+
+      const issueCommands = issues.map((issue) => {
+        const command: PaletteCommand = {
+          id: `issue-${issue.id}`,
+          label: `${issue.key} ${issue.title}`,
+          keywords: [issue.key, issue.title],
+          run: () => navigate(`/w/${slug}/issues/${issue.key}`),
+        }
+        // The server already matched the query, including in descriptions the
+        // palette cannot see, so keep every result it returned.
+        return { ...command, score: (matchScore(command, trimmed) ?? 4) + 1 }
+      })
+
+      const directMatch = trimmed.match(ISSUE_KEY_PATTERN)
+      const numberMatch = trimmed.match(ISSUE_NUMBER_PATTERN)
+      const matchingNumber = numberMatch
+        ? issues.find((issue) => issue.number === Number(numberMatch[0]))
+        : undefined
+      const directKey = directMatch?.[0].toUpperCase()
+        ?? matchingNumber?.key
+        ?? (numberMatch ? `${issuePrefix.current}-${numberMatch[0]}` : undefined)
+      const directResult: PaletteResult[] = directKey
+        ? [{
+            id: `go-to-${directKey.toLowerCase()}`,
+            label: `Go to ${directKey}`,
+            detail: 'Open issue',
+            keywords: [directKey],
+            score: -1,
+            run: () => navigate(`/w/${slug}/issues/${directKey}`),
+          }]
+        : []
+
+      return sortResults([...directResult, ...staticResults, ...issueCommands])
+    }
+
+    return {
+      bootstrap: () => toItems(rank('', [])),
+      search: async (query: string, context?: { update: (items: PaletteItem[]) => void }) => {
+        const trimmed = query.trim()
+        const search = ++latestSearch.current
+        // A full issue key needs no search: it is offered directly.
+        if (!trimmed || ISSUE_KEY_PATTERN.test(trimmed)) return toItems(rank(query, []))
+
+        // Commands match at once; issues from the server are added after them.
+        context?.update(toItems(rank(query, [])))
+        await new Promise((resolve) => window.setTimeout(resolve, SEARCH_DELAY_MS))
+        // Typing moved on while this one waited, so it asks the server nothing.
+        if (search !== latestSearch.current) return toItems(rank(query, []))
+
+        let issues: Issue[] = []
+        try {
+          // The server filters by key, title, and description, so only one small
+          // page crosses the wire instead of every issue in the organisation.
+          const params = new URLSearchParams({ q: trimmed, limit: '20' })
+          issues = (await api.get<{ issues: Issue[] }>(`/w/${slug}/issues?${params.toString()}`)).issues
+        } catch {
+          issues = []
+        }
+        const prefix = issues.find((issue) => issue.key.includes('-'))?.key.split('-')[0]
+        if (prefix) issuePrefix.current = prefix
+        if (search !== latestSearch.current) return toItems(rank(query, []))
+        return toItems(rank(query, issues))
+      },
+    }
+  }, [commands, navigate, slug])
+
+  function choose(id: string) {
+    const command = shown.current.get(id)
+    if (!command) return
+    onOpenChange(false)
+    command.run()
   }
-
-  if (!open) return null
-
-  const selected = results[selectedIndex]
 
   return (
-    <div
-      ref={rootRef}
-      data-testid={COMMAND_PALETTE_TEST_IDS.root}
-      className="fixed inset-0 z-50"
-      data-palette-open="true"
-    >
-      <div
-        data-testid={COMMAND_PALETTE_TEST_IDS.backdrop}
-        className="absolute inset-0 bg-ink/30"
-        aria-hidden="true"
-        onClick={close}
-      />
-      <div
-        className="relative z-10 mx-3 mt-[16vh] overflow-hidden rounded-[var(--radius-surface)] border border-grey-300 bg-paper shadow-[0_16px_40px_rgba(0,0,0,0.16)] sm:mx-auto sm:mt-[18vh] sm:max-w-[34rem]"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="command-palette-title"
-      >
-        {newIssueOpen ? (
-          <div className="p-4">
-            <NewIssueForm
-              slug={slug}
-              onBack={() => setNewIssueOpen(false)}
-              onCreated={(issue) => {
-                close()
-                navigate(`/w/${slug}/issues/${issue.key}`)
-              }}
-            />
+    <>
+      <AstryxCommandPalette<PaletteItem>
+        isOpen={open}
+        onOpenChange={onOpenChange}
+        searchSource={searchSource}
+        onValueChange={choose}
+        label="Command palette"
+        width="min(34rem, calc(100vw - 1.5rem))"
+        input={(
+          // Enter with nothing highlighted runs the top result, so typing a
+          // few letters and pressing Enter is enough. Once an arrow key has
+          // highlighted a row, Astryx's own handling chooses it.
+          <div
+            onKeyDownCapture={(event) => {
+              if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+              const field = event.target as HTMLElement
+              if (field.getAttribute('aria-activedescendant')) return
+              const first = field.closest('dialog')?.querySelector<HTMLElement>('[role="option"] [data-command-id]')
+              if (!first?.dataset.commandId) return
+              event.preventDefault()
+              event.stopPropagation()
+              choose(first.dataset.commandId)
+            }}
+          >
+            <CommandPaletteInput label="Command palette" placeholder="Search commands or issues" />
           </div>
-        ) : (
-          <>
-            <div className="border-b border-grey-200 p-3">
-              <h2 id="command-palette-title" className="sr-only">Command palette</h2>
-              <input
-                ref={inputRef}
-                data-testid={COMMAND_PALETTE_TEST_IDS.input}
-                role="combobox"
-                aria-label="Command palette"
-                aria-controls={COMMAND_PALETTE_TEST_IDS.results}
-                aria-expanded="true"
-                aria-activedescendant={selected ? `command-palette-option-${selected.id}` : undefined}
-                autoComplete="off"
-                className="w-full border-0 bg-transparent px-1 py-1 text-base text-ink placeholder:text-grey-500"
-                placeholder="Search commands or issues"
-                value={query}
-                onChange={(event) => {
-                  const nextQuery = event.target.value
-                  setQuery(nextQuery)
-                  setIssueResults([])
-                  setSearching(Boolean(nextQuery.trim()) && !ISSUE_KEY_PATTERN.test(nextQuery.trim()))
-                  setSelectedIndex(0)
-                }}
-                onKeyDown={onInputKeyDown}
-              />
-            </div>
-
-            <div className="flex items-center justify-between px-4 pt-2 text-xs text-grey-500">
-              <span>{results.length ? `${results.length} result${results.length === 1 ? '' : 's'}` : 'No results'}</span>
-              {searching ? <span data-testid={COMMAND_PALETTE_TEST_IDS.searching} aria-live="polite">Searching…</span> : null}
-            </div>
-
-            <div
-              id={COMMAND_PALETTE_TEST_IDS.results}
-              data-testid={COMMAND_PALETTE_TEST_IDS.results}
-              className="max-h-80 overflow-y-auto p-2"
-              role="listbox"
-              aria-label="Command results"
-            >
-              {results.length > 0 ? results.map((result, index) => (
-                <button
-                  key={result.id}
-                  id={`command-palette-option-${result.id}`}
-                  data-testid={COMMAND_PALETTE_TEST_IDS.item}
-                  data-command-id={result.id}
-                  type="button"
-                  role="option"
-                  aria-selected={index === selectedIndex}
-                  className={`flex w-full items-center gap-3 rounded-[var(--radius-control)] px-3 py-2 text-left text-sm ${
-                    index === selectedIndex ? 'bg-grey-100 text-ink' : 'text-grey-700 hover:bg-grey-100'
-                  }`}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                  onClick={() => runResult(result)}
-                >
-                  <span className="min-w-0 flex-1 truncate">{result.label}</span>
-                  {result.detail ? <span className="max-w-[11rem] truncate text-xs text-grey-500">{result.detail}</span> : null}
-                </button>
-              )) : (
-                <p data-testid="command-palette-empty" className="px-3 py-6 text-center text-sm text-grey-500">
-                  Try a command, issue key, or title.
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between border-t border-grey-200 px-4 py-2 text-xs text-grey-500">
-              <span>↑↓ to navigate</span>
-              <span>Enter to open · Esc to close</span>
-            </div>
-          </>
         )}
-      </div>
-    </div>
+        emptySearchText="Try a command, issue key, or title."
+        renderItem={(item) => (
+          <span className="flex min-w-0 items-baseline gap-3" data-command-id={item.id}>
+            <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            {item.auxiliaryData.detail ? (
+              <Text type="supporting" color="secondary" className="max-w-[11rem] shrink-0 truncate">{item.auxiliaryData.detail}</Text>
+            ) : null}
+          </span>
+        )}
+      />
+      <Dialog isOpen={newIssueOpen} onOpenChange={setNewIssueOpen} purpose="form" width="min(30rem, calc(100vw - 1.5rem))" padding={0}>
+        <DialogHeader title="New issue" onOpenChange={setNewIssueOpen} />
+        {newIssueOpen ? (
+          <NewIssueForm
+            slug={slug}
+            onCreated={(issue) => {
+              setNewIssueOpen(false)
+              navigate(`/w/${slug}/issues/${issue.key}`)
+            }}
+          />
+        ) : null}
+      </Dialog>
+    </>
   )
 }

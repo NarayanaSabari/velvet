@@ -27,7 +27,7 @@ async function linkWithPageCommand(page: Page, initCommand: string, slug: string
   const approval = await page.context().newPage()
   await approval.goto(/http\S+\/cli\/approve\?code=\S+/.exec(out)![0])
   await approval.getByRole('button', { name: 'Approve login' }).click()
-  await expect(approval.getByText('Connected.')).toBeVisible()
+  await expect(approval.getByRole('heading', { level: 1, name: 'Connected' })).toBeVisible()
   await approval.close()
   expect(await exited, out).toBe(0)
   const linked = spawnSync(velvetBinary(), [...args, '--organisation', slug, '--project', project, '--non-interactive'], { cwd: repo, env, encoding: 'utf8' })
@@ -118,7 +118,8 @@ test('a person who skips the agent links a repository later from Profile > Agent
   await card.getByRole('link', { name: 'Connect an agent' }).click()
   await expect(page).toHaveURL(new RegExp(`/w/${slug}/settings/profile/agent-config$`))
   const section = page.locator('section#agent-config')
-  await expect(section.getByRole('heading', { name: 'Agent config' })).toBeInViewport()
+  await expect(page.getByRole('heading', { level: 1, name: 'Agent config' })).toBeInViewport()
+  await expect(section).toBeInViewport()
   await expect(section.getByTestId('agent-connection')).toContainText('Waiting for velvet init')
 
   // Create the first project in place, then take the commands and the block.
@@ -133,6 +134,8 @@ test('a person who skips the agent links a repository later from Profile > Agent
   expect(block).not.toMatch(/velvet_[0-9a-f]{8,}|Bearer|mcp/i)
   // Tokens are on their own page, not mounted alongside the setup.
   await expect(page.getByLabel('Token name')).toHaveCount(0)
+  // The commands are steps that open one at a time; open the one being checked.
+  await setup.getByRole('button', { name: /3\. Link the repository/ }).click()
   for (const [width, height, colorScheme] of [[1280, 900, 'light'], [390, 844, 'dark']] as const) {
     await page.setViewportSize({ width, height })
     await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
@@ -196,6 +199,7 @@ test('onboarding and Agent config stay usable on a phone', async ({ page }) => {
 
   // The same setup in Profile > Agent config fits the phone as well.
   await page.goto(`/w/phone-${suffix}/settings/profile#agent-config`)
+  await page.getByRole('button', { name: /3\. Link the repository/ }).click()
   await expect(page.getByTestId('cli-init')).toBeVisible()
   expect(await overflow(), 'Agent config widened the profile page').toBeLessThanOrEqual(0)
   await page.screenshot({ path: 'test-results/profile-agent-config-390.png', fullPage: true })

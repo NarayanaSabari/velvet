@@ -4,34 +4,10 @@ import { NavLink } from '../../app/nav'
 import type { Membership } from '../../lib/types'
 import { EmptyState } from '../../ui/EmptyState'
 import { PageHeader } from '../../ui/PageHeader'
+import { SectionNav } from '../../ui/SectionNav'
 import { LoadingState } from '../../ui/QueryState'
 import { useSession } from '../auth/useSession'
 import { ADMIN_PAGES, useAdminData, type AdminPageId } from './adminPages'
-
-function AdminNav({ slug, counts }: { slug: string; counts: Partial<Record<AdminPageId, number>> }) {
-  return (
-    <nav aria-label="Administration sections" className="lg:sticky lg:top-4">
-      <ul className="flex flex-wrap gap-1 border-b border-grey-200 pb-2 lg:flex-col lg:flex-nowrap lg:gap-0.5 lg:border-b-0 lg:pb-0">
-        {ADMIN_PAGES.map((page) => (
-          <li key={page.id} className="shrink-0">
-            <NavLink
-              to={`/w/${slug}/admin/${page.id}`}
-              className={`group flex min-h-11 items-center justify-between gap-3 whitespace-nowrap rounded-[var(--radius-control)] border border-transparent px-2.5 text-sm no-underline hover:bg-grey-100 lg:min-h-8 ${page.id === 'danger' ? 'text-blocked' : 'text-grey-700 hover:text-ink'}`}
-              activeClassName="border-grey-200 bg-grey-100 font-medium !text-ink"
-            >
-              <span className={page.id === 'danger' ? 'group-aria-[current=page]:text-blocked' : undefined}>{page.label}</span>
-              {counts[page.id] !== undefined ? (
-                <span className="rounded-full bg-paper px-1.5 text-xs tabular-nums text-grey-700 group-hover:bg-grey-200 lg:bg-grey-100 lg:group-aria-[current=page]:bg-paper">
-                  {counts[page.id]}
-                </span>
-              ) : null}
-            </NavLink>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  )
-}
 
 /**
  * Administration is a small settings area: one page per concern, with the
@@ -77,7 +53,17 @@ export function AdminLayout({ slug, page, children }: {
       />
       <div className="grid gap-4 lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-8">
         <div className="min-w-0">
-          <AdminNav slug={slug} counts={counts} />
+          <SectionNav
+            label="Administration sections"
+            current={page}
+            items={ADMIN_PAGES.map((item) => ({
+              id: item.id,
+              label: item.label,
+              href: `/w/${slug}/admin/${item.id}`,
+              count: counts[item.id],
+              destructive: item.id === 'danger',
+            }))}
+          />
         </div>
         <div className="min-w-0">{children(session.workspace)}</div>
       </div>

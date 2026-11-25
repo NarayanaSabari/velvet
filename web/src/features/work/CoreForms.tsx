@@ -1,29 +1,45 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { ErrorNote } from '../../ui/ErrorNote'
+import { useState, type FormEvent } from 'react'
 
 import { PRIORITIES, priorityOption } from '../../lib/priority'
 import type { Issue, IssueStatus, Milestone, MilestoneStatus } from '../../lib/types'
 import { Button } from '../../ui/Button'
+import { NativeField, SelectField, TextAreaField, TextField, type SelectOption } from '../../ui/fields'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
-import { groupChoices, reconcileLinks, type MilestoneChoice, type ProjectChoice } from './workLinks'
+import { milestoneSelectOptions, reconcileLinks, type MilestoneChoice, type ProjectChoice } from './workLinks'
 
-const inputClass = 'ui-control w-full px-2 py-1 text-sm'
+// The browser's own date picker, inside Astryx's label and layout.
+const dateClass = 'ui-control w-full px-2 py-1 text-sm'
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function DateField({ label, value, onChange, required = false }: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  required?: boolean
+}) {
   return (
-    <label className="block text-sm">
-      <span className="mb-1 block text-grey-500">{label}</span>
-      {children}
-    </label>
+    <NativeField label={label}>
+      {(id) => (
+        <input id={id} className={dateClass} required={required} type="date" value={value}
+          onChange={(event) => onChange(event.target.value)} />
+      )}
+    </NativeField>
   )
+}
+
+const PRIORITY_OPTIONS: SelectOption[] = PRIORITIES.map((value) => ({ value: String(value), label: priorityOption(value) }))
+
+function ownerOptions(members: Array<{ id: string; label: string }>): SelectOption[] {
+  return [{ value: '', label: 'Unassigned' }, ...members.map((member) => ({ value: member.id, label: member.label }))]
 }
 
 function Actions({ busy, label, error }: { busy: boolean; label: string; error: boolean }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <Button type="submit" variant="primary" disabled={busy}>
         {busy ? 'Saving…' : label}
       </Button>
-      {error ? <span className="text-sm text-blocked">Could not save. Try again.</span> : null}
+      {error ? <ErrorNote className="basis-full">Could not save. Try again.</ErrorNote> : null}
     </div>
   )
 }
@@ -46,12 +62,18 @@ export function SprintForm({ projects, defaultProjectId = '', onSubmit }: {
   })
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [projectMissing, setProjectMissing] = useState(false)
   // With one project there is nothing to choose, and the list may arrive
   // after the form opens, so the default is worked out on every render.
   const projectId = input.project_id || (projects.length === 1 ? projects[0]?.id ?? '' : '')
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    // The dropdown is not a native control, so the browser cannot require it.
+    if (!projectId) {
+      setProjectMissing(true)
+      return
+    }
     setBusy(true)
     setFailed(false)
     try {
@@ -66,28 +88,25 @@ export function SprintForm({ projects, defaultProjectId = '', onSubmit }: {
 
   return (
     <form className="space-y-3 border border-grey-200 p-3" onSubmit={(event) => void submit(event)}>
-      <Field label="Project">
-        <select autoFocus className={inputClass} required value={projectId}
-          onChange={(event) => setInput({ ...input, project_id: event.target.value })}>
-          <option value="" disabled>Choose a project</option>
-          {projects.map((project) => (
-            <option key={project.id} value={project.id}>{project.label}</option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Sprint name">
-        <input className={inputClass} required value={input.name}
-          onChange={(event) => setInput({ ...input, name: event.target.value })} />
-      </Field>
+      <SelectField
+        autoFocus
+        label="Project"
+        placeholder="Choose a project"
+        value={projectId}
+        error={projectMissing ? 'Choose a project.' : undefined}
+        onChange={(value) => {
+          setProjectMissing(false)
+          setInput({ ...input, project_id: value })
+        }}
+        options={projects.map((project) => ({ value: project.id, label: project.label }))}
+      />
+      <TextField label="Sprint name" required value={input.name}
+        onChange={(value) => setInput({ ...input, name: value })} />
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Starts on">
-          <input className={inputClass} required type="date" value={input.starts_on}
-            onChange={(event) => setInput({ ...input, starts_on: event.target.value })} />
-        </Field>
-        <Field label="Ends on">
-          <input className={inputClass} required type="date" value={input.ends_on}
-            onChange={(event) => setInput({ ...input, ends_on: event.target.value })} />
-        </Field>
+        <DateField label="Starts on" required value={input.starts_on}
+          onChange={(value) => setInput({ ...input, starts_on: value })} />
+        <DateField label="Ends on" required value={input.ends_on}
+          onChange={(value) => setInput({ ...input, ends_on: value })} />
       </div>
       <Actions busy={busy} label="Create sprint" error={failed} />
     </form>
@@ -135,24 +154,11 @@ export function MilestoneForm({ onSubmit, members = [] }: {
 
   return (
     <form className="space-y-3 border border-grey-200 p-3" onSubmit={(event) => void submit(event)}>
-      <Field label="Milestone name">
-        <input autoFocus className={inputClass} required value={name} onChange={(event) => setName(event.target.value)} />
-      </Field>
-      <Field label="Milestone description">
-        <textarea className={inputClass} rows={3} value={description}
-          onChange={(event) => setDescription(event.target.value)} />
-      </Field>
-      <Field label="Target date">
-        <input className={inputClass} type="date" value={targetDate}
-          onChange={(event) => setTargetDate(event.target.value)} />
-      </Field>
+      <TextField autoFocus label="Milestone name" required value={name} onChange={setName} />
+      <TextAreaField label="Milestone description" rows={3} value={description} onChange={setDescription} />
+      <DateField label="Target date" value={targetDate} onChange={setTargetDate} />
       {members.length ? (
-        <Field label="Owner">
-          <select className={inputClass} value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
-            <option value="">Unassigned</option>
-            {members.map((member) => <option key={member.id} value={member.id}>{member.label}</option>)}
-          </select>
-        </Field>
+        <SelectField label="Owner" value={ownerId} onChange={setOwnerId} options={ownerOptions(members)} />
       ) : null}
       <Actions busy={busy} label="Create milestone" error={failed} />
     </form>
@@ -196,32 +202,19 @@ export function MilestoneEditForm({
   const statuses: MilestoneStatus[] = ['planned', 'in_progress', 'completed', 'cancelled']
   return (
     <form className="space-y-3 border border-grey-200 p-3" onSubmit={(event) => void submit(event)}>
-      <Field label="Milestone name">
-        <input autoFocus className={inputClass} required value={name} onChange={(event) => setName(event.target.value)} />
-      </Field>
-      <Field label="Milestone description">
-        <textarea className={inputClass} rows={4} value={description}
-          onChange={(event) => setDescription(event.target.value)} />
-      </Field>
+      <TextField autoFocus label="Milestone name" required value={name} onChange={setName} />
+      <TextAreaField label="Milestone description" rows={4} value={description} onChange={setDescription} />
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Milestone status">
-          <select className={inputClass} value={status}
-            onChange={(event) => setStatus(event.target.value as MilestoneStatus)}>
-            {statuses.map((value) => <option key={value} value={value}>{value.replace('_', ' ')}</option>)}
-          </select>
-        </Field>
-        <Field label="Target date">
-          <input className={inputClass} type="date" value={targetDate}
-            onChange={(event) => setTargetDate(event.target.value)} />
-        </Field>
+        <SelectField
+          label="Milestone status"
+          value={status}
+          onChange={(value) => setStatus(value as MilestoneStatus)}
+          options={statuses.map((value) => ({ value, label: value.replace('_', ' ') }))}
+        />
+        <DateField label="Target date" value={targetDate} onChange={setTargetDate} />
       </div>
       {members.length ? (
-        <Field label="Owner">
-          <select className={inputClass} value={ownerId} onChange={(event) => setOwnerId(event.target.value)}>
-            <option value="">Unassigned</option>
-            {members.map((member) => <option key={member.id} value={member.id}>{member.label}</option>)}
-          </select>
-        </Field>
+        <SelectField label="Owner" value={ownerId} onChange={setOwnerId} options={ownerOptions(members)} />
       ) : null}
       <Actions busy={busy} label="Save milestone" error={failed} />
     </form>
@@ -243,22 +236,6 @@ export interface IssueLinkChoices {
   projects: ProjectChoice[]
   milestones: MilestoneChoice[]
   defaultProjectId?: string
-}
-
-/** A milestone select whose options are grouped by project and sprint. */
-export function MilestoneOptions({ milestones, emptyLabel }: { milestones: MilestoneChoice[]; emptyLabel: string }) {
-  return (
-    <>
-      <option value="">{emptyLabel}</option>
-      {groupChoices(milestones).map(({ group, items }) => (
-        <optgroup key={group} label={group}>
-          {items.map((milestone) => (
-            <option key={milestone.id} value={milestone.id}>{milestone.label}</option>
-          ))}
-        </optgroup>
-      ))}
-    </>
-  )
 }
 
 export function IssueForm({
@@ -313,46 +290,35 @@ export function IssueForm({
 
   return (
     <form className="space-y-3 border border-grey-200 p-3" onSubmit={(event) => void submit(event)}>
-      <Field label="Issue title">
-        <input autoFocus className={inputClass} required value={title} onChange={(event) => setTitle(event.target.value)} />
-      </Field>
-      <Field label="Issue description">
-        <textarea className={inputClass} rows={3} value={description}
-          onChange={(event) => setDescription(event.target.value)} />
-      </Field>
+      <TextField autoFocus label="Issue title" required value={title} onChange={setTitle} />
+      <TextAreaField label="Issue description" rows={3} value={description} onChange={setDescription} />
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Status">
-          <select className={inputClass} value={status}
-            onChange={(event) => setStatus(event.target.value as IssueStatus)}>
-            {(Object.keys(STATUS_LABELS) as IssueStatus[]).map((value) => (
-              <option key={value} value={value}>{STATUS_LABELS[value]}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Priority">
-          <select className={inputClass} value={priority}
-            onChange={(event) => setPriority(Number(event.target.value))}>
-            {PRIORITIES.map((value) => <option key={value} value={value}>{priorityOption(value)}</option>)}
-          </select>
-        </Field>
+        <SelectField
+          label="Status"
+          value={status}
+          onChange={(value) => setStatus(value as IssueStatus)}
+          options={(Object.keys(STATUS_LABELS) as IssueStatus[]).map((value) => ({ value, label: STATUS_LABELS[value] }))}
+        />
+        <SelectField label="Priority" value={String(priority)} onChange={(value) => setPriority(Number(value))}
+          options={PRIORITY_OPTIONS} />
       </div>
       {links ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Project">
-            <select className={inputClass} value={link.projectId}
-              onChange={(event) => setLink(reconcileLinks(links.milestones, link, { projectId: event.target.value }))}>
-              <option value="">No project</option>
-              {links.projects.map((project) => (
-                <option key={project.id} value={project.id}>{project.label}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Milestone">
-            <select className={inputClass} value={link.milestoneId}
-              onChange={(event) => setLink(reconcileLinks(links.milestones, link, { milestoneId: event.target.value }))}>
-              <MilestoneOptions milestones={links.milestones} emptyLabel="No milestone" />
-            </select>
-          </Field>
+          <SelectField
+            label="Project"
+            value={link.projectId}
+            onChange={(value) => setLink(reconcileLinks(links.milestones, link, { projectId: value }))}
+            options={[
+              { value: '', label: 'No project' },
+              ...links.projects.map((project) => ({ value: project.id, label: project.label })),
+            ]}
+          />
+          <SelectField
+            label="Milestone"
+            value={link.milestoneId}
+            onChange={(value) => setLink(reconcileLinks(links.milestones, link, { milestoneId: value }))}
+            options={milestoneSelectOptions(links.milestones, 'No milestone')}
+          />
         </div>
       ) : null}
       <Actions busy={busy} label="Create issue" error={failed} />
@@ -388,19 +354,10 @@ export function IssueEditForm({
 
   return (
     <form className="space-y-3 border border-grey-200 p-3" onSubmit={(event) => void submit(event)}>
-      <Field label="Title">
-        <input autoFocus className={inputClass} required value={title} onChange={(event) => setTitle(event.target.value)} />
-      </Field>
-      <Field label="Description">
-        <textarea className={inputClass} rows={5} value={description}
-          onChange={(event) => setDescription(event.target.value)} />
-      </Field>
-      <Field label="Priority">
-        <select className={inputClass} value={priority}
-          onChange={(event) => setPriority(Number(event.target.value))}>
-          {PRIORITIES.map((value) => <option key={value} value={value}>{priorityOption(value)}</option>)}
-        </select>
-      </Field>
+      <TextField autoFocus label="Title" required value={title} onChange={setTitle} />
+      <TextAreaField label="Description" rows={5} value={description} onChange={setDescription} />
+      <SelectField label="Priority" value={String(priority)} onChange={(value) => setPriority(Number(value))}
+        options={PRIORITY_OPTIONS} />
       <Actions busy={busy} label="Save issue" error={failed} />
     </form>
   )

@@ -237,7 +237,8 @@ func (s *Store) LatestActivityID(ctx context.Context, workspaceID uuid.UUID) (in
 func (s *Store) Dashboard(ctx context.Context, workspaceID, userID uuid.UUID) (DashboardPayload, error) {
 	var out DashboardPayload
 
-	activity, _, err := s.ListActivity(ctx, workspaceID, ActivityFilter{Limit: dashboardFeedLimit})
+	// The dashboard is personal: the team-wide feed has its own page.
+	activity, _, err := s.ListActivity(ctx, workspaceID, ActivityFilter{ActorID: &userID, Limit: dashboardFeedLimit})
 	if err != nil {
 		return out, err
 	}

@@ -3,6 +3,7 @@ import { queryOptions, useQuery } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
 import type { Milestone, Project, Sprint, SprintState, User } from '../../lib/types'
+import type { SelectOption } from '../../ui/fields'
 
 /**
  * A ticket links to a project and to a milestone, and the two always agree:
@@ -167,4 +168,15 @@ export function useWorkLinks(slug: string, current?: { projectId?: string | null
       [milestones.data],
     ),
   }
+}
+
+/** Milestone choices for a dropdown, grouped by project and sprint. */
+export function milestoneSelectOptions(milestones: MilestoneChoice[], emptyLabel: string): SelectOption[] {
+  return [
+    { value: '', label: emptyLabel },
+    ...groupChoices(milestones).map(({ group, items }) => ({
+      group,
+      options: items.map((milestone) => ({ value: milestone.id, label: milestone.label })),
+    })),
+  ]
 }

@@ -1,14 +1,27 @@
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
+import { FormDialog } from '../../ui/FormDialog'
+import { ErrorNote } from '../../ui/ErrorNote'
+import { Badge } from '@astryxdesign/core/Badge'
+import { Card } from '@astryxdesign/core/Card'
+import { Heading } from '@astryxdesign/core/Heading'
+import { Link } from '@astryxdesign/core/Link'
+import { Text } from '@astryxdesign/core/Text'
+
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { NavLink } from '../../app/nav'
 import { api } from '../../lib/api'
+import { formatDay } from '../../lib/formatDate'
 import type { Project } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
 import { PageHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
+import { STATUS_LABELS } from '../../ui/StatusBadge'
+import { sprintsQuery } from '../work/workLinks'
 import { useSession } from '../auth/useSession'
+import { CheckboxField, TextField } from '../../ui/fields'
 
 /**
  * Projects are the durable unit of work inside an organisation. A milestone is
@@ -16,10 +29,9 @@ import { useSession } from '../auth/useSession'
  * several months; a project can.
  */
 
-const controlClass =
-  'ui-control min-h-10 w-full px-2 py-1 text-sm md:min-h-8'
 
-const OPEN_STATUSES = ['backlog', 'todo', 'in_progress', 'in_review'] as const
+// In the order work moves through, most advanced first.
+const OPEN_STATUSES = ['in_progress', 'in_review', 'todo', 'backlog'] as const
 
 function openCount(project: Project): number {
   const counts = project.issue_counts ?? {}
@@ -52,43 +64,32 @@ function NewProjectForm({
   })
 
   return (
+    <FormDialog
+      title="New project"
+      description="Create a durable home for work that spans several sprints."
+      onClose={onClose}
+      width="30rem"
+    >
     <form
-      className="ui-surface mb-6 max-w-2xl space-y-4 p-4"
+      className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault()
         create.mutate()
       }}
     >
-      <div>
-        <h2 className="text-sm font-medium">New project</h2>
-        <p className="mt-1 text-sm text-grey-500">Create a durable home for work that spans several sprints.</p>
-      </div>
-      <label className="block text-sm">
-        <span className="mb-1 block text-xs text-grey-500">Project name</span>
-        <input
-          className={controlClass}
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          required
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block text-xs text-grey-500">Project key</span>
-        <input
-          className={controlClass}
-          value={key}
-          onChange={(event) => setKey(event.target.value)}
-          placeholder="velvet"
-          required
-        />
-        <span className="mt-1 block text-xs text-grey-500">
-          Lowercase letters, digits, and hyphens. Agents name the project by this key.
-        </span>
-      </label>
+      <TextField label="Project name" value={name} onChange={setName} required />
+      <TextField
+        label="Project key"
+        description="Lowercase letters, digits, and hyphens. Agents name the project by this key."
+        value={key}
+        onChange={setKey}
+        placeholder="velvet"
+        required
+      />
       {error ? (
-        <p role="alert" className="text-sm text-blocked">
+        <ErrorNote>
           {error}
-        </p>
+        </ErrorNote>
       ) : null}
       <div className="flex gap-2">
         <Button type="submit" disabled={create.isPending}>
@@ -99,6 +100,7 @@ function NewProjectForm({
         </Button>
       </div>
     </form>
+    </FormDialog>
   )
 }
 
@@ -118,6 +120,9 @@ export function ProjectsPage({ slug }: { slug: string }) {
       ),
   })
 
+  // For each card's current sprint. A failure here only leaves that line blank.
+  const sprints = useQuery(sprintsQuery(slug))
+
   const setStatus = useMutation({
     mutationFn: ({ key, status }: { key: string; status: Project['status'] }) =>
       api.patch<Project>(`/w/${slug}/projects/${key}`, { status }),
@@ -133,17 +138,10 @@ export function ProjectsPage({ slug }: { slug: string }) {
         title="Projects"
         description="Keep long-running bodies of work intact while sprints and milestones change around them."
         actions={<>
-        {canWrite && !creatingProject ? (
+        {canWrite ? (
           <Button variant="primary" onClick={() => setCreatingProject(true)}>New project</Button>
         ) : null}
-        <label className="flex min-h-11 items-center gap-2 text-sm text-grey-500 sm:min-h-8">
-          <input
-            type="checkbox"
-            checked={includeArchived}
-            onChange={(event) => setIncludeArchived(event.target.checked)}
-          />
-          Show archived
-        </label>
+        <CheckboxField label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </>}
       />
 
@@ -165,92 +163,103 @@ export function ProjectsPage({ slug }: { slug: string }) {
       ) : (
         <>
           {setStatus.error ? (
-            <p role="alert" className="mb-3 text-sm text-blocked">
+            <ErrorNote className="mb-3">
               {setStatus.error.message}
-            </p>
+            </ErrorNote>
           ) : null}
-          <ul className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
-            {query.data.projects.map((project) => (
-            <li key={project.id} data-testid={`project-row-${project.key}`} className="border-t border-grey-200 px-3 py-3 first:border-t-0">
-              <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_8rem_10rem] md:items-center">
-                <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span className="shrink-0 font-mono text-xs text-grey-500">{project.key}</span>
-                  <span className="min-w-0 break-words text-sm font-medium text-ink">
-                    {project.name}
-                  </span>
-                  {project.status === 'archived' ? (
-                    <span className="shrink-0 text-xs text-grey-500">Archived</span>
-                  ) : null}
-                </div>
-                <NavLink
-                  to={`/w/${slug}/issues?project=${encodeURIComponent(project.key)}&status=open`}
-                  className="inline-flex min-h-11 items-center text-sm underline sm:min-h-0"
-                >
-                  {openCount(project)} open
-                </NavLink>
-                {canWrite ? (
-                  <div>
-                    <Button
-                      data-confirm-trigger
-                      disabled={setStatus.isPending}
-                      onClick={() => {
-                        setStatus.reset()
-                        if (project.status === 'archived') {
-                          setStatus.mutate({ key: project.key, status: 'active' })
-                        } else {
-                          setArchivingKey(project.key)
-                        }
-                      }}
-                    >
-                      {project.status === 'archived'
-                        ? setStatus.isPending && setStatus.variables?.key === project.key
-                          ? 'Restoring…'
-                          : 'Restore'
-                        : 'Archive'}
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-              {archivingKey === project.key ? (
-                <div
-                  className="mt-3 space-y-2 border-t border-grey-200 pt-3"
-                  onKeyDown={(event) => {
-                    if (event.key === 'Escape' && !setStatus.isPending) {
-                      event.currentTarget.closest('li')?.querySelector<HTMLButtonElement>('[data-confirm-trigger]')?.focus()
-                      setStatus.reset()
-                      setArchivingKey(null)
-                    }
-                  }}
-                >
-                  <p className="text-sm font-medium">Archive {project.name}?</p>
-                  <p className="text-sm text-grey-500">
-                    It will be hidden from the active list. Its issues and history stay available.
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="danger"
-                      aria-label={`Confirm archive ${project.name}`}
-                      disabled={setStatus.isPending}
-                      onClick={() => setStatus.mutate({ key: project.key, status: 'archived' })}
-                    >
-                      {setStatus.isPending ? 'Archiving…' : 'Confirm archive'}
-                    </Button>
-                    <Button
-                      autoFocus
-                      disabled={setStatus.isPending}
-                      onClick={(event) => {
-                        event.currentTarget.closest('li')?.querySelector<HTMLButtonElement>('[data-confirm-trigger]')?.focus()
-                        setStatus.reset()
-                        setArchivingKey(null)
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-            </li>
-            ))}
+          <ul className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3" aria-label="Projects">
+            {query.data.projects.map((project) => {
+              const counts = project.issue_counts ?? {}
+              const open = openCount(project)
+              const projectSprints = (sprints.data?.sprints ?? []).filter((sprint) => sprint.project_id === project.id)
+              const active = projectSprints.find((sprint) => sprint.state === 'active')
+              const next = projectSprints
+                .filter((sprint) => sprint.state === 'upcoming')
+                .sort((a, b) => a.starts_on.localeCompare(b.starts_on))[0]
+              const archived = project.status === 'archived'
+              return (
+                <li key={project.id} data-project-card data-testid={`project-row-${project.key}`} className="min-w-0">
+                  <Card padding={5} height="100%">
+                    <section aria-labelledby={`project-${project.id}`} className="flex h-full flex-col">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <Heading level={3} accessibilityLevel={2} id={`project-${project.id}`} className="min-w-0 break-words">{project.name}</Heading>
+                        <span className="flex shrink-0 items-center gap-2">
+                          {archived ? <Badge label="Archived" /> : null}
+                          <Text type="code" color="secondary">{project.key}</Text>
+                        </span>
+                      </div>
+
+                      {/* The one number that matters at a glance: a link to that open
+                          work, with what it is made of beneath. */}
+                      <div className="mt-4">
+                        <NavLink
+                          to={`/w/${slug}/issues?project=${encodeURIComponent(project.key)}&status=open`}
+                          className="inline-flex items-baseline gap-2 text-grey-500 underline decoration-grey-300 underline-offset-4 hover:text-ink"
+                        >
+                          <span className="text-[2.5rem] leading-none font-semibold tabular-nums text-ink">{open}</span>{' '}
+                          <span>open</span>
+                        </NavLink>
+                      </div>
+                      <dl className="mt-4 grid grid-cols-4 gap-2 border-y border-grey-200 py-3">
+                        {OPEN_STATUSES.map((status) => (
+                          <div key={status} className="min-w-0">
+                            <dd className="text-lg leading-tight font-semibold tabular-nums text-ink">{counts[status] ?? 0}</dd>
+                            <dt><Text type="supporting" color="secondary">{STATUS_LABELS[status]}</Text></dt>
+                          </div>
+                        ))}
+                      </dl>
+
+                      <div className="mt-auto flex items-end justify-between gap-3 pt-4">
+                        <div className="min-w-0">
+                          <Text as="p" type="supporting" color="secondary" display="block">Current sprint</Text>
+                          <p className="mt-0.5">
+                            {active ? (
+                              <>
+                                <Link href={`/w/${slug}/sprints/${active.id}`} color="primary" hasUnderline>{active.name}</Link>
+                                <Text color="secondary"> · ends {formatDay(active.ends_on)}</Text>
+                              </>
+                            ) : (
+                              <Text color="secondary">{next ? `Next: ${next.name}` : 'No sprint running'}</Text>
+                            )}
+                          </p>
+                        </div>
+                        {canWrite ? (
+                          <Button
+                            data-confirm-trigger
+                            disabled={setStatus.isPending}
+                            onClick={() => {
+                              setStatus.reset()
+                              if (archived) {
+                                setStatus.mutate({ key: project.key, status: 'active' })
+                              } else {
+                                setArchivingKey(project.key)
+                              }
+                            }}
+                          >
+                            {archived
+                              ? setStatus.isPending && setStatus.variables?.key === project.key
+                                ? 'Restoring…'
+                                : 'Restore'
+                              : 'Archive'}
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      <ConfirmDialog
+                        open={archivingKey === project.key}
+                        onClose={() => { setStatus.reset(); setArchivingKey(null) }}
+                        title={`Archive ${project.name}?`}
+                        description="It will be hidden from the active list. Its issues and history stay available."
+                        actionLabel="Confirm archive"
+                        pending={setStatus.isPending}
+                        error={setStatus.error ? `${setStatus.error.message} Try again, or cancel.` : null}
+                        onConfirm={() => setStatus.mutate({ key: project.key, status: 'archived' })}
+                      />
+                    </section>
+                  </Card>
+                </li>
+              )
+            })}
           </ul>
         </>
       )}

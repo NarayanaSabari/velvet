@@ -1,4 +1,8 @@
+import { ErrorNote } from '../../ui/ErrorNote'
 import { useState, type FormEvent } from 'react'
+
+import { List, ListItem } from '@astryxdesign/core/List'
+import { Text } from '@astryxdesign/core/Text'
 
 import type { Comment } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
@@ -8,6 +12,7 @@ import { RelativeTime } from '../../ui/RelativeTime'
 import { EmptyState } from '../../ui/EmptyState'
 import { Button } from '../../ui/Button'
 import { CommentImages } from '../images/CommentImages'
+import { TextField } from '../../ui/fields'
 
 function CommentBody({ comment, slug }: { comment: Comment; slug?: string }) {
   return (
@@ -15,13 +20,13 @@ function CommentBody({ comment, slug }: { comment: Comment; slug?: string }) {
       <Avatar user={comment.author} size="md" />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="text-ink">{userLabel(comment.author)}</span>
+          <Text weight="semibold">{userLabel(comment.author)}</Text>
           <RelativeTime iso={comment.created_at} />
-          {comment.edited_at ? <span className="text-xs text-grey-500">edited</span> : null}
+          {comment.edited_at ? <Text type="supporting" color="secondary">edited</Text> : null}
         </div>
         <div className="mt-0.5">
           {comment.deleted_at ? (
-            <span className="text-grey-500 italic">Comment deleted</span>
+            <Text color="secondary">Comment deleted</Text>
           ) : (
             <>
               <Markdown source={comment.body} />
@@ -62,29 +67,25 @@ export function ReplyEditor({ commentId, onReply }: {
 
   if (!open) {
     return (
-      <button
-        type="button"
-        className="mb-2 min-h-11 rounded-[var(--radius-control)] px-2 text-xs text-grey-500 hover:bg-grey-100 hover:text-ink sm:min-h-7"
-        onClick={() => setOpen(true)}
-      >
-        Reply
-      </button>
+      <div className="mt-1 -ml-2">
+        <Button variant="ghost" onClick={() => setOpen(true)}>Reply</Button>
+      </div>
     )
   }
   return (
-    <form className="mb-3 rounded-[var(--radius-surface)] bg-grey-100 p-2" onSubmit={(event) => void submit(event)}>
+    <form className="mt-2" onSubmit={(event) => void submit(event)}>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <input className="ui-control min-h-9 min-w-0 flex-1 px-2 py-1 text-sm"
-          placeholder="Write a reply…" value={body} onChange={(event) => setBody(event.target.value)} />
+        <TextField className="flex-1" label="Reply" hideLabel
+          placeholder="Write a reply…" value={body} onChange={setBody} />
         <div className="flex gap-2">
-          <Button type="submit" disabled={busy || !body.trim()}>{busy ? 'Posting…' : 'Post reply'}</Button>
+          <Button type="submit" variant="primary" disabled={busy || !body.trim()}>{busy ? 'Posting…' : 'Post reply'}</Button>
           <Button type="button" disabled={busy} onClick={() => { setOpen(false); setFailed(false) }}>Cancel</Button>
         </div>
       </div>
       {failed ? (
-        <p className="mt-1 text-xs text-blocked" role="alert">
+        <ErrorNote className="mt-1">
           Could not post reply. Your draft is still here.
-        </p>
+        </ErrorNote>
       ) : null}
     </form>
   )
@@ -99,20 +100,28 @@ export function CommentThread({ comments, onReply, slug }: {
     return <EmptyState title="No updates yet" message="The first comment starts the log." />
   }
   return (
-    <div className="divide-y divide-grey-200 rounded-[var(--radius-surface)] border border-grey-200 px-3">
-      {comments.map((comment) => (
-        <div key={comment.id}>
-          <CommentBody comment={comment} slug={slug} />
-          {comment.replies?.length ? (
-            <div className="ml-4 border-l-2 border-grey-200 pb-2 pl-4">
-              {comment.replies.map((reply) => (
-                <CommentBody key={reply.id} comment={reply} slug={slug} />
-              ))}
-            </div>
-          ) : null}
-          {onReply ? <ReplyEditor commentId={comment.id} onReply={onReply} /> : null}
-        </div>
-      ))}
+    <div className="border-y border-grey-200">
+      <List hasDividers density="balanced" edge="flush" aria-label="Updates">
+        {comments.map((comment) => (
+          <ListItem
+            key={comment.id}
+            itemKey={comment.id}
+            label={(
+              <div className="min-w-0">
+                <CommentBody comment={comment} slug={slug} />
+                {comment.replies?.length ? (
+                  <div className="ml-3 border-l-2 border-grey-200 pl-4">
+                    {comment.replies.map((reply) => (
+                      <CommentBody key={reply.id} comment={reply} slug={slug} />
+                    ))}
+                  </div>
+                ) : null}
+                {onReply ? <div className="ml-8"><ReplyEditor commentId={comment.id} onReply={onReply} /></div> : null}
+              </div>
+            )}
+          />
+        ))}
+      </List>
     </div>
   )
 }

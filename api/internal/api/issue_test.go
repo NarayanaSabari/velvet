@@ -176,6 +176,107 @@ func TestIssueListFiltersByStatusAndAssignee(t *testing.T) {
 	require.Equal(t, mine.Key, list.Issues[0].Key)
 }
 
+// Grouping is opt-in. With it, work under way comes first and finished work
+// last, and paging walks the groups in that order without splitting one out
+// of sequence.
+func TestIssueListGroupsByStatusAcrossPages(t *testing.T) {
+	f := testutil.NewFixture(t)
+	for _, status := range []string{"done", "backlog", "in_review", "todo", "in_progress", "cancelled", "in_progress"} {
+		createIssue(t, f, map[string]any{"title": "Issue " + status, "status": status})
+	}
+
+	type page struct {
+		Issues     []store.Issue `json:"issues"`
+		NextCursor string        `json:"next_cursor"`
+	}
+	fetch := func(path string) page {
+		t.Helper()
+		rec := f.Do(http.MethodGet, path, nil)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var out page
+		f.DecodeInto(rec, &out)
+		return out
+	}
+
+	var statuses []string
+	seen := map[string]bool{}
+	path := "/api/v1/w/lab/issues?group=status&limit=3"
+	var firstCursor string
+	for pages := 0; ; pages++ {
+		require.Less(t, pages, 5, "paging did not finish")
+		got := fetch(path)
+		for _, issue := range got.Issues {
+			require.False(t, seen[issue.Key], "issue %s returned twice", issue.Key)
+			seen[issue.Key] = true
+			statuses = append(statuses, issue.Status)
+		}
+		if got.NextCursor == "" {
+			break
+		}
+		if firstCursor == "" {
+			firstCursor = got.NextCursor
+		}
+		path = "/api/v1/w/lab/issues?group=status&limit=3&cursor=" + got.NextCursor
+	}
+	require.Equal(t, []string{
+		"in_progress", "in_progress", "in_review", "todo", "backlog", "done", "cancelled",
+	}, statuses)
+
+	// Without the parameter the list keeps its original order.
+	plain := fetch("/api/v1/w/lab/issues")
+	require.Equal(t, "done", plain.Issues[0].Status)
+
+	// A cursor only continues the ordering it was issued under.
+	require.Equal(t, http.StatusBadRequest,
+		f.Do(http.MethodGet, "/api/v1/w/lab/issues?limit=3&cursor="+firstCursor, nil).Code)
+	plainPage := fetch("/api/v1/w/lab/issues?limit=3")
+	require.NotEmpty(t, plainPage.NextCursor)
+	require.Equal(t, http.StatusBadRequest,
+		f.Do(http.MethodGet, "/api/v1/w/lab/issues?group=status&limit=3&cursor="+plainPage.NextCursor, nil).Code)
+
+	require.Equal(t, http.StatusBadRequest,
+		f.Do(http.MethodGet, "/api/v1/w/lab/issues?group=priority", nil).Code)
+}
+
+// Inside a status group the most urgent work leads, an issue with no
+// priority set comes last, and paging keeps that order.
+func TestIssueListGroupOrdersByPriorityWithinStatus(t *testing.T) {
+	f := testutil.NewFixture(t)
+	for _, issue := range []struct {
+		title    string
+		status   string
+		priority int
+	}{
+		{"todo p2", "todo", 2}, {"progress none", "in_progress", 0}, {"progress p3", "in_progress", 3},
+		{"todo p1", "todo", 1}, {"progress p1", "in_progress", 1}, {"progress p3 later", "in_progress", 3},
+	} {
+		createIssue(t, f, map[string]any{"title": issue.title, "status": issue.status, "priority": issue.priority})
+	}
+
+	var titles []string
+	path := "/api/v1/w/lab/issues?group=status&limit=2"
+	for pages := 0; ; pages++ {
+		require.Less(t, pages, 5, "paging did not finish")
+		rec := f.Do(http.MethodGet, path, nil)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var got struct {
+			Issues     []store.Issue `json:"issues"`
+			NextCursor string        `json:"next_cursor"`
+		}
+		f.DecodeInto(rec, &got)
+		for _, issue := range got.Issues {
+			titles = append(titles, issue.Title)
+		}
+		if got.NextCursor == "" {
+			break
+		}
+		path = "/api/v1/w/lab/issues?group=status&limit=2&cursor=" + got.NextCursor
+	}
+	require.Equal(t, []string{
+		"progress p1", "progress p3", "progress p3 later", "progress none", "todo p1", "todo p2",
+	}, titles)
+}
+
 func TestIssueOfAnotherWorkspaceIsNotReachable(t *testing.T) {
 	f := testutil.NewFixture(t)
 

@@ -1,22 +1,30 @@
+import { LoadingState } from '../../ui/QueryState'
+import { ErrorNote } from '../../ui/ErrorNote'
 import { useId, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { NavLink } from '../../app/nav'
+import { Card } from '@astryxdesign/core/Card'
+import { Heading } from '@astryxdesign/core/Heading'
+import { Link } from '@astryxdesign/core/Link'
+import { List, ListItem } from '@astryxdesign/core/List'
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList'
+import { Step, Stepper } from '@astryxdesign/core/Stepper'
+import { Text } from '@astryxdesign/core/Text'
+
 import { api, ApiError } from '../../lib/api'
 import type { Invitation, Membership } from '../../lib/types'
-import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
+import { AccountBar } from '../auth/AccountBar'
 import { PublicAuthPage } from '../auth/PublicAuthPage'
 import { SignIn } from '../auth/SignIn'
-import { SignOutButton } from '../auth/SignOutButton'
 import { navigateTo } from '../auth/sessionNavigation'
 import { useSession } from '../auth/useSession'
 import { LinkedRepositories } from './AgentSetup'
 import { onboardingQuery, type OnboardingPayload } from './onboardingQuery'
 import { RepoSetup } from './RepoSetup'
+import { TextField } from '../../ui/fields'
 
 const STEPS = ['Organisation', 'Connect agent'] as const
-const inputClass = 'mt-1 block min-h-12 w-full rounded-[var(--radius-control)] border border-grey-300 bg-paper px-3 py-2'
 
 /**
  * Takes a newly signed-in person from nothing to an agent that writes to their
@@ -34,17 +42,22 @@ export function Onboarding({ navigate = navigateTo }: { navigate?: (to: string) 
   const workspace = created ?? session.memberships[0] ?? null
 
   const layout = (children: ReactNode) => (
-    <PublicAuthPage title="Set up Velvet" note="" expanded>
+    <PublicAuthPage
+      title="Set up Velvet"
+      expanded
+      lead="Two steps to let your coding agent keep your work log."
+      account={session.isSignedIn ? <AccountBar user={session.user} /> : undefined}
+    >
       <div className="space-y-6">{children}</div>
     </PublicAuthPage>
   )
 
-  if (session.isLoading) return layout(<p role="status" className="text-grey-500">Loading…</p>)
+  if (session.isLoading) return layout(<LoadingState className="">Loading…</LoadingState>)
   if (!session.isSignedIn) return <SignIn />
-  if (onboarding.isPending) return layout(<p role="status" className="text-grey-500">Loading…</p>)
+  if (onboarding.isPending) return layout(<LoadingState className="">Loading…</LoadingState>)
   if (onboarding.error || !onboarding.data) {
     return layout(<div className="space-y-3">
-      <p role="alert" className="text-blocked">Could not load your setup. Try again.</p>
+      <ErrorNote>Could not load your setup. Try again.</ErrorNote>
       <Button className="min-h-12" onClick={() => void onboarding.refetch()}>Try again</Button>
     </div>)
   }
@@ -53,26 +66,14 @@ export function Onboarding({ navigate = navigateTo }: { navigate?: (to: string) 
   const step = !workspace ? 0 : 1
 
   return layout(<>
-    <header className="flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0">
-        <p className="text-sm text-grey-700 [overflow-wrap:anywhere]">Signed in as {userLabel(session.user)}</p>
-        <p className="mt-1 text-sm text-grey-500">Two steps to let your coding agent keep your work log.</p>
-      </div>
-      <SignOutButton publicStyle />
-    </header>
 
-    <ol aria-label="Setup progress" className="grid grid-cols-2 gap-2" data-testid="onboarding-steps">
-      {STEPS.map((label, index) => (
-        <li
-          key={label}
-          aria-current={index === step ? 'step' : undefined}
-          className={`border-t-2 pt-2 text-xs ${index < step ? 'border-ink text-grey-700' : index === step ? 'border-ink font-medium text-ink' : 'border-grey-200 text-grey-500'}`}
-        >
-          <span className="sr-only">{index < step ? 'Completed: ' : index === step ? 'Current: ' : 'Upcoming: '}</span>
-          {index + 1}. {label}
-        </li>
-      ))}
-    </ol>
+    <div data-testid="onboarding-steps">
+      <Stepper activeStep={step} label="Setup progress">
+        {STEPS.map((label, index) => (
+          <Step key={label} step={index} label={label} indicator="number" />
+        ))}
+      </Stepper>
+    </div>
 
     {step === 0 ? (
       <OrganisationStep
@@ -90,10 +91,8 @@ export function Onboarding({ navigate = navigateTo }: { navigate?: (to: string) 
 
     {workspace ? (
       <div className="border-t border-grey-200 pt-4 text-sm">
-        <NavLink to={`/w/${workspace.workspace_slug}`} className="underline underline-offset-4">
-          Go to your dashboard
-        </NavLink>
-        <p className="mt-2 text-xs text-grey-500">You can connect more repositories later from Profile, under Agent config.</p>
+        <Link href={`/w/${workspace.workspace_slug}`} hasUnderline>Go to your dashboard</Link>
+        <Text as="p" type="supporting" color="secondary" display="block" className="mt-2">You can connect more repositories later from Profile, under Agent config.</Text>
       </div>
     ) : null}
   </>)
@@ -133,35 +132,43 @@ function OrganisationStep({
   return (
     <section aria-labelledby={`${nameId}-heading`} className="space-y-4">
       <div>
-        <h2 id={`${nameId}-heading`} className="text-base font-medium">Create your organisation</h2>
-        <p className="mt-1 text-sm text-grey-700">
+        <Heading level={3} accessibilityLevel={2} id={`${nameId}-heading`}>Create your organisation</Heading>
+        <Text as="p" color="secondary" display="block" className="mt-1">
           Your tickets and work log live here. It starts with your name, and you can rename it any time.
-        </p>
+        </Text>
       </div>
 
       {pending.length > 0 ? (
-        <div className="rounded-[var(--radius-surface)] border border-grey-200 p-4">
-          <h3 className="text-sm font-medium">You have been invited</h3>
-          <ul className="mt-3 space-y-2">
-            {pending.map((invite) => (
-              <li key={invite.id} className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-                <span className="min-w-0 [overflow-wrap:anywhere]">
-                  {invite.workspace_name} <span className="text-grey-500">({invite.role})</span>
-                </span>
-                <Button
-                  className="min-h-12 shrink-0"
-                  disabled={accept.isPending}
-                  aria-label={`Accept ${invite.workspace_name} invitation`}
-                  onClick={() => accept.mutate(invite.id)}
-                >
-                  {accept.isPending && accept.variables === invite.id ? 'Accepting…' : 'Accept'}
-                </Button>
-              </li>
-            ))}
-          </ul>
-          {accept.error ? <p role="alert" className="mt-2 text-sm text-blocked">{accept.error.message}</p> : null}
-          <p className="mt-3 text-xs text-grey-500">Or create your own organisation below.</p>
-        </div>
+        <Card padding={5}>
+          <Heading level={4} accessibilityLevel={3}>You have been invited</Heading>
+          <div className="mt-2">
+            <List hasDividers density="balanced" edge="flush" aria-label="Invitations">
+              {pending.map((invite) => (
+                <ListItem
+                  key={invite.id}
+                  itemKey={invite.id}
+                  label={(
+                    <span className="min-w-0 [overflow-wrap:anywhere]">
+                      {invite.workspace_name} <Text color="secondary">({invite.role})</Text>
+                    </span>
+                  )}
+                  endContent={(
+                    <Button
+                      className="shrink-0"
+                      disabled={accept.isPending}
+                      aria-label={`Accept ${invite.workspace_name} invitation`}
+                      onClick={() => accept.mutate(invite.id)}
+                    >
+                      {accept.isPending && accept.variables === invite.id ? 'Accepting…' : 'Accept'}
+                    </Button>
+                  )}
+                />
+              ))}
+            </List>
+          </div>
+          {accept.error ? <ErrorNote className="mt-2">{accept.error.message}</ErrorNote> : null}
+          <Text as="p" type="supporting" color="secondary" display="block" className="mt-3">Or create your own organisation below.</Text>
+        </Card>
       ) : null}
 
       <form
@@ -172,56 +179,58 @@ function OrganisationStep({
         }}
       >
         {!editing ? (
-          <div className="rounded-[var(--radius-surface)] border border-grey-200 p-4" data-testid="onboarding-org-preview">
-            <p className="text-lg font-medium [overflow-wrap:anywhere]">{suggestion.name}</p>
-            <dl className="mt-2 grid grid-cols-[6rem_1fr] gap-x-3 gap-y-1 text-sm">
-              <dt className="text-grey-500">Address</dt>
-              <dd className="min-w-0 font-mono text-grey-700 [overflow-wrap:anywhere]">/w/{suggestion.slug}</dd>
-              <dt className="text-grey-500">Ticket keys</dt>
-              <dd className="font-mono text-grey-700">{suggestion.issue_prefix}-1, {suggestion.issue_prefix}-2…</dd>
-            </dl>
-            <Button variant="ghost" className="-ml-2.5 mt-2 min-h-11 underline" onClick={() => setEditing(true)}>
-              Change these
-            </Button>
+          <div data-testid="onboarding-org-preview">
+          <Card padding={5}>
+            <Text as="p" type="large" weight="semibold" display="block" className="[overflow-wrap:anywhere]">{suggestion.name}</Text>
+            <div className="mt-3">
+              <MetadataList label={{ position: 'start', width: '6rem' }}>
+                <MetadataListItem label="Address">
+                  <Text type="code" className="[overflow-wrap:anywhere]">/w/{suggestion.slug}</Text>
+                </MetadataListItem>
+                <MetadataListItem label="Ticket keys">
+                  <Text type="code">{suggestion.issue_prefix}-1, {suggestion.issue_prefix}-2…</Text>
+                </MetadataListItem>
+              </MetadataList>
+            </div>
+            <div className="mt-3 -ml-2">
+              <Button variant="ghost" onClick={() => setEditing(true)}>Change these</Button>
+            </div>
+          </Card>
           </div>
         ) : (
           <div className="space-y-4">
-            <label className="block text-sm">Organisation name
-              <input className={inputClass} required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} />
-            </label>
-            <label className="block text-sm">Address
-              <input
-                className={`${inputClass} font-mono`}
-                required
-                minLength={3}
-                maxLength={40}
-                pattern="[a-z0-9][a-z0-9\-]{1,38}[a-z0-9]"
-                value={slug}
-                aria-describedby={`${nameId}-slug-help`}
-                onChange={(event) => setSlug(event.target.value.toLowerCase())}
-              />
-            </label>
-            <p id={`${nameId}-slug-help`} className="text-xs text-grey-500">3 to 40 lowercase letters, digits or hyphens.</p>
-            <label className="block text-sm">Ticket prefix
-              <input
-                className={`${inputClass} font-mono`}
-                required
-                minLength={2}
-                maxLength={6}
-                pattern="[A-Z]{2,6}"
-                value={prefix}
-                aria-describedby={`${nameId}-prefix-help`}
-                onChange={(event) => setPrefix(event.target.value.toUpperCase())}
-              />
-            </label>
-            <p id={`${nameId}-prefix-help`} className="text-xs text-grey-500">2 to 6 letters, used in ticket keys such as {prefix || 'ABC'}-1.</p>
+            <TextField label="Organisation name" size="lg" required maxLength={80} value={name} onChange={setName} />
+            <TextField
+              label="Address"
+              description="3 to 40 lowercase letters, digits or hyphens."
+              size="lg"
+              mono
+              required
+              minLength={3}
+              maxLength={40}
+              pattern="[a-z0-9][a-z0-9\-]{1,38}[a-z0-9]"
+              value={slug}
+              onChange={(value) => setSlug(value.toLowerCase())}
+            />
+            <TextField
+              label="Ticket prefix"
+              description={`2 to 6 letters, used in ticket keys such as ${prefix || 'ABC'}-1.`}
+              size="lg"
+              mono
+              required
+              minLength={2}
+              maxLength={6}
+              pattern="[A-Z]{2,6}"
+              value={prefix}
+              onChange={(value) => setPrefix(value.toUpperCase())}
+            />
           </div>
         )}
 
         <Button className="min-h-12 px-4" variant="primary" type="submit" disabled={create.isPending}>
           {create.isPending ? 'Creating…' : 'Create organisation'}
         </Button>
-        {create.error ? <p role="alert" className="text-sm text-blocked">{create.error.message}</p> : null}
+        {create.error ? <ErrorNote>{create.error.message}</ErrorNote> : null}
       </form>
     </section>
   )
@@ -233,14 +242,18 @@ function ConnectStep({ baseUrl, workspace }: { baseUrl: string; workspace: Membe
   return (
     <section aria-labelledby={headingId} className="space-y-5">
       <div>
-        <h2 id={headingId} className="text-base font-medium">Connect your coding agent</h2>
-        <p className="mt-1 text-sm text-grey-700 [overflow-wrap:anywhere]">
+        <Heading level={3} accessibilityLevel={2} id={headingId}>Connect your coding agent</Heading>
+        <p className="mt-1 text-grey-500 [overflow-wrap:anywhere]">
           <span className="font-medium text-ink">{workspace.workspace_name}</span> is ready. Link a repository and your
-          agent logs work from it with the velvet command. The key stays on your machine and is never shown here.
+          agent logs work from it with the <code>velvet</code> command. Each repository is linked to one project, and
+          its key stays on your machine, is never shown here, and can reach only that project.
         </p>
       </div>
-      <RepoSetup workspace={workspace} baseUrl={baseUrl} />
+      {/* The connection status comes first, so progress shows without
+          scrolling past the steps to find it. */}
       <LinkedRepositories slug={workspace.workspace_slug} workspaceName={workspace.workspace_name} />
+      {/* This step's own heading already says what it is, so the setup does not repeat it. */}
+      <RepoSetup workspace={workspace} baseUrl={baseUrl} hasHeading={false} />
     </section>
   )
 }

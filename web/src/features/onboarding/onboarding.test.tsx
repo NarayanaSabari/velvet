@@ -65,6 +65,35 @@ beforeEach(() => {
 })
 
 describe('Onboarding', () => {
+  it('opens the setup one step at a time, with the connection status first', async () => {
+    const server = fakeServer()
+    vi.stubGlobal('fetch', server.fetchMock)
+    const user = userEvent.setup()
+    show(<Onboarding />)
+
+    await user.click(await screen.findByRole('button', { name: 'Create organisation' }))
+    const steps = await screen.findByTestId('repo-setup-steps')
+    // One heading introduces the step; the setup under it does not repeat it.
+    expect(screen.getByRole('heading', { name: 'Connect your coding agent' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Connect a repository' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'Connect a repository' })).toBeInTheDocument()
+    // Progress is visible before the steps, not after all four of them.
+    const status = screen.getByTestId('agent-connection')
+    expect(status.compareDocumentPosition(steps) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    const opened = () => within(steps).getAllByRole('button', { expanded: true }).map((button) => button.textContent)
+    expect(opened()).toEqual([expect.stringContaining('1. Install the CLI')])
+    expect(within(steps).getByTestId('cli-install')).toHaveTextContent('install.sh')
+
+    await user.click(within(steps).getByRole('button', { name: 'Done, next: sign in to the CLI' }))
+    expect(opened()).toEqual([expect.stringContaining('2. Sign in to the CLI')])
+
+    // Any step can be opened directly.
+    await user.click(within(steps).getByRole('button', { name: /4\. Tell your agent to use it/ }))
+    expect(opened()).toEqual([expect.stringContaining('4. Tell your agent to use it')])
+    expect(within(steps).getByTestId('repo-instructions')).toHaveTextContent('velvet log KEY')
+  })
+
   it('walks a new person from a default organisation to a linked repository', async () => {
     const server = fakeServer()
     vi.stubGlobal('fetch', server.fetchMock)
@@ -75,7 +104,7 @@ describe('Onboarding', () => {
     const preview = await screen.findByTestId('onboarding-org-preview')
     expect(within(preview).getByText('Priya Raman')).toBeInTheDocument()
     expect(within(preview).getByText('/w/priya-raman')).toBeInTheDocument()
-    expect(screen.getByText('1. Organisation').closest('li')).toHaveAttribute('aria-current', 'step')
+    expect(within(screen.getByTestId('onboarding-steps')).getByText('Organisation').closest('li')).toHaveAttribute('aria-current', 'step')
     await user.click(screen.getByRole('button', { name: 'Create organisation' }))
     expect(server.fetchMock).toHaveBeenCalledWith('/api/v1/me/onboarding/organisation',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({}) }))
@@ -83,9 +112,9 @@ describe('Onboarding', () => {
     // Step 2: install the CLI and link a repository. No key is ever shown.
     expect(await screen.findByTestId('cli-install')).toHaveTextContent('curl -fsSL https://velvet.example.com/install.sh | VELVET_SERVER=https://velvet.example.com sh')
     expect(screen.getByTestId('cli-login')).toHaveTextContent('velvet login --server https://velvet.example.com')
-    expect(screen.getByText(/Choose the organisation and project in the terminal/)).toBeInTheDocument()
+    expect(screen.getByText(/Run this from the repository’s folder and choose its organisation and project in the terminal/)).toBeInTheDocument()
     expect(screen.getByTestId('cli-init')).toHaveTextContent('velvet init --server https://velvet.example.com')
-    expect(screen.getByText('2. Connect agent').closest('li')).toHaveAttribute('aria-current', 'step')
+    expect(within(screen.getByTestId('onboarding-steps')).getByText('Connect agent').closest('li')).toHaveAttribute('aria-current', 'step')
     expect(screen.getByTestId('repo-instructions')).toHaveTextContent('velvet log KEY')
     expect(screen.queryByText(/velvet_[0-9a-f]/)).not.toBeInTheDocument()
     expect(server.fetchMock).not.toHaveBeenCalledWith('/api/v1/me/tokens', expect.objectContaining({ method: 'POST' }))

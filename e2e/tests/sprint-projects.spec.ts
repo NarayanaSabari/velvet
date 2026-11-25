@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createHash, randomBytes } from 'node:crypto'
 import { sql } from './fixtures'
+import { chooseOption, dropdown, expectChosen } from './dropdown'
 
 /**
  * Each project runs its own sprints, and a ticket links to a project and a
@@ -42,7 +43,7 @@ test.beforeEach(async ({ context, baseURL }) => {
 async function createSprint(page: Page, project: string, name: string, startsOn: string, endsOn: string) {
   await page.goto(`/w/${slug}/sprints`)
   await page.getByRole('button', { name: 'New sprint' }).click()
-  await page.getByLabel('Project').selectOption({ label: project })
+  await chooseOption(dropdown(page, 'Project'), { label: project })
   await page.getByLabel('Sprint name').fill(name)
   await page.getByLabel('Starts on').fill(startsOn)
   await page.getByLabel('Ends on').fill(endsOn)
@@ -54,7 +55,7 @@ async function createSprint(page: Page, project: string, name: string, startsOn:
 
 async function openSprint(page: Page, projectKey: string, name: string) {
   await page.goto(`/w/${slug}/sprints`)
-  await page.getByTestId(`sprint-project-${projectKey}`).getByRole('option', { name: new RegExp(name) }).click()
+  await page.getByTestId(`sprint-project-${projectKey}`).getByRole('link', { name: new RegExp(name) }).click()
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible()
 }
 
@@ -64,12 +65,12 @@ test('each project runs its own sprint, one active at a time', async ({ page }) 
   // The form will not create a sprint until a project is chosen.
   await page.goto(`/w/${slug}/sprints`)
   await page.getByRole('button', { name: 'New sprint' }).click()
-  await expect(page.getByLabel('Project')).toHaveValue('')
+  await expect(dropdown(page, 'Project')).toHaveAttribute('data-value', '')
   await page.getByLabel('Sprint name').fill('Unowned')
   await page.getByLabel('Starts on').fill('2026-09-01')
   await page.getByLabel('Ends on').fill('2026-09-30')
   await page.getByRole('button', { name: 'Create sprint' }).click()
-  expect(await page.getByLabel('Project').evaluate((select: HTMLSelectElement) => select.validity.valid)).toBe(false)
+  await expect(page.getByText('Choose a project.')).toBeVisible()
 
   // Two projects can each run a sprint with the same name.
   await createSprint(page, 'Web app', 'September 2026', '2026-09-01', '2026-09-30')
@@ -80,8 +81,8 @@ test('each project runs its own sprint, one active at a time', async ({ page }) 
   const web = page.getByTestId('sprint-project-web')
   const api = page.getByTestId('sprint-project-api')
   await expect(web.getByRole('heading', { name: 'Web app' })).toBeVisible()
-  await expect(web.getByRole('option')).toHaveCount(2)
-  await expect(api.getByRole('option')).toHaveCount(1)
+  await expect(web.getByRole('link')).toHaveCount(2)
+  await expect(api.getByRole('link')).toHaveCount(1)
 
   // Both projects' September sprints can be active together.
   await openSprint(page, 'web', 'September 2026')
@@ -99,8 +100,8 @@ test('each project runs its own sprint, one active at a time', async ({ page }) 
   await page.getByRole('button', { name: 'Activate sprint' }).click()
   await expect(page.getByText('1 Oct 2026 to 31 Oct 2026 · Active')).toBeVisible()
   await page.goto(`/w/${slug}/sprints`)
-  await expect(web.getByRole('option', { name: /September 2026/ })).toContainText('Completed')
-  await expect(api.getByRole('option', { name: /September 2026/ })).toContainText('Active')
+  await expect(web.getByRole('link', { name: /September 2026/ })).toContainText('Completed')
+  await expect(api.getByRole('link', { name: /September 2026/ })).toContainText('Active')
 
   // The dashboard shows every project's running sprint.
   await page.goto(`/w/${slug}`)
@@ -130,8 +131,8 @@ test('a ticket links to a project and a milestone that always agree', async ({ p
   await page.getByRole('button', { name: 'New issue' }).first().click()
   const form = page.getByRole('region', { name: 'New issue' })
   await form.getByLabel('Issue title').fill('Throttle burst traffic')
-  await form.getByLabel('Milestone').selectOption({ label: 'Rate limits' })
-  await expect(form.getByLabel('Project')).toHaveValue(await optionValue(form.getByLabel('Project'), 'Public API'))
+  await chooseOption(dropdown(form, 'Milestone'), { label: 'Rate limits' })
+  await expectChosen(dropdown(form, 'Project'), 'Public API')
   await form.getByRole('button', { name: 'Create issue' }).click()
   const row = page.getByRole('link', { name: /Throttle burst traffic/ })
   await expect(row.getByTestId(/issue-milestone-/)).toHaveText('api · Rate limits')
@@ -141,28 +142,28 @@ test('a ticket links to a project and a milestone that always agree', async ({ p
   await expect(page.getByTestId('issue-eyebrow')).toContainText('Public API')
   const project = page.getByTestId('issue-project-picker')
   const milestone = page.getByTestId('issue-milestone-picker')
-  await expect(project.locator('option:checked')).toHaveText('Public API')
-  await expect(milestone.locator('option:checked')).toHaveText('Rate limits')
+  await expect(project).toHaveText('Public API')
+  await expect(milestone).toHaveText('Rate limits')
   await expect(milestone.locator('optgroup[label="Public API · September 2026"]')).toHaveCount(1)
   await expect(milestone.locator('optgroup[label="Web app · October 2026"]')).toHaveCount(1)
 
   // Choosing a milestone in another project moves the ticket to that project.
-  await milestone.selectOption({ label: 'Onboarding polish' })
-  await expect(project.locator('option:checked')).toHaveText('Web app')
+  await chooseOption(milestone, { label: 'Onboarding polish' })
+  await expect(project).toHaveText('Web app')
   await expect(page.getByTestId('issue-eyebrow')).toContainText('Web app')
 
   // Choosing a different project clears a milestone that no longer fits.
-  await project.selectOption({ label: 'Public API' })
-  await expect(milestone.locator('option:checked')).toHaveText('Unfiled')
-  await expect(project.locator('option:checked')).toHaveText('Public API')
+  await chooseOption(project, { label: 'Public API' })
+  await expect(milestone).toHaveText('Unfiled')
+  await expect(project).toHaveText('Public API')
 
   // Clearing the project leaves the ticket unfiled everywhere.
-  await project.selectOption({ label: 'No project' })
-  await expect(project.locator('option:checked')).toHaveText('No project')
+  await chooseOption(project, { label: 'No project' })
+  await expect(project).toHaveText('No project')
   await expect(page.getByTestId('issue-eyebrow')).not.toContainText('Public API')
 
   // The project link in the header opens that project's tickets.
-  await project.selectOption({ label: 'Web app' })
+  await chooseOption(project, { label: 'Web app' })
   await page.getByTestId('issue-eyebrow').getByRole('link', { name: 'Web app' }).click()
   await expect(page).toHaveURL(new RegExp(`/w/${slug}/issues\\?project=web$`))
   await expect(page.getByRole('link', { name: /Throttle burst traffic/ })).toBeVisible()
@@ -170,7 +171,7 @@ test('a ticket links to a project and a milestone that always agree', async ({ p
   // The same choices survive a reload, because they were saved.
   await page.getByRole('link', { name: /Throttle burst traffic/ }).click()
   await page.reload()
-  await expect(page.getByTestId('issue-project-picker').locator('option:checked')).toHaveText('Web app')
+  await expect(page.getByTestId('issue-project-picker')).toHaveText('Web app')
 })
 
 test('an active sprint shows only its own project\'s unfiled work', async ({ page, request, baseURL }) => {
@@ -200,6 +201,3 @@ test('the sprint and ticket pages stay inside a phone screen', async ({ page }) 
   await expect(page.getByTestId('issue-project-picker')).toBeVisible()
 })
 
-async function optionValue(select: ReturnType<Page['getByLabel']>, label: string) {
-  return select.locator('option', { hasText: label }).first().getAttribute('value') as Promise<string>
-}

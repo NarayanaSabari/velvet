@@ -1,11 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 
 import { StatusBadge } from './StatusBadge'
 import { Markdown } from './Markdown'
 import { RelativeTime } from './RelativeTime'
-import { List } from './List'
 import { Button } from './Button'
 import { PageHeader, SectionHeader } from './PageHeader'
 
@@ -37,25 +35,14 @@ describe('Button', () => {
       </div>,
     )
 
-    expect(screen.getByRole('button', { name: 'Primary' })).toHaveClass(
-      'bg-ink',
-      'text-paper',
-      'rounded-[var(--radius-control)]',
-      'ui-button',
-    )
-    expect(screen.getByRole('button', { name: 'Secondary' })).toHaveClass(
-      'border-grey-300',
-    )
-    expect(screen.getByRole('button', { name: 'Danger' })).toHaveClass(
-      'border-blocked',
-      'text-blocked',
-    )
-    expect(screen.getByRole('button', { name: 'Ghost' })).toHaveClass(
-      'border-transparent',
-      'bg-transparent',
-    )
-    // Disabled must stay readable: no opacity fade.
-    expect(screen.getByRole('button', { name: 'Ghost' }).className).toContain('disabled:text-grey-700')
+    // Astryx draws the variants; Velvet's names map onto its own.
+    const variant = (name: string) => screen.getByRole('button', { name }).getAttribute('data-variant')
+    expect(variant('Primary')).toBe('primary')
+    expect(variant('Secondary')).toBe('secondary')
+    expect(variant('Danger')).toBe('destructive')
+    expect(variant('Ghost')).toBe('ghost')
+    // The touch-target and press-feedback class is still Velvet's.
+    expect(screen.getByRole('button', { name: 'Primary' })).toHaveClass('ui-button')
     expect(screen.getByRole('button', { name: 'Ghost' }).className).not.toContain('opacity')
   })
 })
@@ -111,68 +98,8 @@ describe('RelativeTime', () => {
     const iso = new Date(Date.now() - 3 * 3600 * 1000).toISOString()
     render(<RelativeTime iso={iso} />)
     const el = screen.getByText(/hours ago/)
-    expect(el).toHaveAttribute('title', expect.stringContaining('20'))
-  })
-})
-
-describe('List', () => {
-  const items = [
-    { id: 'a', label: 'First' },
-    { id: 'b', label: 'Second' },
-    { id: 'c', label: 'Third' },
-  ]
-
-  it('moves with j and k and activates with Enter', async () => {
-    const onActivate = vi.fn()
-    const user = userEvent.setup()
-
-    render(
-      <List
-        items={items}
-        keyExtractor={(i) => i.id}
-        renderItem={(i) => <span>{i.label}</span>}
-        onActivate={onActivate}
-      />,
-    )
-
-    await user.tab()
-    await user.keyboard('j')
-    await user.keyboard('{Enter}')
-    expect(onActivate).toHaveBeenCalledWith(items[1])
-  })
-
-  it('does not move past the ends', async () => {
-    const onActivate = vi.fn()
-    const user = userEvent.setup()
-
-    render(
-      <List
-        items={items}
-        keyExtractor={(i) => i.id}
-        renderItem={(i) => <span>{i.label}</span>}
-        onActivate={onActivate}
-      />,
-    )
-
-    await user.tab()
-    await user.keyboard('kkk')
-    await user.keyboard('{Enter}')
-    expect(onActivate).toHaveBeenCalledWith(items[0])
-  })
-
-  it('keeps a visible focus treatment and a non-colour selected marker', () => {
-    render(
-      <List
-        items={items}
-        keyExtractor={(i) => i.id}
-        renderItem={(i) => <span>{i.label}</span>}
-      />,
-    )
-
-    const listbox = screen.getByRole('listbox')
-    expect(listbox).not.toHaveClass('focus:outline-none')
-    expect(listbox.className).toContain('focus-visible:')
-    expect(screen.getAllByRole('option')[0]).toHaveClass('border-l-ink')
+    expect(el.tagName).toBe('TIME')
+    expect(el.closest('[title]')).toHaveAttribute('title', expect.stringContaining('20'))
   })
 })
 
@@ -181,9 +108,11 @@ describe('EmptyState', () => {
     
     const { EmptyState } = await import('./EmptyState')
     const { container, rerender } = render(<EmptyState title="No issues" message="Create one" />)
-    expect(screen.getByText('Create one').className).toContain('text-grey-700')
+    expect(screen.getByRole('heading', { name: 'No issues' })).toBeInTheDocument()
+    expect(screen.getByText('Create one')).toBeInTheDocument()
+    expect(container.querySelector('.astryx-card')).not.toBeNull()
     rerender(<EmptyState compact title="No links" message="Branch to link." />)
-    expect(container.querySelector('.ui-surface')).toBeNull()
+    expect(container.querySelector('.astryx-card')).toBeNull()
     expect(container.querySelector('p')).toHaveTextContent('No links Branch to link.')
   })
 })

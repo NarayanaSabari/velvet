@@ -1,9 +1,11 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { Selector, SelectorOption } from '@astryxdesign/core/Selector'
 
 import type { IssueStatus } from '../../lib/types'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
 
 const ISSUE_STATUSES = Object.keys(STATUS_LABELS) as IssueStatus[]
+
+const STATUS_OPTIONS = ISSUE_STATUSES.map((status) => ({ value: status, label: STATUS_LABELS[status] }))
 
 const STATUS_DOT_TONES: Record<IssueStatus, string> = {
   backlog: 'bg-grey-300',
@@ -24,11 +26,9 @@ export function StatusDot({ status }: { status: IssueStatus }) {
 }
 
 /**
- * A compact listbox for changing an issue's status.
- *
- * The trigger keeps focus while the menu is open, which makes the keyboard
- * path predictable: arrows move the active option, Enter commits it, and
- * Escape closes without changing anything.
+ * The control for changing an issue's status: an Astryx Selector drawn as a
+ * quiet button, with each status's dot beside its name in the button and in
+ * the list. Astryx owns the pop-up, its placement and the keyboard.
  */
 export function StatusSelect({
   value,
@@ -39,163 +39,32 @@ export function StatusSelect({
   onChange: (status: IssueStatus) => void
   disabled?: boolean
 }) {
-  const rootRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const [open, setOpen] = useState(false)
-  const [activeIndex, setActiveIndex] = useState(() => statusIndex(value))
-  const [openedByKeyboard, setOpenedByKeyboard] = useState(false)
-  const [openUp, setOpenUp] = useState(false)
-  const generatedId = useId()
-  const listboxId = `status-listbox-options-${generatedId}`
-
-  useEffect(() => {
-    if (!open) return
-
-    function closeOnOutsidePointer(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false)
-      }
-    }
-
-    document.addEventListener('pointerdown', closeOnOutsidePointer)
-    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer)
-  }, [open])
-
-  function openMenu(byKeyboard: boolean, initialIndex = statusIndex(value)) {
-    setActiveIndex(Math.max(0, Math.min(initialIndex, ISSUE_STATUSES.length - 1)))
-    setOpenedByKeyboard(byKeyboard)
-    // Six options at ~36px plus padding: open upwards when that would pass the viewport bottom.
-    const rect = triggerRef.current?.getBoundingClientRect()
-    setOpenUp(!!rect && rect.bottom + 240 > window.innerHeight && rect.top > window.innerHeight - rect.bottom)
-    setOpen(true)
-  }
-
-  function closeMenu() {
-    setOpen(false)
-    triggerRef.current?.focus()
-  }
-
-  function choose(status: IssueStatus) {
-    if (status !== value) onChange(status)
-    closeMenu()
-  }
-
-  function onKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (disabled) return
-
-    if (!open) {
-      if (event.key === 'ArrowDown') {
-        event.preventDefault()
-        openMenu(true, statusIndex(value) + 1)
-      } else if (event.key === 'ArrowUp') {
-        event.preventDefault()
-        openMenu(true, statusIndex(value) - 1)
-      } else if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        openMenu(true)
-      }
-      return
-    }
-
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      setActiveIndex((index) => Math.min(index + 1, ISSUE_STATUSES.length - 1))
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      setActiveIndex((index) => Math.max(index - 1, 0))
-    } else if (event.key === 'Home') {
-      event.preventDefault()
-      setActiveIndex(0)
-    } else if (event.key === 'End') {
-      event.preventDefault()
-      setActiveIndex(ISSUE_STATUSES.length - 1)
-    } else if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      choose(activeStatus)
-    } else if (event.key === 'Escape') {
-      event.preventDefault()
-      closeMenu()
-    }
-  }
-
-  const activeStatus = ISSUE_STATUSES[activeIndex] ?? value
-
   return (
-    <div ref={rootRef} className="relative" data-testid="issue-status-select">
-      <style>{`
-        @keyframes status-listbox-enter {
-          from { opacity: 0; transform: scale(0.97); }
-          to { opacity: 1; transform: scale(1); }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          [data-status-listbox-options] { animation: none !important; }
-        }
-      `}</style>
-      <button
-        ref={triggerRef}
-        type="button"
-        data-testid="status-listbox"
-        data-current-status={value}
-        aria-label="Status"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? listboxId : undefined}
-        aria-activedescendant={open ? `${listboxId}-${activeStatus}` : undefined}
-        disabled={disabled}
-        className="ui-control inline-flex min-h-8 items-center gap-2 px-2 py-1 text-sm hover:bg-grey-100 disabled:cursor-not-allowed"
-        onClick={() => {
-          if (open) closeMenu()
-          else openMenu(false)
+    <div className="ui-field inline-block" data-testid="issue-status-select">
+      <Selector
+        {...({
+          'data-testid': 'status-listbox',
+          'data-current-status': value,
+          'data-option-values': JSON.stringify(ISSUE_STATUSES),
+        } as Record<string, unknown>)}
+        label="Status"
+        isLabelHidden
+        variant="secondary"
+        size="sm"
+        value={value}
+        options={STATUS_OPTIONS}
+        isDisabled={disabled}
+        onChange={(next) => {
+          if (next && next !== value) onChange(next as IssueStatus)
         }}
-        onKeyDown={onKeyDown}
-      >
-        <StatusDot status={value} />
-        <span>{STATUS_LABELS[value]}</span>
-        <span aria-hidden="true" className="text-grey-500">⌄</span>
-      </button>
-
-      {open ? (
-        <ul
-          id={listboxId}
-          role="listbox"
-          aria-label="Status"
-          data-testid="status-listbox-options"
-          data-status-listbox-options
-          data-placement={openUp ? 'top' : 'bottom'}
-          className={`absolute right-0 ${openUp ? 'bottom-[calc(100%+0.375rem)]' : 'top-[calc(100%+0.375rem)]'} z-20 min-w-40 overflow-hidden rounded-[var(--radius-surface)] border border-grey-300 bg-paper py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]`}
-          style={{
-            animation: openedByKeyboard
-              ? 'none'
-              : 'status-listbox-enter 150ms cubic-bezier(0.23, 1, 0.32, 1)',
-            transformOrigin: openUp ? 'bottom right' : 'top right',
-          }}
-        >
-          {ISSUE_STATUSES.map((status, index) => (
-            <li
-              key={status}
-              id={`${listboxId}-${status}`}
-              role="option"
-              aria-selected={status === value}
-              data-testid={`status-option-${status}`}
-              data-status={status}
-              data-highlighted={index === activeIndex ? 'true' : undefined}
-              className={`flex cursor-default items-center gap-2 px-2 py-1.5 text-sm ${
-                index === activeIndex ? 'bg-grey-100' : ''
-              }`}
-              onClick={() => choose(status)}
-              onMouseEnter={() => setActiveIndex(index)}
-            >
-              <StatusDot status={status} />
-              <span>{STATUS_LABELS[status]}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+        startIcon={<StatusDot status={value} />}
+        renderOption={(option) => (
+          <SelectorOption
+            label={option.label}
+            icon={<StatusDot status={option.value as IssueStatus} />}
+          />
+        )}
+      />
     </div>
   )
-}
-
-function statusIndex(status: IssueStatus) {
-  const index = ISSUE_STATUSES.indexOf(status)
-  return index === -1 ? 0 : index
 }

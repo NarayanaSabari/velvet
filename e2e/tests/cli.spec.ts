@@ -110,7 +110,7 @@ test('signed-out login consent returns after email sign-in in a fresh tab', asyn
   await expect(fresh.getByTestId('cli-user-code')).toHaveText(device.user_code)
   expect(sql(`SELECT count(*) FROM api_token WHERE user_id = (SELECT id FROM app_user WHERE email = '${email}')`)).toBe('0')
   await fresh.getByRole('button', { name: 'Refuse' }).click()
-  await expect(fresh.getByText('Refused. The CLI was not given a key.')).toBeVisible()
+  await expect(fresh.getByRole('heading', { level: 1, name: 'Request refused' })).toBeVisible()
   await fresh.close()
 })
 
@@ -154,7 +154,7 @@ test('velvet login consents in the browser, then init selects a project in the t
   await expect(page.getByLabel('Organisation')).toHaveCount(0)
   await expect(page.getByLabel('Project', { exact: true })).toHaveCount(0)
   await page.keyboard.press('Enter')
-  await expect(page.getByText('Connected.')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Connected' })).toBeVisible()
 
   expect(await exited).toBe(0)
   expect(existsSync(join(repo, 'velvet.yaml'))).toBe(false)

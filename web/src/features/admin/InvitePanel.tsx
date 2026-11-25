@@ -1,12 +1,19 @@
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
+import { ErrorNote } from '../../ui/ErrorNote'
 import { useEffect, useId, useState } from 'react'
 import { useMutation, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 
+import { List, ListItem } from '@astryxdesign/core/List'
+import { Text } from '@astryxdesign/core/Text'
+
+import { PanelHeading } from '../../ui/PageHeader'
 import { api } from '../../lib/api'
 import type { Invitation, Role } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { LoadingState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
 import { expiresSoon, ROLE_DESCRIPTIONS, ROLE_LABELS, ROLES } from './roles'
+import { SelectField, TextField } from '../../ui/fields'
 
 export function InvitePanel({ slug, invites }: {
   slug: string
@@ -61,29 +68,22 @@ export function InvitePanel({ slug, invites }: {
         className="mb-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-end"
         onSubmit={(event) => { event.preventDefault(); startAction(); create.mutate() }}
       >
-        <label>
-          <span className="mb-0.5 block text-xs text-grey-500">Invite email</span>
-          <input
-            className="ui-control min-h-10 w-full px-2 py-1"
-            type="email"
-            required
-            autoComplete="off"
-            placeholder="name@example.com"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-        </label>
-        <label>
-          <span className="mb-0.5 block text-xs text-grey-500">Invite role</span>
-          <select
-            className="ui-control min-h-10 w-full px-2 py-1"
-            value={role}
-            aria-describedby={roleHelpId}
-            onChange={(event) => setRole(event.target.value as Role)}
-          >
-            {ROLES.map((value) => <option key={value} value={value}>{ROLE_LABELS[value]}</option>)}
-          </select>
-        </label>
+        <TextField
+          label="Invite email"
+          type="email"
+          required
+          autoComplete="off"
+          placeholder="name@example.com"
+          value={email}
+          onChange={setEmail}
+        />
+        <SelectField
+          label="Invite role"
+          value={role}
+          aria-describedby={roleHelpId}
+          onChange={(value) => setRole(value as Role)}
+          options={ROLES.map((value) => ({ value, label: ROLE_LABELS[value] }))}
+        />
         <Button className="min-h-10" variant="primary" type="submit" disabled={busy || !email.trim()}>
           {create.isPending ? 'Inviting…' : 'Send invite'}
         </Button>
@@ -93,19 +93,21 @@ export function InvitePanel({ slug, invites }: {
       <div aria-live="polite">
         {notice ? <p role="status" className="mb-2 text-sm text-done">{notice}</p> : null}
       </div>
-      {error ? <p role="alert" className="mb-2 text-sm text-blocked">{error.message}</p> : null}
-      {invites.error ? <p role="alert" className="text-sm text-blocked">Could not load invitations.</p> : null}
+      {error ? <ErrorNote className="mb-2">{error.message}</ErrorNote> : null}
+      {invites.error ? <ErrorNote>Could not load invitations.</ErrorNote> : null}
       {invites.isPending ? <LoadingState label="Loading invitations…" /> : null}
-      {invites.data && pending.length === 0 ? <p className="text-sm text-grey-500">No pending invitations.</p> : null}
+      {invites.data && pending.length === 0 ? <Text as="p" color="secondary" display="block">No pending invitations.</Text> : null}
 
       {pending.length > 0 ? (
         <>
-        <h2 className="mb-2 text-sm font-medium">{pending.length} pending</h2>
-        <ul className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
+        <PanelHeading>{pending.length} pending</PanelHeading>
+        <div className="border-y border-grey-200">
+        <List hasDividers density="balanced" edge="flush" aria-label="Pending invitations">
           {pending.map((invite) => {
             const soon = expiresSoon(invite.expires_at)
             return (
-              <li key={invite.id} className="border-t border-grey-200 px-3 py-3 first:border-t-0">
+              <ListItem key={invite.id} itemKey={invite.id} label={(
+                <div className="py-1">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                   <div className="min-w-0 flex-1 basis-56">
                     <div className="break-all">
@@ -136,21 +138,22 @@ export function InvitePanel({ slug, invites }: {
                     </Button>
                   </div>
                 </div>
-                {confirmingId === invite.id ? (
-                  <div className="mt-3 space-y-2 border-t border-grey-200 pt-3">
-                    <p className="text-sm text-grey-500">{invite.email} will no longer be able to join this organisation with this invitation.</p>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="danger" disabled={busy} onClick={() => revoke.mutate(invite.id)}>
-                        {revoke.isPending ? 'Revoking…' : 'Confirm revoke invitation'}
-                      </Button>
-                      <Button disabled={busy} onClick={() => setConfirmingId(null)}>Cancel</Button>
-                    </div>
-                  </div>
-                ) : null}
-              </li>
+                <ConfirmDialog
+                  open={confirmingId === invite.id}
+                  onClose={() => { revoke.reset(); setConfirmingId(null) }}
+                  title="Revoke this invitation?"
+                  description={`${invite.email} will no longer be able to join this organisation with this invitation.`}
+                  actionLabel="Confirm revoke invitation"
+                  pending={revoke.isPending}
+                  error={revoke.error ? `${revoke.error.message} Try again, or cancel.` : null}
+                  onConfirm={() => revoke.mutate(invite.id)}
+                />
+                </div>
+              )} />
             )
           })}
-        </ul>
+        </List>
+        </div>
         </>
       ) : null}
     </section>

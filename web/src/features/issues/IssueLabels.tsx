@@ -1,6 +1,8 @@
+import { ErrorNote } from '../../ui/ErrorNote'
 import { useState } from 'react'
 
 import type { Label } from '../../lib/types'
+import { CheckboxField } from '../../ui/fields'
 
 export function IssueLabels({
   labels,
@@ -35,18 +37,16 @@ export function IssueLabels({
       <fieldset className="flex flex-wrap gap-1.5" disabled={busy}>
         <legend className="sr-only">Issue labels</legend>
         {labels.map((label) => (
-          <label
+          <CheckboxField
             key={label.id}
-            className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 border border-grey-200 px-1.5 py-1 text-xs hover:bg-grey-100 sm:min-h-0"
-          >
-            <input type="checkbox" checked={selected.includes(label.id)}
-              onChange={(event) => void toggle(label.id, event.target.checked)} />
-            {label.name}
-          </label>
+            label={label.name}
+            checked={selected.includes(label.id)}
+            onChange={(checked) => void toggle(label.id, checked)}
+          />
         ))}
       </fieldset>
       {failed ? (
-        <p className="mt-1 text-xs text-blocked" role="alert">Could not update labels. Try again.</p>
+        <ErrorNote className="mt-1">Could not update labels. Try again.</ErrorNote>
       ) : null}
     </div>
   )

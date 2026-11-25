@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { expect, it, vi } from 'vitest'
 
 import { IssueMetadata, ReadOnlyIssueMetadata } from './IssueMetadata'
+import { chooseOption, dropdown, optionLabels, optionList } from '../../test-utils'
 
 const shipAuth = { id: 'm1', label: 'Ship auth', group: 'Web · September 2026', projectId: 'p1' }
 
@@ -17,8 +18,8 @@ it('updates assignee and milestone through named selectors', async () => {
     onPatch={onPatch}
   />)
 
-  await user.selectOptions(screen.getByLabelText('Assignee'), 'u1')
-  await user.selectOptions(screen.getByLabelText('Milestone'), 'm1')
+  await chooseOption(user, dropdown('Assignee'), 'u1')
+  await chooseOption(user, dropdown('Milestone'), 'm1')
   expect(onPatch).toHaveBeenNthCalledWith(1, { assignee_id: 'u1' })
   expect(onPatch).toHaveBeenNthCalledWith(2, { milestone_id: 'm1' })
 })
@@ -36,13 +37,13 @@ it('links the ticket to a project and groups milestones by project and sprint', 
     onPatch={onPatch}
   />)
 
-  expect(screen.getByLabelText('Project')).toHaveValue('')
-  expect(screen.getByRole('group', { name: 'Web · September 2026' })).toBeInTheDocument()
+  expect(dropdown('Project')).toHaveAttribute('data-value', '')
+  expect(optionList(dropdown('Milestone'))).toHaveTextContent('Web · September 2026')
 
-  await user.selectOptions(screen.getByLabelText('Project'), 'p1')
+  await chooseOption(user, dropdown('Project'), 'p1')
   expect(onPatch).toHaveBeenCalledWith({ project_id: 'p1' })
 
-  await user.selectOptions(screen.getByLabelText('Project'), '')
+  await chooseOption(user, dropdown('Project'), '')
   expect(onPatch).toHaveBeenLastCalledWith({ project_id: '' })
 })
 
@@ -57,7 +58,7 @@ it('reports a failed metadata update', async () => {
     onPatch={onPatch}
   />)
 
-  await user.selectOptions(screen.getByLabelText('Assignee'), 'u1')
+  await chooseOption(user, dropdown('Assignee'), 'u1')
 
   expect(await screen.findByRole('alert')).toHaveTextContent('Could not update issue')
 })
@@ -78,11 +79,10 @@ it('offers P0 through P4 and shows the selected member avatar', async () => {
     onPatch={onPatch}
   />)
 
-  expect(screen.getByRole('option', { name: 'P0 (none)' })).toBeInTheDocument()
-  expect(screen.getByRole('option', { name: 'P4' })).toBeInTheDocument()
+  expect(optionLabels(dropdown('Priority'))).toEqual(expect.arrayContaining(['P0 (none)', 'P4']))
   expect(screen.getByRole('img', { name: 'Sabari' })).toBeInTheDocument()
 
-  await user.selectOptions(screen.getByLabelText('Priority'), '4')
+  await chooseOption(user, dropdown('Priority'), '4')
   expect(onPatch).toHaveBeenCalledWith({ priority: 4 })
 })
 

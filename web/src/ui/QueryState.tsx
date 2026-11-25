@@ -1,16 +1,35 @@
-import { NavLink } from '../app/nav'
+import type { ReactNode } from 'react'
+import { Button as LinkButton } from '@astryxdesign/core/Button'
+import { Card } from '@astryxdesign/core/Card'
+import { Heading } from '@astryxdesign/core/Heading'
+import { Spinner } from '@astryxdesign/core/Spinner'
+import { Text } from '@astryxdesign/core/Text'
+
 import { Button } from './Button'
+import { ErrorNote } from './ErrorNote'
 
 /**
  * Loading and failure copy for a data surface. Loading is announced as a
  * status and failure as an alert, and the retry keeps the page in place rather
  * than sending the person elsewhere to recover.
  */
-export function LoadingState({ label = 'Loading…' }: { label?: string }) {
+export function LoadingState({ label = 'Loading…', children, className }: {
+  label?: string
+  /** The message, where it is more than plain text. Used in place of `label`. */
+  children?: ReactNode
+  /** Spacing around the line, where the layout needs it. */
+  className?: string
+}) {
   return (
-    <div role="status" className="ui-surface flex min-h-24 items-center px-4 py-6 text-sm text-grey-500">
-      <span className="mr-2 inline-block size-1.5 rounded-full bg-grey-500" aria-hidden="true" />
-      {label}
+    // One line on the page, with nothing drawn around it: waiting is not a
+    // panel of its own, and it is replaced by whatever arrives.
+    <div role="status" className={`flex items-center gap-2 ${className ?? 'py-3'}`}>
+      {/* The wrapper is the announced status. Hiding the spinner itself keeps
+          Astryx from announcing "Loading" a second time. */}
+      <span className="inline-flex shrink-0">
+        <Spinner size="sm" shade="subtle" aria-hidden="true" />
+      </span>
+      <Text color="secondary">{children ?? label}</Text>
     </div>
   )
 }
@@ -25,16 +44,15 @@ export function ErrorState({
   retrying?: boolean
 }) {
   return (
-    <div className="ui-surface px-4 py-6">
-      <p role="alert" className="font-medium text-blocked">
-        {message}
-      </p>
-      {onRetry ? (
-        <Button className="mt-3" disabled={retrying} onClick={onRetry}>
+    <ErrorNote
+      action={onRetry ? (
+        <Button disabled={retrying} onClick={onRetry}>
           {retrying ? 'Retrying…' : 'Try again'}
         </Button>
-      ) : null}
-    </div>
+      ) : undefined}
+    >
+      {message}
+    </ErrorNote>
   )
 }
 
@@ -53,12 +71,14 @@ export function NotFoundState({
 }) {
   return (
     <div className="w-full min-w-0">
-      <div className="ui-surface max-w-xl px-6 py-8">
-        <h1 className="text-lg font-medium tracking-[-0.02em]">{title}</h1>
-        <p className="mt-2 text-sm text-grey-700">{message}</p>
-        <p className="mt-4 text-sm">
-          <NavLink to={backTo} className="underline underline-offset-4">{backLabel}</NavLink>
-        </p>
+      <div className="max-w-xl">
+        <Card padding={6}>
+          <Heading level={1}>{title}</Heading>
+          <Text as="p" color="secondary" display="block" className="mt-2">{message}</Text>
+          <div className="mt-5">
+            <LinkButton href={backTo} label={backLabel} />
+          </div>
+        </Card>
       </div>
     </div>
   )

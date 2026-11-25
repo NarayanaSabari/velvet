@@ -1,8 +1,9 @@
 import { expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { TeamFeed } from './TeamFeed'
+import { dropdown, optionLabels } from '../../test-utils'
 
 it('offers every member in the person filter, not only the viewer', async () => {
   const me = { id: 'u1', email: 'asha@example.com', name: 'Asha', github_id: null, github_login: null, avatar_url: '' }
@@ -19,9 +20,7 @@ it('offers every member in the person filter, not only the viewer', async () => 
     </QueryClientProvider>,
   )
 
-  const person = within(screen.getByLabelText('Person'))
-  expect(await person.findByRole('option', { name: 'Bao' })).toBeInTheDocument()
-  expect(person.getByRole('option', { name: 'Asha' })).toBeInTheDocument()
-  expect(person.getByRole('option', { name: 'Everyone' })).toBeInTheDocument()
+  await waitFor(() => expect(optionLabels(dropdown('Person'))).toContain('Bao'))
+  expect(optionLabels(dropdown('Person'))).toEqual(expect.arrayContaining(['Everyone', 'Asha', 'Bao']))
   vi.unstubAllGlobals()
 })

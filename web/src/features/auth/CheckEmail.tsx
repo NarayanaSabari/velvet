@@ -1,18 +1,23 @@
-import { NavLink } from '../../app/nav'
-import { buttonClassName } from '../../ui/buttonStyles'
+import { Button } from '@astryxdesign/core/Button'
+import { Text } from '@astryxdesign/core/Text'
+
 import { PublicAuthPage } from './PublicAuthPage'
 
 export function CheckEmail() {
   return (
-    <PublicAuthPage title="Check your email">
-      <p className="text-sm text-grey-700">If the request can be sent, you will receive a sign-in link. Open it and click Sign in to continue.</p>
-      <p className="mt-4 text-xs text-grey-500">The link expires in 15 minutes. If you don’t see it, check your spam folder.</p>
-      <NavLink
-        to="/signin"
-        className={buttonClassName('primary', 'mt-6 inline-flex min-h-12 w-full items-center justify-center px-4 no-underline')}
-      >
-        Request another link
-      </NavLink>
+    <PublicAuthPage
+      title="Check your email"
+      lead="If that address can sign in, a link is on its way. Open it and choose Sign in."
+    >
+      {/* The next step happens in the inbox, so nothing here is the main
+          action: asking again is the fallback and looks like one. */}
+      <ul className="space-y-2 border-y border-grey-200 py-4">
+        <li><Text color="secondary">The link works once and expires in 15 minutes.</Text></li>
+        <li><Text color="secondary">Nothing after a minute? Look in your spam folder.</Text></li>
+      </ul>
+      <div className="mt-6">
+        <Button size="lg" width="100%" href="/signin" label="Request another link" />
+      </div>
     </PublicAuthPage>
   )
 }

@@ -1,5 +1,6 @@
 import { test, expect, resetWorkspaceData, seedWorkspace, seededSessionToken, sql } from './fixtures'
 import { createHash } from 'node:crypto'
+import { chooseOption } from './dropdown'
 
 /**
  * Projects and the cross-organisation work log, driven in a real browser
@@ -77,8 +78,8 @@ test('a project can be created, filed against, and archived', async ({ signedIn:
   await expect(page.getByTestId('project-row-velvet').getByText('1 open')).toBeVisible()
   await page.getByTestId('project-row-velvet').getByRole('link', { name: '1 open' }).click()
   await expect(page).toHaveURL(/\/w\/lab\/issues\?project=velvet&status=open$/)
-  await expect(page.getByTestId('issues-project-filter')).toHaveValue('velvet')
-  await expect(page.getByTestId('issues-status-filter')).toHaveValue('open')
+  await expect(page.getByTestId('issues-project-filter')).toHaveAttribute('data-value', 'velvet')
+  await expect(page.getByTestId('issues-status-filter')).toHaveAttribute('data-value', 'open')
   await expect(page.getByText('Ship the recap')).toBeVisible()
   await expect(page.getByText('Already shipped recap work')).toHaveCount(0)
 
@@ -90,7 +91,7 @@ test('a project can be created, filed against, and archived', async ({ signedIn:
   await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(page.getByText('Archive Velvet worklog?')).toHaveCount(0)
   await page.getByTestId('project-row-velvet').getByRole('button', { name: 'Archive' }).click()
-  await page.getByRole('button', { name: 'Confirm archive Velvet worklog' }).click()
+  await page.getByRole('button', { name: 'Confirm archive' }).click()
   await expect(page.getByText('No active projects')).toBeVisible()
   await page.getByLabel('Show archived').check()
   await expect(page.getByTestId('project-row-velvet')).toBeVisible()
@@ -147,12 +148,12 @@ test('the issues page filters by project and by unfiled work', async ({ signedIn
   await page.goto('/w/lab/issues')
   await expect(page.getByText('Unfiled work')).toBeVisible()
 
-  await page.getByTestId('issues-project-filter').selectOption('velvet')
+  await chooseOption(page.getByTestId('issues-project-filter'), 'velvet')
   await expect(page.getByText('Ship the recap')).toBeVisible()
   await expect(page.getByText('Unfiled work')).toHaveCount(0)
 
   // Unfiled work must stay reachable: it is deliberately allowed to exist.
-  await page.getByTestId('issues-project-filter').selectOption('unfiled')
+  await chooseOption(page.getByTestId('issues-project-filter'), 'unfiled')
   await expect(page.getByText('Unfiled work')).toBeVisible()
   await expect(page.getByText('Ship the recap')).toHaveCount(0)
 })

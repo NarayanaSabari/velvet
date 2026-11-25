@@ -1,20 +1,21 @@
 import { useEffect } from 'react'
 import { Outlet, useNavigate, useParams, useRouterState, Link } from '@tanstack/react-router'
+import { Button as LinkButton } from '@astryxdesign/core/Button'
+import { Text } from '@astryxdesign/core/Text'
 
 import { Shell } from '../app/Shell'
 import { NavLinkProvider, type NavLinkProps } from '../app/nav'
 import { PublicAuthPage } from '../features/auth/PublicAuthPage'
-import { buttonClassName } from '../ui/buttonStyles'
 import { NotFoundState } from '../ui/QueryState'
 import { productPageTitle } from './productTitle'
 
-function RouterNavLink({ to, children, className, activeClassName: _activeClassName, ...linkProps }: NavLinkProps) {
+function RouterNavLink({ to, children, className, activeClassName: _activeClassName, attributes, ...linkProps }: NavLinkProps) {
   // NavLink owns the active state, including a section staying current on its
   // nested pages. The router spreads its own aria-current last, so it is only
   // allowed to match exactly: a prefix match marked the dashboard current on
   // every nested route, and NavLink's aria-current is then applied on top.
   return (
-    <Link to={to} className={className} activeOptions={{ exact: true }} {...linkProps}>
+    <Link {...attributes} to={to} className={className} activeOptions={{ exact: true }} {...linkProps}>
       {children}
     </Link>
   )
@@ -41,12 +42,12 @@ export function RootNotFound() {
   }
 
   return (
-    <PublicAuthPage title="Page not found" note="">
+    <PublicAuthPage title="Page not found">
       <div className="space-y-4">
-        <p className="text-sm text-grey-700">This page does not exist or the link is no longer available.</p>
+        <Text as="p" color="secondary" display="block">This page does not exist or the link is no longer available.</Text>
         <div className="flex flex-wrap gap-2">
-          <Link to="/" className={buttonClassName('primary', 'inline-flex min-h-11 items-center')}>Go home</Link>
-          <Link to="/signin" className={buttonClassName('secondary', 'inline-flex min-h-11 items-center')}>Sign in</Link>
+          <LinkButton variant="primary" href="/" label="Go home" />
+          <LinkButton href="/signin" label="Sign in" />
         </div>
       </div>
     </PublicAuthPage>

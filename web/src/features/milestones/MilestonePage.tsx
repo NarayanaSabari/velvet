@@ -1,8 +1,13 @@
+import { FormDialog } from '../../ui/FormDialog'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 
+import { Heading } from '@astryxdesign/core/Heading'
+import { Text } from '@astryxdesign/core/Text'
+
 import { api, isNotFound } from '../../lib/api'
+import { PanelHeading } from '../../ui/PageHeader'
 import type { Comment, Issue, Milestone, MilestoneStatus, Sprint } from '../../lib/types'
 import { userLabel } from '../../lib/userLabel'
 import { Button } from '../../ui/Button'
@@ -135,8 +140,8 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
 
   const pendingHeader = (
     <header className="mb-6 border-b border-grey-200 pb-4">
-      <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase">Milestone</p>
-      <h1 className="text-lg font-medium tracking-[-0.02em]">Milestone</h1>
+      <Text as="p" type="supporting" color="secondary" display="block" className="mb-1">Milestone</Text>
+      <Heading level={1}>Milestone</Heading>
     </header>
   )
   if (milestone.isPending) return <>{pendingHeader}<LoadingState /></>
@@ -177,8 +182,8 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-3 border-b border-grey-200 pb-4" data-testid="milestone-header">
         <div className="min-w-0">
-          <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase">Milestone</p>
-          <h1 className="text-lg font-medium tracking-[-0.02em] [overflow-wrap:anywhere]">{data.name}</h1>
+          <Text as="p" type="supporting" color="secondary" display="block" className="mb-1">Milestone</Text>
+          <Heading level={1} wordBreak="break-word">{data.name}</Heading>
         </div>
         {canWrite ? (
           <span ref={editButton} className="shrink-0">
@@ -195,7 +200,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
 
       {editingMilestone ? (
         <section id="milestone-edit-panel" data-testid="milestone-edit-panel">
-          <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Edit milestone</h2>
+          <PanelHeading>Edit milestone</PanelHeading>
           <MilestoneEditForm
             milestone={data}
             members={memberChoices}
@@ -225,7 +230,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
       <ImagesSection key={`${slug}/${milestoneId}`} slug={slug} target="milestones" targetId={milestoneId} />
 
       <section data-testid="milestone-log">
-        <h2 className="mb-2 text-xs tracking-wide text-grey-500 uppercase">Log</h2>
+        <PanelHeading>Log</PanelHeading>
         {comments.isPending ? (
           <LoadingState label="Loading updates…" />
         ) : comments.error ? (
@@ -265,17 +270,17 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
   const sidebar = (
     <div className="space-y-6">
       <section className="border-b border-grey-200 pb-4" data-testid="milestone-metadata">
-        <h2 className="mb-3 text-xs tracking-wide text-grey-500 uppercase">Details</h2>
+        <PanelHeading className="mb-3">Details</PanelHeading>
         <dl className="space-y-4 text-sm">
           <div>
-            <dt className="text-xs tracking-wide text-grey-500 uppercase">State</dt>
+            <dt><Text type="supporting" color="secondary" display="block">State</Text></dt>
             <dd className="mt-1 flex items-center gap-2 text-ink">
               <MilestoneStatusDot status={data.status} />
               <span>{milestoneStatusLabel(data.status)}</span>
             </dd>
           </div>
           <div>
-            <dt className="text-xs tracking-wide text-grey-500 uppercase">Target date</dt>
+            <dt><Text type="supporting" color="secondary" display="block">Target date</Text></dt>
             <dd className="mt-1 text-ink">
               {data.target_date ? (
                 <time dateTime={data.target_date}>{data.target_date}</time>
@@ -294,7 +299,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
             </dd>
           </div>
           <div>
-            <dt className="text-xs tracking-wide text-grey-500 uppercase">Sprint</dt>
+            <dt><Text type="supporting" color="secondary" display="block">Sprint</Text></dt>
             <dd className="mt-1">
               <span data-testid="milestone-sprint-link">
                 <NavLink className="underline" to={`/w/${slug}/sprints/${data.sprint_id}`}>
@@ -305,7 +310,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
           </div>
           {project ? (
             <div>
-              <dt className="text-xs tracking-wide text-grey-500 uppercase">Project</dt>
+              <dt><Text type="supporting" color="secondary" display="block">Project</Text></dt>
               <dd className="mt-1" data-testid="milestone-project-link">
                 <NavLink className="underline" to={`/w/${slug}/issues?project=${encodeURIComponent(project.key)}`}>
                   {project.name}
@@ -318,20 +323,23 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
 
       <section data-testid="milestone-issues">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-xs tracking-wide text-grey-500 uppercase">Issues</h2>
-          {canWrite && !creatingIssue ? (
+          <PanelHeading className="">Issues</PanelHeading>
+          {canWrite ? (
             <Button onClick={() => setCreatingIssue(true)}>New issue</Button>
           ) : null}
         </div>
 
         {creatingIssue ? (
-          <div className="mt-3">
+          <FormDialog
+            title="New issue"
+            description="Add a piece of work to this milestone."
+            onClose={() => setCreatingIssue(false)}
+          >
             <IssueForm
               milestoneId={milestoneId}
               onSubmit={(input) => createIssue.mutateAsync(input)}
             />
-            <Button className="mt-2" onClick={() => setCreatingIssue(false)}>Cancel</Button>
-          </div>
+          </FormDialog>
         ) : null}
 
         {issues.isPending ? (
@@ -346,10 +354,7 @@ export function MilestonePage({ slug, milestoneId }: { slug: string; milestoneId
           </div>
         ) : milestoneIssues.length ? (
           <div className="mt-3">
-            <IssueList
-              issues={milestoneIssues}
-              onOpen={(issue) => void navigate({ href: `/w/${slug}/issues/${issue.key}` })}
-            />
+            <IssueList issues={milestoneIssues} slug={slug} />
           </div>
         ) : (
           <div className="mt-3">

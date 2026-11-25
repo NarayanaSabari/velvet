@@ -1,4 +1,16 @@
+/* Cascade order, declared before anything names a layer. Astryx's reset sits
+   lowest, its components sit above Tailwind's base, and Tailwind utilities
+   stay last so a className can still override a component. This line must
+   stay above the Tailwind import, and this file must be the first stylesheet
+   the app loads (see main.tsx). */
+@layer reset, theme, base, astryx-base, astryx-theme, components, utilities;
+
 @import "tailwindcss";
+@import "@astryxdesign/core/reset.css";
+@import "@astryxdesign/core/astryx.css";
+/* Astryx's Tailwind bridge is left out on purpose: it would repaint utility
+   names this app already uses, such as rounded-lg. Theme stylesheets load
+   from src/app/astryxTheme.ts. */
 
 /* The whole palette. Adding to this list is a visible diff, which is the
    point: the monochrome constraint is enforced by what exists, not by
@@ -50,6 +62,23 @@
   .ui-control {
     min-height: 2.75rem;
   }
+
+  /* The same 44px target for Astryx's text and dropdown controls, which
+     ui/fields.tsx wraps in `ui-field`. These attributes are Astryx's own. */
+  .ui-field [data-pressable-container],
+  .ui-field [data-variant='input'] {
+    min-height: 2.75rem;
+  }
+
+  /* And for Astryx's menu rows and the buttons in the phone header. */
+  [role='menuitem'],
+  .ui-touch button {
+    min-height: 2.75rem;
+  }
+
+  .ui-touch button {
+    min-width: 2.75rem;
+  }
 }
 
 @layer components {
@@ -70,12 +99,6 @@
     border-radius: var(--radius-control);
     background: var(--color-paper);
     color: var(--color-ink);
-  }
-
-  .ui-surface {
-    border: 1px solid var(--color-grey-200);
-    border-radius: var(--radius-surface);
-    background: var(--color-paper);
   }
 
   .ui-button:active {
@@ -101,12 +124,14 @@
     margin-bottom: 0;
   }
 
+  /* Written headings sit under the page title (23px) and beside the
+     section headings, so they never outrank the page they are in. */
   .markdown h1,
   .markdown h2 {
     margin-block: 1rem 0.5rem;
-    font-size: var(--text-lg);
+    font-size: 1.125rem;
     font-weight: 600;
-    line-height: var(--text-lg--line-height);
+    line-height: 1.5rem;
   }
 
   .markdown h3,
@@ -224,11 +249,5 @@
   :focus-visible {
     outline: 2px solid var(--color-ink);
     outline-offset: 1px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .shell-popup-menu {
-    transition: none;
   }
 }

@@ -1,12 +1,16 @@
+import { Heading } from '@astryxdesign/core/Heading'
+import { List, ListItem } from '@astryxdesign/core/List'
+
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { api } from '../../lib/api'
 import type { WorklogEntry } from '../../lib/types'
 import { EmptyState } from '../../ui/EmptyState'
-import { PageHeader } from '../../ui/PageHeader'
+import { PageHeader, SectionHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
 import { StatusBadge } from '../../ui/StatusBadge'
+import { SelectField } from '../../ui/fields'
 
 /**
  * The recap answers "what was I working on", across every organisation at
@@ -70,7 +74,8 @@ function EntryRow({ entry }: { entry: WorklogEntry }) {
   )
 
   return (
-    <li className="py-2 text-sm">
+    <ListItem label={(
+    <div className="min-w-0 text-sm">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
         <span className="shrink-0 text-xs text-grey-500">{KIND_LABELS[entry.kind]}</span>
         {entry.project_key ? (
@@ -90,7 +95,8 @@ function EntryRow({ entry }: { entry: WorklogEntry }) {
         ) : null}
       </div>
       <p className="mt-1 min-w-0 break-words text-ink">{body}</p>
-    </li>
+    </div>
+    )} />
   )
 }
 
@@ -109,20 +115,13 @@ export function Recap() {
         title="Work log"
         description="Rebuild your week from notes, tickets, pull requests, and agent progress across every organisation."
         actions={<>
-        <label className="text-sm text-grey-500">
-          <span className="sr-only">Period</span>
-          <select
-            className="ui-control min-h-10 px-2 py-1 text-sm md:min-h-8"
-            value={days}
-            onChange={(event) => setDays(Number(event.target.value))}
-          >
-            {RANGES.map((range) => (
-              <option key={range.days} value={range.days}>
-                {range.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SelectField
+          label="Period"
+          hideLabel
+          value={String(days)}
+          onChange={(value) => setDays(Number(value))}
+          options={RANGES.map((range) => ({ value: String(range.days), label: range.label }))}
+        />
         <a className="inline-flex min-h-11 items-center text-sm underline sm:min-h-0" href={`/api/v1/me/worklog.md?days=${days}`}>
           Copy as Markdown
         </a>
@@ -146,17 +145,17 @@ export function Recap() {
         <div className="space-y-6">
           {grouped.map((day) => (
             <section key={day.day} className="space-y-3">
-              <h2 className="border-b border-grey-200 pb-2 text-sm font-medium text-ink">{dayLabel(day.day)}</h2>
+              <SectionHeader title={dayLabel(day.day)} />
               {day.workspaces.map((workspace) => (
                 <div key={`${day.day}-${workspace.slug}`}>
-                  <h3 className="mb-1 text-xs font-medium text-grey-500">
-                    {workspace.name}
-                  </h3>
-                  <ul className="divide-y divide-grey-200 rounded-[var(--radius-surface)] border border-grey-200 px-3">
-                    {workspace.entries.map((entry, index) => (
-                      <EntryRow key={`${entry.at}-${entry.kind}-${index}`} entry={entry} />
-                    ))}
-                  </ul>
+                  <Heading level={4} accessibilityLevel={3} color="secondary">{workspace.name}</Heading>
+                  <div className="mt-1 border-y border-grey-200">
+                    <List hasDividers density="balanced" edge="flush" aria-label={`${workspace.name}, ${dayLabel(day.day)}`}>
+                      {workspace.entries.map((entry, index) => (
+                        <EntryRow key={`${entry.at}-${entry.kind}-${index}`} entry={entry} />
+                      ))}
+                    </List>
+                  </div>
                 </div>
               ))}
             </section>

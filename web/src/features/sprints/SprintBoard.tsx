@@ -1,6 +1,18 @@
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
+import { ErrorNote } from '../../ui/ErrorNote'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+
+import { Badge } from '@astryxdesign/core/Badge'
+import { Card } from '@astryxdesign/core/Card'
+import { ClickableCard } from '@astryxdesign/core/ClickableCard'
+import { Collapsible } from '@astryxdesign/core/Collapsible'
+import { Heading } from '@astryxdesign/core/Heading'
+import { List, ListItem } from '@astryxdesign/core/List'
+import { ProgressBar } from '@astryxdesign/core/ProgressBar'
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
+import { Text } from '@astryxdesign/core/Text'
 
 import { NavLink } from '../../app/nav'
 import { api, isNotFound, listAllWorkspaceIssues } from '../../lib/api'
@@ -10,13 +22,14 @@ import { userLabel } from '../../lib/userLabel'
 import { Avatar } from '../../ui/Avatar'
 import { Button } from '../../ui/Button'
 import { EmptyState } from '../../ui/EmptyState'
-import { List } from '../../ui/List'
+import { SectionHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState, NotFoundState } from '../../ui/QueryState'
 import { RelativeTime } from '../../ui/RelativeTime'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
 import { useSession } from '../auth/useSession'
 import { MilestoneForm, type MilestoneInput } from '../work/CoreForms'
 import { membersQuery, projectsQuery } from '../work/workLinks'
+import { issueWork, milestoneWork, sprintPace } from './sprintDays'
 import { issuesForSprint } from './sprintIssues'
 import { MoveToast, SprintKanban, type StatusMove } from './SprintKanban'
 
@@ -136,71 +149,80 @@ function MilestoneCardContent({ milestone, owner }: { milestone: SprintMilestone
   const progress = progressPercent(done, total)
   const last = milestone.last_comment ?? null
   const age = last ? daysSince(last.created_at) : null
-  const stale = age === null || age >= STALE_DAYS
   const assignedTo = milestoneOwner(milestone, owner)
 
   return (
     <article
       data-testid={`milestone-card-${milestone.id}`}
-      className="h-full rounded-[var(--radius-surface)] border border-grey-200 bg-paper p-4 transition-colors duration-100"
+      className="flex h-full flex-col"
     >
       <div className="flex items-start gap-3">
-        <h3 className="min-w-0 flex-1 break-words text-sm font-medium text-ink [overflow-wrap:anywhere]">
+        <Heading level={4} accessibilityLevel={3} className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
           {milestone.name}
-        </h3>
-        <span className="shrink-0 text-sm tabular-nums text-grey-500" aria-label={`${done} of ${total} issues done`}>
-          {done}/{total}
-        </span>
+        </Heading>
+        {/* "0/0" reads like nothing got done; an empty milestone says so instead. */}
+        {total === 0 ? (
+          <span className="shrink-0 text-sm text-grey-500">No issues yet</span>
+        ) : (
+          <span className="shrink-0 text-sm tabular-nums text-grey-500" aria-label={`${done} of ${total} issues done`}>
+            {done}/{total}
+          </span>
+        )}
       </div>
 
-      <div
-        className="mt-3 h-1 w-full overflow-hidden rounded-full bg-grey-200"
-        role="progressbar"
-        aria-label={`${milestone.name} progress`}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={progress}
-      >
-        <div className="h-full rounded-full bg-ink" style={{ width: `${progress}%` }} />
+      <div className="mt-3">
+        <ProgressBar label={`${milestone.name} progress`} isLabelHidden value={progress} />
       </div>
 
-      <div className="mt-3 flex min-h-10 items-start gap-2 text-sm">
-        <p className="min-w-0 flex-1 truncate text-grey-700">
-          {last?.body ?? 'No updates yet'}
+      <div className="mt-3 flex min-h-12 items-start gap-2 text-sm">
+        {last ? (
+          <>
+            <p className="line-clamp-2 min-w-0 flex-1 text-grey-700 [overflow-wrap:anywhere]">{last.body}</p>
+            <RelativeTime iso={parseableTimestamp(last.created_at)} />
+          </>
+        ) : (
+          // A milestone nobody has written on says so once, in the slot the
+          // update would fill, rather than as two separate empty messages.
+          // Only work that is under way is marked: silence on a milestone
+          // that has not started is expected, not a warning.
+          <p className="flex min-w-0 flex-1 items-center gap-1.5 text-grey-500">
+            {milestone.status === 'in_progress' ? (
+              <span className="size-1.5 shrink-0 rounded-full bg-stale" aria-hidden="true" />
+            ) : null}
+            No updates yet
+          </p>
+        )}
+      </div>
+
+      {age !== null && age >= STALE_DAYS ? (
+        // Words first, colour second: the state is readable without hue.
+        <p className="mt-1 flex items-center gap-1.5 text-xs text-stale">
+          <span className="size-1.5 shrink-0 rounded-full bg-stale" aria-hidden="true" />
+          {`No update in ${age} days`}
         </p>
-        {last ? <RelativeTime iso={parseableTimestamp(last.created_at)} /> : null}
-      </div>
+      ) : null}
 
-      <div className="mt-3 flex items-center gap-2 text-xs text-grey-500">
+      {/* Pinned to the bottom edge so footers line up across a row of cards. */}
+      <div className="mt-auto flex items-center gap-2 pt-3 text-xs text-grey-500">
         <span className="capitalize">{milestone.status.replace('_', ' ')}</span>
         {milestone.target_date ? <span>· due <time dateTime={milestone.target_date}>{formatDay(milestone.target_date)}</time></span> : null}
         <span className="ml-auto" title={assignedTo ? userLabel(assignedTo) : 'No owner'}>
           {assignedTo ? <Avatar user={assignedTo} /> : null}
         </span>
       </div>
-
-      {stale ? (
-        // Words first, colour second: the state is readable without hue.
-        <p className="mt-3 flex items-center gap-1.5 text-xs text-stale">
-          <span className="size-1.5 shrink-0 rounded-full bg-stale" aria-hidden="true" />
-          {age === null ? 'No comment yet' : `No update in ${age} days`}
-        </p>
-      ) : null}
     </article>
   )
 }
 
 export function MilestoneCard({ milestone, slug, owner }: MilestoneCardProps) {
   const card = <MilestoneCardContent milestone={milestone} owner={owner} />
-  if (!slug) return card
+  if (!slug) return <Card height="100%" padding={5}>{card}</Card>
 
+  // The whole card is one link to its milestone.
   return (
-    <NavLink
-      to={`/w/${slug}/milestones/${milestone.id}`}
-      className="group block h-full min-w-0 rounded-[var(--radius-surface)] text-ink no-underline hover:bg-grey-100"
-    >
+    <ClickableCard label={milestone.name} href={`/w/${slug}/milestones/${milestone.id}`} height="100%" padding={5}>
       {card}
-    </NavLink>
+    </ClickableCard>
   )
 }
 
@@ -252,10 +274,11 @@ function IssueRow({ issue, members }: { issue: SprintIssue; members: Map<string,
 export interface IssueGroupsProps {
   issues: SprintIssue[]
   members?: User[]
-  onOpen?: (issue: SprintIssue) => void
+  /** The workspace the issues belong to, for each row's link. */
+  slug: string
 }
 
-export function IssueGroups({ issues, members = [], onOpen }: IssueGroupsProps) {
+export function IssueGroups({ issues, members = [], slug }: IssueGroupsProps) {
   const membersById = new Map(members.map((member) => [member.id, member]))
   const groups = groupIssuesByStatus(issues)
   const [openStatuses, setOpenStatuses] = useState<Set<IssueStatus>>(
@@ -272,37 +295,37 @@ export function IssueGroups({ issues, members = [], onOpen }: IssueGroupsProps) 
   }
 
   return (
-    <div className="divide-y divide-grey-200 border-y border-grey-200">
+    <div className="divide-y divide-grey-200 border-b border-grey-200">
       {groups.map(({ status, issues: groupIssues }) => (
-        <details key={status} data-status={status} open={openStatuses.has(status)}>
-          <summary
-            className="flex min-h-11 cursor-pointer items-center gap-3 px-2 py-2 text-sm hover:bg-grey-100 sm:min-h-0"
-            aria-expanded={openStatuses.has(status)}
-            onClick={(event) => {
-              event.preventDefault()
-              toggleStatus(status)
-            }}
-          >
-            <span className="min-w-0 flex-1 font-medium">{STATUS_LABELS[status]}</span>
-            <span className="text-grey-500" aria-label={`${groupIssues.length} ${STATUS_LABELS[status].toLowerCase()} issues`}>
-              {' '}
-              {groupIssues.length}
+        <div key={status} data-status={status} data-open={openStatuses.has(status) ? 'true' : 'false'}>
+        <Collapsible
+          isOpen={openStatuses.has(status)}
+          onOpenChange={() => toggleStatus(status)}
+          trigger={(
+            <span className="flex min-w-0 flex-1 items-baseline gap-2 py-2" data-testid={`sprint-group-${status}`}>
+              <Text weight="semibold">{STATUS_LABELS[status]}</Text>
+              <Text type="supporting" color="secondary" aria-label={`${groupIssues.length} ${STATUS_LABELS[status].toLowerCase()} issues`}>
+                {groupIssues.length}
+              </Text>
             </span>
-          </summary>
-          {groupIssues.length > 0 ? (
-            <List
-              items={groupIssues}
-              ariaLabel={`${STATUS_LABELS[status]} issues`}
-              keyExtractor={(issue) => issue.id}
-              onActivate={onOpen}
-              renderItem={(issue) => (
-                <IssueRow issue={issue} members={membersById} />
-              )}
-            />
-          ) : (
-            <p className="px-2 py-3 text-sm text-grey-500">No {STATUS_LABELS[status].toLowerCase()} issues.</p>
           )}
-        </details>
+        >
+          {groupIssues.length > 0 ? (
+            <List hasDividers density="balanced" edge="flush" aria-label={`${STATUS_LABELS[status]} issues`}>
+              {groupIssues.map((issue) => (
+                <ListItem
+                  key={issue.id}
+                  itemKey={issue.id}
+                  href={`/w/${slug}/issues/${issue.key}`}
+                  label={<IssueRow issue={issue} members={membersById} />}
+                />
+              ))}
+            </List>
+          ) : (
+            <Text as="p" type="supporting" color="secondary" display="block" className="py-2">No {STATUS_LABELS[status].toLowerCase()} issues.</Text>
+          )}
+        </Collapsible>
+        </div>
       ))}
     </div>
   )
@@ -317,22 +340,25 @@ export function CloseSprintAction({
 }) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
 
   async function confirm() {
     setBusy(true)
+    setFailed(false)
     try {
       await onConfirm()
       setConfirming(false)
     } catch {
-      // The parent mutation owns the visible error message. Keep the second
-      // step open so the user can retry without requesting close again.
+      // Keep the dialog open, with the failure in it, so the person can retry
+      // without requesting close again.
+      setFailed(true)
     } finally {
       setBusy(false)
     }
   }
 
-  if (!confirming) {
-    return (
+  return (
+    <>
       <Button
         variant="danger"
         className="px-2 py-0.5 text-xs"
@@ -341,30 +367,17 @@ export function CloseSprintAction({
       >
         Close sprint
       </Button>
-    )
-  }
-
-  return (
-    <span className="flex flex-wrap items-center justify-end gap-2">
-      <span className="max-w-md text-right text-xs text-grey-500">
-        Closing freezes this sprint&apos;s report. Open issues keep their current status.
-      </span>
-      <Button
-        variant="danger"
-        className="px-2 py-0.5 text-xs"
-        disabled={disabled || busy}
-        onClick={() => void confirm()}
-      >
-        {busy ? 'Closing…' : 'Confirm close sprint'}
-      </Button>
-      <Button
-        className="px-2 py-0.5 text-xs"
-        disabled={disabled || busy}
-        onClick={() => setConfirming(false)}
-      >
-        Cancel
-      </Button>
-    </span>
+      <ConfirmDialog
+        open={confirming}
+        onClose={() => { setFailed(false); setConfirming(false) }}
+        title="Close this sprint?"
+        description="Closing freezes this sprint's report. Open issues keep their current status."
+        actionLabel="Confirm close sprint"
+        pending={busy}
+        error={failed ? 'Could not close the sprint. Try again, or cancel.' : null}
+        onConfirm={() => void confirm()}
+      />
+    </>
   )
 }
 
@@ -398,6 +411,7 @@ function SprintHeader({
   onActivate,
   onClose,
   stateBusy,
+  work,
 }: {
   sprint: Sprint
   project?: Project
@@ -406,12 +420,16 @@ function SprintHeader({
   onActivate: () => void
   onClose: () => Promise<unknown>
   stateBusy: boolean
+  /** The sprint's issues as finished and total, once they have loaded. */
+  work?: { done: number; total: number }
 }) {
+  // The same reading the Sprints page gives, so the two never disagree.
+  const pace = sprint.state === 'active' && work ? sprintPace(sprint, work) : null
   return (
     <header className="border-b border-grey-200 pb-4">
       <div className="flex flex-wrap items-start gap-4">
         <div className="min-w-0 flex-1">
-          <p className="mb-1 text-xs tracking-wide text-grey-500 uppercase" data-testid="sprint-project">
+          <Text as="p" type="supporting" color="secondary" display="block" className="mb-1" data-testid="sprint-project">
             {project ? (
               <>
                 <NavLink to={`/w/${slug}/issues?project=${encodeURIComponent(project.key)}`} className="underline">
@@ -421,11 +439,21 @@ function SprintHeader({
               </>
             ) : null}
             <span>Sprint</span>
-          </p>
-          <h1 className="text-lg font-medium [overflow-wrap:anywhere]">{sprint.name}</h1>
-          <p className="mt-1 text-sm text-grey-500">
+          </Text>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Heading level={1} wordBreak="break-word">{sprint.name}</Heading>
+            {pace?.behind ? <Badge variant="warning" label="Behind" /> : null}
+          </div>
+          <Text as="p" color="secondary" display="block" className="mt-1">
             <time dateTime={sprint.starts_on}>{formatDay(sprint.starts_on)}</time> to <time dateTime={sprint.ends_on}>{formatDay(sprint.ends_on)}</time> · {stateLabel(sprint.state)}
-          </p>
+          </Text>
+          {/* How a running sprint stands, in words; amber only when it is behind. */}
+          {pace && pace.total > 0 ? (
+            <p className={`mt-1 text-sm ${pace.behind ? 'text-stale' : 'text-grey-500'}`} data-testid="sprint-pace">
+              Day {pace.day} of {pace.length} · {pace.done} of {pace.total} {pace.total === 1 ? 'issue' : 'issues'} done
+              {pace.behind ? `, with ${pace.timeGone}% of the time gone` : ''}
+            </p>
+          ) : null}
         </div>
         {isAdmin && sprint.state !== 'completed' ? (
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
@@ -602,7 +630,7 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
     <IssueGroups
       issues={issueRows}
       members={members.data?.members ?? []}
-      onOpen={openIssue}
+      slug={slug}
     />
   )
 
@@ -616,21 +644,25 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
         onActivate={() => changeState.mutate('activate')}
         onClose={() => changeState.mutateAsync('close')}
         stateBusy={changeState.isPending}
+        // Every issue listed below, counted once both lists have loaded. If
+        // the unfiled ones cannot be read, the milestones' counts stand in.
+        work={sprintIssues.data && unfiledIssues.data
+          ? issueWork(issueRows)
+          : sprintIssues.data || unfiledIssues.error ? milestoneWork(milestoneRows) : undefined}
       />
 
       {changeState.error ? (
-        <p role="alert" className="text-sm text-blocked">Could not change the sprint state. Try again.</p>
+        <ErrorNote>Could not change the sprint state. Try again.</ErrorNote>
       ) : null}
 
       <section aria-labelledby="sprint-milestones-heading">
-        <div className="mb-3 flex flex-wrap items-baseline gap-3">
-          <h2 id="sprint-milestones-heading" className="text-base font-medium">Milestones</h2>
-          {milestoneRows.length > 0 && canCreateMilestone ? (
-            <Button variant="primary" className="ml-auto px-2 py-0.5 text-xs" onClick={milestoneAction}>
-              New milestone
-            </Button>
-          ) : null}
-        </div>
+        <SectionHeader
+          id="sprint-milestones-heading"
+          title="Milestones"
+          action={milestoneRows.length > 0 && canCreateMilestone ? (
+            <Button variant="primary" onClick={milestoneAction}>New milestone</Button>
+          ) : undefined}
+        />
 
         {milestoneRows.length === 0 ? (
           <MilestoneEmptyState
@@ -639,7 +671,7 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
             slug={slug}
           />
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {milestoneRows.map((milestone) => (
               <MilestoneCard
                 key={milestone.id}
@@ -654,7 +686,7 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
         {milestoneFormOpen && canCreateMilestone ? (
           <div className="mt-3">
             <div className="mb-2 flex items-center justify-between gap-3">
-              <h3 className="text-sm font-medium">New milestone</h3>
+              <Heading level={4} accessibilityLevel={3}>New milestone</Heading>
               <Button className="px-2 py-0.5 text-xs" onClick={() => setMilestoneFormOpen(false)}>Cancel</Button>
             </div>
             <MilestoneForm
@@ -669,33 +701,22 @@ export function SprintBoard({ slug, sprintId }: { slug: string; sprintId: string
       </section>
 
       <section aria-labelledby="sprint-issues-heading">
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <h2 id="sprint-issues-heading" className="text-base font-medium">Issues</h2>
-          {sprintIssues.data || unfiledIssues.data ? (
-            <span className="text-sm text-grey-500">{issueRows.length} total</span>
-          ) : null}
-          {wide ? (
-            <div
-              role="group"
-              aria-label="Issue view"
-              className="ml-auto inline-flex rounded-[var(--radius-control)] border border-grey-300 p-0.5"
+        <SectionHeader
+          id="sprint-issues-heading"
+          title="Issues"
+          meta={sprintIssues.data || unfiledIssues.data ? `${issueRows.length} total` : undefined}
+          action={wide ? (
+            <SegmentedControl
+              label="Issue view"
+              size="sm"
+              value={view}
+              onChange={(next) => chooseView(next === 'board' ? 'board' : 'list')}
             >
-              {(['list', 'board'] as const).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={view === option}
-                  onClick={() => chooseView(option)}
-                  className={`min-h-7 rounded px-3 text-xs ${
-                    view === option ? 'bg-ink text-paper' : 'text-grey-700 hover:bg-grey-100'
-                  }`}
-                >
-                  {option === 'list' ? 'List' : 'Board'}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
+              <SegmentedControlItem value="list" label="List" />
+              <SegmentedControlItem value="board" label="Board" />
+            </SegmentedControl>
+          ) : undefined}
+        />
         {sprintIssues.isPending || unfiledIssues.isPending ? (
           <LoadingState label="Loading issues…" />
         ) : sprintIssues.error ? (

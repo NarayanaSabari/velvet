@@ -54,7 +54,9 @@ describe('SprintKanban', () => {
     board([issue(1, 'backlog'), issue(2, 'todo'), issue(3, 'todo'), issue(4, 'done'), issue(5, 'cancelled')])
 
     const headings = screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)
-    expect(headings).toEqual(['Backlog1', 'Todo2', 'In progress0', 'In review0', 'Done1'])
+    expect(headings).toEqual(['Backlog', 'Todo', 'In progress', 'In review', 'Done'])
+    expect(screen.getByLabelText('2 todo issues')).toHaveTextContent('2')
+    expect(screen.getByLabelText('0 in review issues')).toHaveTextContent('0')
     expect(screen.getByTestId('kanban-cancelled')).toHaveTextContent('Cancelled · 1')
     expect(within(screen.getByTestId('kanban-column-in_progress')).getByText('Drop issues here')).toBeInTheDocument()
   })
@@ -92,10 +94,10 @@ describe('SprintKanban', () => {
 
   it('moves a card from the keyboard through its status menu', async () => {
     const { onMove } = board([issue(8, 'todo')])
-    const trigger = within(screen.getByTestId('kanban-card-ENG-8')).getByRole('button', { name: 'Status' })
+    const trigger = within(screen.getByTestId('kanban-card-ENG-8')).getByRole('combobox', { name: 'Status' })
 
     trigger.focus()
-    await userEvent.keyboard('{ArrowDown}{Enter}')
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}')
 
     expect(onMove).toHaveBeenCalledWith(expect.objectContaining({ from: 'todo', to: 'in_progress' }))
   })
@@ -111,7 +113,7 @@ describe('SprintKanban', () => {
     const card = screen.getByTestId('kanban-card-ENG-10')
 
     expect(card).toHaveAttribute('draggable', 'false')
-    expect(within(card).queryByRole('button', { name: 'Status' })).toBeNull()
+    expect(within(card).queryByRole('combobox', { name: 'Status' })).toBeNull()
   })
 
   it('names unfinished work that has gone quiet', () => {
@@ -127,7 +129,7 @@ describe('MoveToast', () => {
     const onUndo = vi.fn()
     render(<MoveToast move={move} failed={false} onUndo={onUndo} onDismiss={vi.fn()} />)
 
-    expect(screen.getByRole('status')).toHaveTextContent('Moved ENG-12 to In progress')
+    expect(screen.getByTestId('kanban-toast')).toHaveTextContent('Moved ENG-12 to In progress')
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
     expect(onUndo).toHaveBeenCalled()
   })
@@ -135,7 +137,7 @@ describe('MoveToast', () => {
   it('says plainly when the server refused the move', () => {
     render(<MoveToast move={move} failed onUndo={vi.fn()} onDismiss={vi.fn()} />)
 
-    expect(screen.getByRole('status')).toHaveTextContent('Could not move ENG-12. It is back in Todo.')
+    expect(screen.getByTestId('kanban-toast')).toHaveTextContent('Could not move ENG-12. It is back in Todo.')
     expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
   })
 })

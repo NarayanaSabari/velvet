@@ -117,4 +117,84 @@ describe('ActivityRow targets', () => {
     )
     expect(container.textContent).not.toMatch(/to\s*$/)
   })
+
+  describe('links', () => {
+    it('names things as plain text when it does not know the organisation', () => {
+      render(<ActivityRow activity={row({ verb: 'changed_status', metadata: { key: 'ENG-1', from: 'todo', to: 'done' } })} />)
+      expect(screen.getByText('ENG-1')).toBeInTheDocument()
+      expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    })
+
+    it('links an issue key to its issue', () => {
+      render(<ActivityRow slug="lab" activity={row({ verb: 'changed_status', metadata: { key: 'ENG-1', from: 'todo', to: 'done' } })} />)
+      expect(screen.getByRole('link', { name: 'ENG-1' })).toHaveAttribute('href', '/w/lab/issues/ENG-1')
+    })
+
+    it('links a milestone comment to the milestone it was written on', () => {
+      render(<ActivityRow slug="lab" activity={row({
+        verb: 'commented',
+        target_type: 'comment',
+        target_id: 'c1',
+        metadata: { target_type: 'milestone', target_id: 'm1', name: 'Ship auth', excerpt: 'On track' },
+      })} />)
+      expect(screen.getByRole('link', { name: 'Ship auth' })).toHaveAttribute('href', '/w/lab/milestones/m1')
+    })
+
+    it('keeps a project comment labelled by its key, without an issue link', () => {
+      render(<ActivityRow slug="lab" activity={row({
+        verb: 'commented',
+        target_type: 'comment',
+        target_id: 'c1',
+        metadata: { target_type: 'project', target_id: 'p1', key: 'portal', name: 'Customer Portal' },
+      })} />)
+      expect(screen.getByText('portal')).toBeInTheDocument()
+      expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    })
+
+    it('links a completed milestone and a closed sprint', () => {
+      const { unmount } = render(<ActivityRow slug="lab" activity={row({
+        verb: 'completed_milestone', target_type: 'milestone', target_id: 'm1', metadata: { name: 'Ship auth' },
+      })} />)
+      expect(screen.getByRole('link', { name: 'Ship auth' })).toHaveAttribute('href', '/w/lab/milestones/m1')
+      unmount()
+
+      render(<ActivityRow slug="lab" activity={row({
+        verb: 'closed_sprint', target_type: 'sprint', target_id: 's1', metadata: { name: 'Sprint 4' },
+      })} />)
+      expect(screen.getByRole('link', { name: 'Sprint 4' })).toHaveAttribute('href', '/w/lab/sprints/s1')
+    })
+
+    it('opens a pull request on GitHub in a new tab', () => {
+      render(<ActivityRow slug="lab" activity={row({
+        verb: 'attached_pr',
+        metadata: { key: 'ENG-1', number: 218, html_url: 'https://github.com/acme/widgets/pull/218' },
+      })} />)
+      const link = screen.getByRole('link', { name: '#218' })
+      expect(link).toHaveAttribute('href', 'https://github.com/acme/widgets/pull/218')
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(link).toHaveAttribute('rel', 'noreferrer')
+    })
+
+    it('never turns a non-web address into a pull request link', () => {
+      render(<ActivityRow activity={row({
+        verb: 'attached_pr',
+        metadata: { key: 'ENG-1', number: 218, html_url: 'javascript:alert(1)' },
+      })} />)
+      expect(screen.getByText('#218')).toBeInTheDocument()
+      expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('hideActor', () => {
+    it('names the actor by default', () => {
+      render(<ActivityRow activity={row({ verb: 'closed_sprint', metadata: { name: 'Sprint 4' } })} />)
+      expect(screen.getByText('Sabari')).toBeInTheDocument()
+    })
+
+    it('starts with the action in a list that is all one person', () => {
+      render(<ActivityRow hideActor activity={row({ verb: 'closed_sprint', metadata: { name: 'Sprint 4' } })} />)
+      expect(screen.queryByText('Sabari')).not.toBeInTheDocument()
+      expect(screen.getByText(/closed sprint/)).toBeInTheDocument()
+    })
+  })
 })

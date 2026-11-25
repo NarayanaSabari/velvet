@@ -25,13 +25,14 @@ const issue: Issue = {
 
 describe('IssueList', () => {
   it('keeps the full issue title readable instead of truncating it', () => {
-    render(<IssueList issues={[issue]} />)
+    render(<IssueList issues={[issue]} slug="lab" />)
 
     expect(screen.getByText(issue.title)).toHaveClass(
       'break-words',
       '[overflow-wrap:anywhere]',
     )
     expect(screen.getByText(issue.title)).not.toHaveClass('truncate')
-    expect(screen.getByText('In progress').parentElement).toHaveClass('col-start-2')
+    expect(screen.getByRole('link', { name: /ENG-1/ })).toHaveAttribute('href', '/w/lab/issues/ENG-1')
+    expect(screen.getByRole('link', { name: /ENG-1/ })).toHaveTextContent('In progress')
   })
 })

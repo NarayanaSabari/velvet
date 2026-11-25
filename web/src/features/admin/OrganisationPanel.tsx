@@ -1,10 +1,15 @@
+import { ErrorNote } from '../../ui/ErrorNote'
 import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+
+import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList'
+import { Text } from '@astryxdesign/core/Text'
 
 import { api } from '../../lib/api'
 import type { Membership, Workspace } from '../../lib/types'
 import { Button } from '../../ui/Button'
 import { refreshPrivateQueries } from '../auth/sessionNavigation'
+import { TextField } from '../../ui/fields'
 
 export function OrganisationPanel({ slug, workspace }: { slug: string; workspace: Membership }) {
   const client = useQueryClient()
@@ -32,42 +37,36 @@ export function OrganisationPanel({ slug, workspace }: { slug: string; workspace
   return (
     <section aria-label="Organisation">
       <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); if (changed) update.mutate() }}>
-        <label className="block max-w-2xl">
-          <span className="mb-0.5 block text-xs text-grey-500">Name</span>
-          <span className="flex flex-wrap gap-2">
-            <input
-              className="ui-control min-h-10 min-w-0 flex-1 basis-56 px-2 py-1"
-              aria-label="Organisation name"
-              value={name}
-              maxLength={80}
-              onChange={(event) => { update.reset(); setSaved(false); setName(event.target.value) }}
-            />
-            <Button className="min-h-10" variant="primary" type="submit" disabled={!changed || update.isPending}>
-              {update.isPending ? 'Saving…' : 'Save'}
-            </Button>
-          </span>
-          <span className="mt-1 block text-xs text-grey-500">Shown in the sidebar, invitations, and agent setups.</span>
-        </label>
+        <div className="flex max-w-2xl flex-wrap items-end gap-2">
+          <TextField
+            className="flex-1 basis-56"
+            label="Name"
+            aria-label="Organisation name"
+            description="Shown in the sidebar, invitations, and agent setups."
+            value={name}
+            maxLength={80}
+            onChange={(value) => { update.reset(); setSaved(false); setName(value) }}
+          />
+          <Button variant="primary" type="submit" disabled={!changed || update.isPending}>
+            {update.isPending ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
         <div aria-live="polite">
           {saved && !changed ? <p role="status" className="text-sm text-done">Name saved.</p> : null}
         </div>
-        {update.error ? <p role="alert" className="text-sm text-blocked">{update.error.message}</p> : null}
-        <dl className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
-          <div className="grid gap-1 px-3 py-3 sm:grid-cols-[8rem_minmax(0,1fr)]">
-            <dt className="text-sm text-grey-500">Slug</dt>
-            <dd>
-              <div className="font-mono text-sm">{workspace.workspace_slug}</div>
-              <p className="text-xs text-grey-500">Part of every URL, so it cannot change.</p>
-            </dd>
-          </div>
-          <div className="grid gap-1 border-t border-grey-200 px-3 py-3 sm:grid-cols-[8rem_minmax(0,1fr)]">
-            <dt className="text-sm text-grey-500">Issue prefix</dt>
-            <dd>
-              <div className="font-mono text-sm">{workspace.issue_prefix}</div>
-              <p className="text-xs text-grey-500">Stamped into existing ticket keys such as {workspace.issue_prefix}-42, so it cannot change.</p>
-            </dd>
-          </div>
-        </dl>
+        {update.error ? <ErrorNote>{update.error.message}</ErrorNote> : null}
+        <div className="max-w-2xl border-t border-grey-200 pt-4">
+          <MetadataList label={{ position: 'start', width: '8rem' }}>
+            <MetadataListItem label="Slug">
+              <Text type="code" display="block">{workspace.workspace_slug}</Text>
+              <Text type="supporting" color="secondary" display="block">Part of every URL, so it cannot change.</Text>
+            </MetadataListItem>
+            <MetadataListItem label="Issue prefix">
+              <Text type="code" display="block">{workspace.issue_prefix}</Text>
+              <Text type="supporting" color="secondary" display="block">Stamped into existing ticket keys such as {workspace.issue_prefix}-42, so it cannot change.</Text>
+            </MetadataListItem>
+          </MetadataList>
+        </div>
       </form>
     </section>
   )

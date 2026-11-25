@@ -1,8 +1,12 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
-import { NavLink } from '../../app/nav'
-import { buttonClassName } from '../../ui/buttonStyles'
+import { Button as AstryxButton } from '@astryxdesign/core/Button'
+import { Card } from '@astryxdesign/core/Card'
+import { Heading } from '@astryxdesign/core/Heading'
+import { Text } from '@astryxdesign/core/Text'
+
+import { Button } from '../../ui/Button'
 import { onboardingQuery } from './onboardingQuery'
 
 const DISMISS_KEY = 'velvet:agent-card-dismissed'
@@ -31,21 +35,20 @@ export function ConnectAgentCard({ slug }: { slug: string }) {
     <section
       aria-labelledby="connect-agent-heading"
       data-testid="connect-agent-card"
-      className="ui-surface mb-6 flex flex-wrap items-center justify-between gap-3 bg-grey-100 p-4"
+      className="mb-6"
     >
+      <Card variant="muted" padding={5}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0">
-        <h2 id="connect-agent-heading" className="text-sm font-medium">Connect your coding agent</h2>
-        <p className="mt-1 text-sm text-grey-700">
+        <Heading level={4} accessibilityLevel={2} id="connect-agent-heading">Connect your coding agent</Heading>
+        <Text as="p" color="secondary" display="block" className="mt-1">
           Let Claude Code, Codex, or Cursor log your work here as you go. It takes about a minute.
-        </p>
+        </Text>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <NavLink to={`/w/${slug}/settings/profile/agent-config`} className={buttonClassName('primary', 'inline-flex min-h-11 items-center px-4 no-underline')}>
-          Connect an agent
-        </NavLink>
-        <button
-          type="button"
-          className={buttonClassName('ghost', 'min-h-11')}
+        <AstryxButton variant="primary" href={`/w/${slug}/settings/profile/agent-config`} label="Connect an agent" />
+        <Button
+          variant="ghost"
           onClick={() => {
             try {
               window.localStorage.setItem(DISMISS_KEY, '1')
@@ -56,8 +59,10 @@ export function ConnectAgentCard({ slug }: { slug: string }) {
           }}
         >
           Not now
-        </button>
+        </Button>
       </div>
+      </div>
+      </Card>
     </section>
   )
 }

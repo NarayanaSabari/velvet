@@ -1,7 +1,15 @@
 import { useState, type DragEvent } from 'react'
 
+import { Badge } from '@astryxdesign/core/Badge'
+import { Card } from '@astryxdesign/core/Card'
+import { Collapsible } from '@astryxdesign/core/Collapsible'
+import { Heading } from '@astryxdesign/core/Heading'
+import { Text } from '@astryxdesign/core/Text'
+import { Toast } from '@astryxdesign/core/Toast'
+
 import type { IssueStatus, Milestone, User } from '../../lib/types'
 import { Avatar } from '../../ui/Avatar'
+import { Button } from '../../ui/Button'
 import { RelativeTime } from '../../ui/RelativeTime'
 import { STATUS_LABELS } from '../../ui/StatusBadge'
 import { StatusDot, StatusSelect } from '../issues/StatusSelect'
@@ -65,38 +73,39 @@ function KanbanCard({
       draggable={canWrite}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`ui-surface min-w-0 rounded-[var(--radius-control)] px-2.5 py-2 ${
-        canWrite ? 'cursor-grab active:cursor-grabbing' : ''
-      } ${dragging ? 'opacity-40' : ''}`}
+      // The list item is the thing that drags; the card inside is its surface.
+      className={`min-w-0 ${canWrite ? 'cursor-grab active:cursor-grabbing' : ''} ${dragging ? 'opacity-40' : ''}`}
     >
-      <p className="flex min-w-0 gap-2 text-xs text-grey-500">
-        <span className="shrink-0">{issue.key}</span>
-        {milestoneName ? <span className="min-w-0 truncate">· {milestoneName}</span> : null}
-      </p>
-      <a
-        href={`#${issue.key}`}
-        onClick={(event) => {
-          event.preventDefault()
-          onOpen()
-        }}
-        className="mt-0.5 mb-1.5 block break-words text-ink [overflow-wrap:anywhere] hover:underline"
-      >
-        {issue.title}
-      </a>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-grey-500">
-        {assignee ? <Avatar user={assignee} /> : null}
-        <span aria-label={`Priority P${issue.priority}`}>P{issue.priority}</span>
-        {silent !== null ? (
-          <span className="whitespace-nowrap text-stale">silent {silent}d</span>
-        ) : stamp ? (
-          <RelativeTime iso={stamp} />
-        ) : null}
-        {canWrite ? (
-          <span className="ml-auto">
-            <StatusSelect value={issue.status} onChange={onMove} />
-          </span>
-        ) : null}
-      </div>
+      <Card padding={2}>
+        <p className="flex min-w-0 items-baseline gap-2">
+          <Text type="code" color="secondary" className="shrink-0">{issue.key}</Text>
+          {milestoneName ? <Text type="supporting" color="secondary" className="min-w-0 truncate">{milestoneName}</Text> : null}
+        </p>
+        <a
+          href={`#${issue.key}`}
+          onClick={(event) => {
+            event.preventDefault()
+            onOpen()
+          }}
+          className="mt-0.5 mb-1.5 block break-words text-sm font-medium text-ink no-underline [overflow-wrap:anywhere] hover:underline"
+        >
+          {issue.title}
+        </a>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {assignee ? <Avatar user={assignee} /> : null}
+          <Text type="supporting" color="secondary" aria-label={`Priority P${issue.priority}`}>P{issue.priority}</Text>
+          {silent !== null ? (
+            <Badge variant="warning" label={`silent ${silent}d`} />
+          ) : stamp ? (
+            <RelativeTime iso={stamp} />
+          ) : null}
+          {canWrite ? (
+            <span className="ml-auto">
+              <StatusSelect value={issue.status} onChange={onMove} />
+            </span>
+          ) : null}
+        </div>
+      </Card>
     </li>
   )
 }
@@ -202,44 +211,43 @@ export function SprintKanban({
               if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOverStatus(null)
             }}
             onDrop={(event) => drop(event, status)}
-            className={`flex min-w-0 flex-col rounded-[var(--radius-surface)] border bg-grey-100 ${
-              overStatus === status ? 'border-dashed border-ink' : 'border-grey-200'
+            // The section takes the drop; the dashed outline says where it will land.
+            className={`min-w-0 rounded-[var(--radius-surface)] outline-2 outline-offset-2 ${
+              overStatus === status ? 'outline-dashed outline-ink' : 'outline-transparent'
             }`}
           >
-            <h3
-              id={headingId}
-              className="flex items-center gap-2 border-b border-grey-200 px-3 py-2 text-xs font-semibold"
-            >
+          <Card variant="muted" padding={0}>
+            <div className="flex items-center gap-2 border-b border-grey-200 px-3 py-2">
               <StatusDot status={status} />
-              <span>{STATUS_LABELS[status]}</span>
-              <span
-                className="ml-auto font-normal text-grey-700"
+              <Heading level={5} accessibilityLevel={3} id={headingId}>{STATUS_LABELS[status]}</Heading>
+              <Text
+                type="supporting"
+                color="secondary"
+                className="ml-auto tabular-nums"
                 aria-label={`${columnIssues.length} ${STATUS_LABELS[status].toLowerCase()} issues`}
               >
                 {columnIssues.length}
-              </span>
-            </h3>
-            <ul className="flex min-h-16 flex-col gap-1.5 p-2" aria-label={`${STATUS_LABELS[status]} issues`}>
+              </Text>
+            </div>
+            <ul className="flex min-h-16 flex-col gap-2 p-2" aria-label={`${STATUS_LABELS[status]} issues`}>
               {visible.map(card)}
               {columnIssues.length === 0 ? (
-                <li className="px-1 py-3 text-center text-xs text-grey-700">
-                  {canWrite ? 'Drop issues here' : 'None'}
+                <li className="px-1 py-3 text-center">
+                  <Text type="supporting" color="secondary">{canWrite ? 'Drop issues here' : 'None'}</Text>
                 </li>
               ) : null}
             </ul>
             {hidden > 0 ? (
-              <button
-                type="button"
-                className="mx-2 mb-2 min-h-6 rounded-[var(--radius-control)] px-2 py-1 text-xs text-grey-700 hover:bg-paper"
-                onClick={() => setShowAllDone(true)}
-              >
-                + {hidden} more · Show all
-              </button>
+              <div className="mx-2 mb-2">
+                <Button variant="ghost" className="w-full" onClick={() => setShowAllDone(true)}>
+                  {`+ ${hidden} more · Show all`}
+                </Button>
+              </div>
             ) : null}
             {status === 'done' && cancelled.length > 0 ? (
-              <details
+              <div
                 data-testid="kanban-cancelled"
-                className="mx-2 mb-2 border-t border-grey-200 pt-2"
+                className="mx-2 mb-2 border-t border-grey-200 pt-1"
                 onDragOver={(event) => {
                   if (!canWrite || !event.dataTransfer.types.includes(DRAG_TYPE)) return
                   event.preventDefault()
@@ -250,15 +258,22 @@ export function SprintKanban({
                   drop(event, 'cancelled')
                 }}
               >
-                <summary className="flex min-h-6 cursor-pointer items-center gap-2 text-xs text-grey-700">
-                  <StatusDot status="cancelled" />
-                  Cancelled · {cancelled.length}
-                </summary>
-                <ul className="mt-2 flex flex-col gap-1.5" aria-label="Cancelled issues">
-                  {cancelled.map(card)}
-                </ul>
-              </details>
+                <Collapsible
+                  defaultIsOpen={false}
+                  trigger={(
+                    <span className="flex items-center gap-2 py-1">
+                      <StatusDot status="cancelled" />
+                      <Text type="supporting" color="secondary">Cancelled · {cancelled.length}</Text>
+                    </span>
+                  )}
+                >
+                  <ul className="mt-1 flex flex-col gap-2" aria-label="Cancelled issues">
+                    {cancelled.map(card)}
+                  </ul>
+                </Collapsible>
+              </div>
             ) : null}
+          </Card>
           </section>
         )
       })}
@@ -281,25 +296,24 @@ export function MoveToast({
   onUndo: () => void
   onDismiss: () => void
 }) {
+  const message = failed
+    ? `Could not move ${move.issue.key}. It is back in ${STATUS_LABELS[move.from]}.`
+    : `Moved ${move.issue.key} to ${STATUS_LABELS[move.to]}`
   return (
+    // Astryx's toast announces itself; this wrapper only places it.
     <div
-      role="status"
       data-testid="kanban-toast"
-      className="fixed bottom-20 left-1/2 z-40 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-[var(--radius-control)] bg-ink px-3 py-1.5 text-xs text-paper sm:bottom-4"
+      className="fixed bottom-20 left-1/2 z-40 max-w-[calc(100vw-2rem)] -translate-x-1/2 sm:bottom-4"
     >
-      <span className="min-w-0">
-        {failed
-          ? `Could not move ${move.issue.key}. It is back in ${STATUS_LABELS[move.from]}.`
-          : `Moved ${move.issue.key} to ${STATUS_LABELS[move.to]}`}
-      </span>
-      {failed ? null : (
-        <button type="button" className="min-h-11 min-w-11 underline sm:min-h-6 sm:min-w-6" onClick={onUndo}>
-          Undo
-        </button>
-      )}
-      <button type="button" aria-label="Dismiss" className="inline-flex min-h-11 min-w-11 items-center justify-center text-grey-300 sm:min-h-6 sm:min-w-6" onClick={onDismiss}>
-        ×
-      </button>
+      <Toast
+        body={message}
+        type={failed ? 'error' : 'info'}
+        // It stays until the next move or a dismissal, so nobody loses it mid-read.
+        isAutoHide={false}
+        autoHideDuration={0}
+        endContent={failed ? undefined : <Button variant="ghost" onClick={onUndo}>Undo</Button>}
+        onDismiss={onDismiss}
+      />
     </div>
   )
 }

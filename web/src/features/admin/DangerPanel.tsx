@@ -1,9 +1,14 @@
+import { ErrorNote } from '../../ui/ErrorNote'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+
+import { Heading } from '@astryxdesign/core/Heading'
+import { Text } from '@astryxdesign/core/Text'
 
 import { api } from '../../lib/api'
 import { Button } from '../../ui/Button'
 import { clearPrivateQueries, navigateTo } from '../auth/sessionNavigation'
+import { TextField } from '../../ui/fields'
 
 /**
  * Kept last and set apart with the destructive colour, so it is never mistaken
@@ -22,25 +27,24 @@ export function DangerPanel({ slug, navigate = navigateTo }: { slug: string; nav
       aria-labelledby="delete-heading"
     >
       <div>
-        <h2 id="delete-heading" className="text-sm font-medium text-ink">Delete organisation</h2>
-        <p className="mt-1 max-w-[46rem] text-sm text-grey-700">
+        <Heading level={4} accessibilityLevel={2} id="delete-heading">Delete organisation</Heading>
+        <Text as="p" color="secondary" display="block" className="mt-1 max-w-[46rem]">
           Permanently delete this organisation, its issues, sprints, invitations and repository connections. This cannot be undone.
-        </p>
+        </Text>
       </div>
       <form className="max-w-2xl space-y-3" onSubmit={(event) => { event.preventDefault(); if (confirm === slug) remove.mutate() }}>
-        <label className="block text-sm">Type <span className="font-mono font-medium">{slug}</span> to confirm deletion
-          <input
-            className="ui-control mt-1 block min-h-10 w-full px-2 py-1 font-mono"
-            autoComplete="off"
-            spellCheck={false}
-            value={confirm}
-            onChange={(event) => setConfirm(event.target.value)}
-          />
-        </label>
+        <TextField
+          label={`Type ${slug} to confirm deletion`}
+          mono
+          literal
+          autoComplete="off"
+          value={confirm}
+          onChange={setConfirm}
+        />
         <Button variant="danger" type="submit" disabled={confirm !== slug || remove.isPending}>
           {remove.isPending ? 'Deleting organisation…' : 'Delete organisation'}
         </Button>
-        {remove.error ? <p role="alert" className="text-sm text-blocked">{remove.error.message}</p> : null}
+        {remove.error ? <ErrorNote>{remove.error.message}</ErrorNote> : null}
       </form>
     </section>
   )

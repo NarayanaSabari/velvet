@@ -69,7 +69,7 @@ test('dragging a card saves its status, and Undo puts it back', async ({ page, b
   await signIn(page, baseURL!, session)
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.goto(`/w/${slug}/sprints/${sprintId}`)
-  await page.getByRole('group', { name: 'Issue view' }).getByRole('button', { name: 'Board' }).click()
+  await page.getByRole('radiogroup', { name: 'Issue view' }).getByRole('radio', { name: 'Board' }).click()
   await expect(page).toHaveURL(/[?&]view=board/)
 
   const board = page.getByTestId('sprint-kanban')
@@ -103,10 +103,11 @@ test('a card moves from the keyboard alone, with a visible focus ring', async ({
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.goto(`/w/${slug}/sprints/${sprintId}?view=board`)
 
-  const trigger = page.getByTestId('kanban-card-KAN-3').getByRole('button', { name: 'Status' })
+  const trigger = page.getByTestId('kanban-card-KAN-3').getByRole('combobox', { name: 'Status' })
   await trigger.focus()
   await expect(trigger).toBeFocused()
   expect(await trigger.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none')
+  await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('Enter')
 
@@ -129,12 +130,12 @@ test('the board fits desktop in both schemes, and phones keep the list', async (
     // The board needs lg (1024px). A tablet width keeps the grouped list.
     await page.setViewportSize({ width: 768, height: 1024 })
     await expect(page.getByTestId('sprint-kanban')).toHaveCount(0)
-    await expect(page.getByRole('group', { name: 'Issue view' })).toHaveCount(0)
+    await expect(page.getByRole('radiogroup', { name: 'Issue view' })).toHaveCount(0)
 
     await page.setViewportSize({ width: 390, height: 844 })
     await expect(page.getByTestId('sprint-kanban')).toHaveCount(0)
-    await expect(page.getByRole('group', { name: 'Issue view' })).toHaveCount(0)
-    await expect(page.getByRole('listbox', { name: 'Todo issues' })).toBeVisible()
+    await expect(page.getByRole('radiogroup', { name: 'Issue view' })).toHaveCount(0)
+    await expect(page.getByRole('list', { name: 'Todo issues' })).toBeVisible()
     expect(await overflow()).toBeLessThanOrEqual(0)
     await page.screenshot({ path: `test-results/kanban-390-${colorScheme}.png`, fullPage: true })
   }
@@ -148,5 +149,5 @@ test('a viewer sees the board but cannot move cards', async ({ page, baseURL }) 
   const card = page.getByTestId('kanban-card-KAN-2')
   await expect(card).toBeVisible()
   await expect(card).toHaveAttribute('draggable', 'false')
-  await expect(card.getByRole('button', { name: 'Status' })).toHaveCount(0)
+  await expect(card.getByRole('combobox', { name: 'Status' })).toHaveCount(0)
 })

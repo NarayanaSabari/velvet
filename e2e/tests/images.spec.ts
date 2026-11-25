@@ -132,8 +132,8 @@ test('an agent preserves a shared image on its ticket and portal removal is expl
       }
     }
     const row = page.getByTestId(`image-item-${image.id}`)
-    const originalLink = row.getByRole('link', { name: /open full image/i }).last()
-    await row.getByRole('link', { name: /open full image/i }).first().focus()
+    const originalLink = row.getByRole('link', { name: /open in new tab/i })
+    await row.getByRole('button', { name: /view image/i }).focus()
     await page.keyboard.press('Tab')
     await expect(originalLink).toBeFocused()
     expect(await originalLink.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe('none')
@@ -267,7 +267,7 @@ test('JPEG and WebP agent references can be viewed, downloaded and explicitly re
       await assertImageLoaded(page, relevance)
       expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false)
       const popupPromise = page.waitForEvent('popup')
-      await row.getByRole('link', { name: /open full image/i }).last().click()
+      await row.getByRole('link', { name: /open in new tab/i }).click()
       const fullImage = await popupPromise
       await expect.poll(() => fullImage.locator('img').evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth === 640 && element.naturalHeight === 360)).toBe(true)
       await fullImage.close()

@@ -26,8 +26,11 @@ type MilestoneCompletionRow struct {
 	SprintName  string    `json:"sprint_name"`
 	ProjectName string    `json:"project_name"`
 	StartsOn    string    `json:"starts_on"`
-	Planned     int       `json:"planned"`
-	Completed   int       `json:"completed"`
+	// State lets a reader tell a sprint that closed at 0% from one that has
+	// not finished yet.
+	State     string `json:"state"`
+	Planned   int    `json:"planned"`
+	Completed int    `json:"completed"`
 }
 
 // SprintClosedRow is issues closed against issues touched, per sprint.
@@ -133,7 +136,7 @@ func (s *Store) PersonActivity(ctx context.Context, workspaceID uuid.UUID, from,
 // legacy sprints without one retain live counts rather than invented history.
 func (s *Store) MilestoneCompletion(ctx context.Context, workspaceID uuid.UUID, projectIDs ...*uuid.UUID) ([]MilestoneCompletionRow, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT s.id, s.name, p.name, to_char(s.starts_on, 'YYYY-MM-DD'),
+		SELECT s.id, s.name, p.name, to_char(s.starts_on, 'YYYY-MM-DD'), s.state::text,
 		       COALESCE(ss.milestones_planned, count(m.id) FILTER (WHERE m.status <> 'cancelled')),
 		       COALESCE(ss.milestones_completed, count(m.id) FILTER (WHERE m.status = 'completed'))
 		FROM sprint s
@@ -151,7 +154,7 @@ func (s *Store) MilestoneCompletion(ctx context.Context, workspaceID uuid.UUID, 
 	out := []MilestoneCompletionRow{}
 	for rows.Next() {
 		var r MilestoneCompletionRow
-		if err := rows.Scan(&r.SprintID, &r.SprintName, &r.ProjectName, &r.StartsOn,
+		if err := rows.Scan(&r.SprintID, &r.SprintName, &r.ProjectName, &r.StartsOn, &r.State,
 			&r.Planned, &r.Completed); err != nil {
 			return nil, err
 		}

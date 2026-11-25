@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 
 import { IssueEditForm, IssueForm, MilestoneEditForm, MilestoneForm, SprintForm } from './CoreForms'
 import type { MilestoneChoice, ProjectChoice } from './workLinks'
+import { chooseOption, dropdown, optionList } from '../../test-utils'
 
 const projects: ProjectChoice[] = [
   { id: 'p-web', key: 'web', label: 'Web' },
@@ -20,11 +21,14 @@ describe('core work forms', () => {
     const user = userEvent.setup()
     render(<SprintForm projects={projects} onSubmit={submit} />)
 
-    expect(screen.getByLabelText('Project')).toBeRequired()
-    await user.selectOptions(screen.getByLabelText('Project'), 'p-api')
     await user.type(screen.getByLabelText('Sprint name'), 'October 2026')
     await user.type(screen.getByLabelText('Starts on'), '2026-10-01')
     await user.type(screen.getByLabelText('Ends on'), '2026-10-31')
+    // The dropdown is not a native control, so the form itself insists on a project.
+    await user.click(screen.getByRole('button', { name: 'Create sprint' }))
+    expect(await screen.findByText('Choose a project.')).toBeInTheDocument()
+    expect(submit).not.toHaveBeenCalled()
+    await chooseOption(user, dropdown('Project'), 'p-api')
     await user.click(screen.getByRole('button', { name: 'Create sprint' }))
 
     expect(submit).toHaveBeenCalledWith({
@@ -34,7 +38,7 @@ describe('core work forms', () => {
 
   it('picks the only project for a sprint without asking', () => {
     render(<SprintForm projects={[projects[0]!]} onSubmit={vi.fn()} />)
-    expect(screen.getByLabelText('Project')).toHaveValue('p-web')
+    expect(dropdown('Project')).toHaveAttribute('data-value', 'p-web')
   })
 
   it('links a new issue to a project and a milestone that agree', async () => {
@@ -42,20 +46,20 @@ describe('core work forms', () => {
     const user = userEvent.setup()
     render(<IssueForm links={{ projects, milestones }} onSubmit={submit} />)
 
-    const project = screen.getByLabelText('Project')
-    const milestone = screen.getByLabelText('Milestone')
+    const project = dropdown('Project')
+    const milestone = dropdown('Milestone')
     // Milestones are grouped under the project and sprint they belong to.
-    expect(screen.getByRole('group', { name: 'Web · September 2026' })).toBeInTheDocument()
+    expect(optionList(milestone)).toHaveTextContent('Web · September 2026')
 
     // Choosing a milestone moves the issue to that milestone's project.
-    await user.selectOptions(milestone, 'm-api')
-    expect(project).toHaveValue('p-api')
+    await chooseOption(user, milestone, 'm-api')
+    expect(project).toHaveAttribute('data-value', 'p-api')
 
     // Choosing another project drops a milestone from a different project.
-    await user.selectOptions(project, 'p-web')
-    expect(milestone).toHaveValue('')
+    await chooseOption(user, project, 'p-web')
+    expect(milestone).toHaveAttribute('data-value', '')
 
-    await user.selectOptions(milestone, 'm-web')
+    await chooseOption(user, milestone, 'm-web')
     await user.type(screen.getByLabelText('Issue title'), 'Polish the empty state')
     await user.click(screen.getByRole('button', { name: 'Create issue' }))
 
@@ -97,7 +101,7 @@ describe('core work forms', () => {
     render(<IssueForm parentId="parent-1" onSubmit={submit} />)
 
     await user.type(screen.getByLabelText('Issue title'), 'Handle retries')
-    await user.selectOptions(screen.getByLabelText('Priority'), '2')
+    await chooseOption(user, dropdown('Priority'), '2')
     await user.click(screen.getByRole('button', { name: 'Create issue' }))
 
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({
@@ -117,7 +121,7 @@ describe('core work forms', () => {
 
     await user.clear(screen.getByLabelText('Title'))
     await user.type(screen.getByLabelText('Title'), 'New title')
-    await user.selectOptions(screen.getByLabelText('Priority'), '4')
+    await chooseOption(user, dropdown('Priority'), '4')
     await user.click(screen.getByRole('button', { name: 'Save issue' }))
 
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({ title: 'New title', priority: 4 }))
@@ -132,7 +136,7 @@ describe('core work forms', () => {
       position: 'V', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
     }} onSubmit={submit} />)
 
-    await user.selectOptions(screen.getByLabelText('Milestone status'), 'in_progress')
+    await chooseOption(user, dropdown('Milestone status'), 'in_progress')
     await user.clear(screen.getByLabelText('Target date'))
     await user.click(screen.getByRole('button', { name: 'Save milestone' }))
     expect(submit).toHaveBeenCalledWith(expect.objectContaining({

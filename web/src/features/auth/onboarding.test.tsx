@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
 
@@ -9,8 +9,9 @@ import { ConfirmSignIn } from './ConfirmSignIn'
 import { Invite } from './Invite'
 import { NewOrganisation } from '../orgs/NewOrganisation'
 import { Profile } from '../profile/Profile'
-import { LeaveOrganisation } from '../orgs/LeaveOrganisation'
+import { LeaveOrganisationDialog } from '../orgs/LeaveOrganisation'
 import { DangerPanel } from '../admin/DangerPanel'
+import { findPageStatus, pageStatus } from '../../test-utils'
 
 const membership = { id: 'm1', workspace_id: 'w1', workspace_slug: 'lab', workspace_name: 'Lab', issue_prefix: 'ENG', role: 'viewer' }
 const identity = { id: 'u1', email: 'person@example.com', name: '', github_id: null, github_login: null, avatar_url: '' }
@@ -70,7 +71,9 @@ it('previews without accepting and offers sign-out for the wrong email', async (
   const fetchMock = vi.fn().mockImplementation(() => response({ invite: invitation, signed_in: true, email_matches: false }))
   vi.stubGlobal('fetch', fetchMock)
   show(<Invite />)
-  expect(await screen.findByText(/This invitation is for person@example.com/)).toBeInTheDocument()
+  // The invited address is set apart, so a wrong one is noticed before accepting.
+  expect(await screen.findByText('Invitation for')).toBeInTheDocument()
+  expect(screen.getByText('person@example.com')).toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalledTimes(1)
   expect(fetchMock).toHaveBeenCalledWith('/api/v1/invite/preview', expect.objectContaining({ method: 'POST', body: JSON.stringify({ token: 'invite-secret' }) }))
   expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
@@ -99,7 +102,8 @@ it('shows identity and pending invitations with no membership and accepts by id'
   const navigate = vi.fn()
   show(<NewOrganisation navigate={navigate} />)
   expect(await screen.findByText('person@example.com')).toBeInTheDocument()
-  expect(screen.getByLabelText('Organisation name')).not.toHaveClass('min-h-12')
+  // The in-app form uses the standard control size; the public page uses the large one.
+  expect(screen.getByLabelText('Organisation name').closest('[data-size]')).toHaveAttribute('data-size', 'md')
   expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
   await userEvent.click(await screen.findByRole('button', { name: 'Accept Lab invitation' }))
   await waitFor(() => expect(navigate).toHaveBeenCalledWith('/w/lab'))
@@ -128,27 +132,18 @@ it('lets a viewer leave and clears organisation data before navigation', async (
   const client = new QueryClient()
   client.setQueryData(['memberships', 'lab'], ['private'])
   const navigate = vi.fn(() => expect(client.getQueryData(['memberships', 'lab'])).toBeUndefined())
-  show(<LeaveOrganisation slug="lab" navigate={navigate} />, client)
-  await userEvent.click(screen.getByRole('button', { name: 'Leave organisation' }))
+  show(<LeaveOrganisationDialog slug="lab" isOpen onOpenChange={() => {}} navigate={navigate} />, client)
+  const dialog = await screen.findByRole('alertdialog', { name: 'Leave lab?' })
+  expect(dialog).toHaveTextContent('You will need an invitation to rejoin.')
   await userEvent.click(screen.getByRole('button', { name: 'Confirm leave' }))
   await waitFor(() => expect(navigate).toHaveBeenCalledWith('/'))
 })
 
 it('tells the only admin how to leave instead of echoing the server', async () => {
   vi.stubGlobal('fetch', vi.fn().mockImplementation(() => response({ error: { code: 'last_admin', message: 'the organisation must retain at least one admin' } }, 409)))
-  show(<LeaveOrganisation slug="lab" />)
-  await userEvent.click(screen.getByRole('button', { name: 'Leave organisation' }))
-  await userEvent.click(screen.getByRole('button', { name: 'Confirm leave' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('You are the only admin. Make someone else an admin in Administration, then leave.')
-})
-
-it('names the pending leave action', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>(() => {})))
-  show(<LeaveOrganisation slug="lab" />)
-  await userEvent.click(screen.getByRole('button', { name: 'Leave organisation' }))
-  await userEvent.click(screen.getByRole('button', { name: 'Confirm leave' }))
-  const pending = await screen.findByRole('button', { name: 'Leaving organisation…' })
-  expect(pending).toBeDisabled()
+  show(<LeaveOrganisationDialog slug="lab" isOpen onOpenChange={() => {}} />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Confirm leave' }))
+  await waitFor(() => expect(screen.getByRole('alertdialog')).toHaveTextContent('You are the only admin. Make someone else an admin in Administration, then leave.'))
 })
 
 it('requires the exact slug to delete an organisation', async () => {
@@ -181,7 +176,7 @@ it('announces a pending invitation acceptance outside the public layout', async 
   show(<NewOrganisation />)
   await userEvent.click(await screen.findByRole('button', { name: 'Accept Lab invitation' }))
   expect(await screen.findByRole('button', { name: 'Accepting Lab invitation…' })).toBeDisabled()
-  expect(screen.getByRole('status')).toHaveTextContent('Accepting invitation…')
+  expect(pageStatus()).toHaveTextContent('Accepting invitation…')
 })
 
 it('links a profile through the distinct authorization endpoint and clears identity projections on unlink', async () => {
@@ -202,7 +197,7 @@ it('links a profile through the distinct authorization endpoint and clears ident
   await userEvent.click(await screen.findByRole('button', { name: 'Unlink GitHub profile' }))
   expect(screen.getByText(/future GitHub activity will not use your global fallback/i)).toBeInTheDocument()
   expect(linked).toBe(true)
-  await userEvent.click(screen.getByRole('button', { name: 'Confirm unlink GitHub profile' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Remove link' }))
   expect(await screen.findByRole('link', { name: 'Link GitHub profile' })).toHaveAttribute('href', '/api/v1/auth/github/link')
   expect(client.getQueryData(['authors', 'lab'])).toBeUndefined()
   expect(client.getQueryData(['reports', 'lab'])).toBeUndefined()
@@ -218,7 +213,7 @@ it('retries a failed invitation preview without consuming the token', async () =
   show(<Invite />)
   expect(await screen.findByRole('alert')).toHaveTextContent('Preview unavailable')
   await userEvent.click(screen.getByRole('button', { name: 'Retry invitation' }))
-  expect(await screen.findByRole('status')).toHaveTextContent('Loading invitation')
+  expect(await findPageStatus()).toHaveTextContent('Loading invitation')
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   finishPreview(await response({ invite: { ...invitation, workspace_name: 'x'.repeat(80) }, signed_in: true, email_matches: true }))
   expect(await screen.findByRole('button', { name: 'Accept invitation' })).toBeInTheDocument()
@@ -239,7 +234,7 @@ it('clears an invitation acceptance error while an explicit retry is pending', a
   await userEvent.click(await screen.findByRole('button', { name: 'Accept invitation' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('Acceptance unavailable')
   await userEvent.click(screen.getByRole('button', { name: 'Accept invitation' }))
-  expect(await screen.findByRole('status')).toHaveTextContent('Continuing with your invitation')
+  expect(await findPageStatus()).toHaveTextContent('Continuing with your invitation')
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Continuing…' })).toBeDisabled()
 })
@@ -257,7 +252,40 @@ it('retries a public session failure instead of showing sign-in', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Retry session' }))
   expect(await screen.findByLabelText('Organisation name')).toBeInTheDocument()
   expect(fetchMock.mock.calls.filter(([url]) => url === '/api/v1/me')).toHaveLength(2)
-  expect(screen.getByLabelText('Organisation name')).toHaveClass('min-h-12')
+  expect(screen.getByLabelText('Organisation name').closest('[data-size]')).toHaveAttribute('data-size', 'lg')
+})
+
+it('shows who is signed in with the ways out, and leads with a waiting invitation', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+    if (url === '/api/v1/me') return response({ user: identity, memberships: [membership], last_workspace: membership })
+    return response({ invites: [invitation] })
+  }))
+  show(<NewOrganisation publicLayout />)
+
+  const bar = await screen.findByTestId('account-bar')
+  expect(bar).toHaveTextContent('Signed in as person@example.com')
+  expect(within(bar).getByRole('link', { name: 'Back to Lab' })).toHaveAttribute('href', '/w/lab')
+  expect(within(bar).getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { level: 1, name: 'New organisation' })).toBeInTheDocument()
+
+  // With an invitation waiting, joining comes before creating.
+  const accept = await screen.findByRole('button', { name: 'Accept Lab invitation' })
+  const name = screen.getByLabelText('Organisation name')
+  expect(accept.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
+
+it('with no invitation, creating leads and the address is previewed as it is typed', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+    if (url === '/api/v1/me') return response({ user: identity, memberships: [membership], last_workspace: membership })
+    return response({ invites: [] })
+  }))
+  show(<NewOrganisation publicLayout />)
+
+  const name = await screen.findByLabelText('Organisation name')
+  const none = await screen.findByText('No pending invitations.')
+  expect(name.compareDocumentPosition(none) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  await userEvent.type(name, 'My Lab')
+  expect(screen.getByText(/Its address: \/w\/my-lab\./)).toBeInTheDocument()
 })
 
 it('retries public invitations without losing the organisation draft and announces acceptance', async () => {
@@ -273,7 +301,7 @@ it('retries public invitations without losing the organisation draft and announc
   expect(await screen.findByRole('alert')).toHaveTextContent('Could not load invitations')
   await userEvent.click(screen.getByRole('button', { name: 'Retry invitations' }))
   await userEvent.click(await screen.findByRole('button', { name: 'Accept Lab invitation' }))
-  expect(await screen.findByRole('status')).toHaveTextContent('Accepting invitation')
+  expect(await findPageStatus()).toHaveTextContent('Accepting invitation')
   expect(screen.getByRole('button', { name: 'Accepting Lab invitation…' })).toBeDisabled()
   expect(screen.getByLabelText('Organisation name')).toHaveValue('My Draft')
   expect(screen.getByRole('link', { name: 'Back to Lab' })).toHaveAttribute('href', '/w/lab')

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -71,13 +71,23 @@ describe('ImagesSection', () => {
     const thumbnails = await screen.findAllByRole('img')
     expect(thumbnails).toHaveLength(2)
     expect(thumbnails[0]).toHaveClass('max-h-full', 'max-w-full', 'object-contain')
-    expect(thumbnails[0]?.parentElement?.parentElement).toHaveClass('h-32', 'sm:w-40', 'w-full')
+    expect(thumbnails[0]?.parentElement?.parentElement).toHaveClass('h-24', 'w-32')
     expect(screen.getByText(/Sabari · Agent upload/)).toBeInTheDocument()
     expect(screen.getByText(/Sabari · User upload/)).toBeInTheDocument()
     expect(screen.getAllByText('1280 × 900 · 2 KB · image/png')).toHaveLength(2)
     expect(document.querySelectorAll('time')).toHaveLength(2)
     expect(screen.getByRole('link', { name: 'Download: screen.png' })).toHaveAttribute('href', image.download_url)
-    expect(screen.getAllByRole('link', { name: 'Open full image: screen.png (new tab)' })[0]).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(screen.getByRole('link', { name: 'Open in new tab: screen.png' })).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(screen.getByRole('button', { name: 'View image: screen.png' })).toBeInTheDocument()
+  })
+
+  it('opens a thumbnail full size over the page', async () => {
+    HTMLDialogElement.prototype.showModal = function showModal() { this.open = true }
+    HTMLDialogElement.prototype.close = function close() { this.open = false }
+    mount()
+    await userEvent.click(await screen.findByRole('button', { name: 'View image: screen.png' }))
+    const viewer = await screen.findByRole('dialog')
+    expect(viewer.querySelector('img')).toHaveAttribute('src', image.content_url)
   })
 
   it('shows a broken preview while retaining original/download links', async () => {
@@ -103,33 +113,37 @@ describe('ImagesSection', () => {
     expect(Boolean(screen.queryByRole('button', { name: 'Delete image: screen.png' }))).toBe(allowed)
   })
 
-  it('supports keyboard confirmation and returns focus on cancellation', async () => {
+  it('confirms in a dialog from the keyboard and deletes nothing on cancel', async () => {
     const user = userEvent.setup()
     mount()
     const trigger = await screen.findByRole('button', { name: 'Delete image: screen.png' })
     trigger.focus()
     await user.keyboard('{Enter}')
-    expect(screen.getByText(/cannot be undone/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    const dialog = await screen.findByRole('alertdialog', { name: 'Delete this image?' })
+    expect(dialog).toHaveTextContent('screen.png will be deleted permanently. This cannot be undone.')
     expect(api.del).not.toHaveBeenCalled()
-    await user.keyboard('{Escape}')
-    expect(screen.getByRole('button', { name: 'Delete image: screen.png' })).toHaveFocus()
-    expect(screen.queryByText(/cannot be undone/)).toBeNull()
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(api.del).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Delete image: screen.png' })).toBeInTheDocument()
   })
 
-  it('keeps failed confirmation visible and retries deletion with pending state', async () => {
+  it('keeps a failed confirmation open and retries deletion with pending state', async () => {
     const user = userEvent.setup()
     vi.mocked(api.del).mockRejectedValueOnce(new Error('denied'))
     mount()
     await user.click(await screen.findByRole('button', { name: 'Delete image: screen.png' }))
-    await user.click(screen.getByRole('button', { name: 'Delete image' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not delete image')
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Delete image' }))
+    await waitFor(() => expect(dialog).toHaveTextContent('Could not delete image. Try again.'))
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
     let resolve!: () => void
     vi.mocked(api.del).mockReturnValue(new Promise<void>((done) => { resolve = done }))
-    await user.click(screen.getByRole('button', { name: 'Delete image' }))
-    expect(screen.getByRole('button', { name: 'Deleting…' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    await user.click(within(dialog).getByRole('button', { name: 'Delete image' }))
+    expect(api.del).toHaveBeenCalledTimes(2)
+    // Escape does not abandon a delete that is in flight.
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
     vi.mocked(api.get).mockResolvedValue({ images: [] })
     resolve()
     await waitFor(() => expect(screen.queryByText('screen.png')).toBeNull())

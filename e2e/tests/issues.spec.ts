@@ -1,5 +1,6 @@
 import { test, expect, resetWorkspaceData, seededSessionToken, seedWorkspace, sprintProject, sql } from './fixtures'
 import type { Page } from '@playwright/test'
+import { chooseOption } from './dropdown'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -137,7 +138,8 @@ test('navigates the workspace Issues page and completes the issue workflow', asy
   await expect(page.getByText('Ship the Issues layout')).toBeVisible()
   const issuesList = page.getByTestId('issues-list')
   await expect(issuesList).toHaveClass(/divide-y/)
-  await expect(issuesList).toHaveClass(/border-y/)
+  await expect(issuesList).toHaveClass(/border-b/)
+  await expect(issuesList).not.toHaveClass(/border-y/)
   await expect(issuesList).not.toHaveClass(/space-y/)
 
   const issueLink = page.getByRole('link', { name: /ENG-1/ })
@@ -151,9 +153,9 @@ test('navigates the workspace Issues page and completes the issue workflow', asy
   await page.goBack()
   await expect(page.getByRole('heading', { name: 'Issues', exact: true })).toBeVisible()
 
-  await page.selectOption('[data-testid="issues-status-filter"]', 'todo')
-  await page.selectOption('[data-testid="issues-assignee-filter"]', assigneeId)
-  await page.selectOption('[data-testid="issues-priority-filter"]', '3')
+  await chooseOption(page.getByTestId('issues-status-filter'), 'todo')
+  await chooseOption(page.getByTestId('issues-assignee-filter'), assigneeId)
+  await chooseOption(page.getByTestId('issues-priority-filter'), '3')
   await expect(page.getByText('Assigned todo issue')).toBeVisible()
   await expect(page.getByText('Done launch note')).toHaveCount(0)
 
@@ -161,21 +163,25 @@ test('navigates the workspace Issues page and completes the issue workflow', asy
   await page.getByLabel('Issue title').fill('Created from Issues page')
   await page.getByRole('button', { name: 'Create issue' }).click()
   await expect(page.getByText('Created from Issues page')).toBeVisible()
-  await expect(page.getByTestId('issues-status-filter')).toHaveValue('')
-  await expect(page.getByTestId('issues-assignee-filter')).toHaveValue('')
-  await expect(page.getByTestId('issues-priority-filter')).toHaveValue('')
+  await expect(page.getByTestId('issues-status-filter')).toHaveAttribute('data-value', 'open')
+  await expect(page.getByTestId('issues-assignee-filter')).toHaveAttribute('data-value', '')
+  await expect(page.getByTestId('issues-priority-filter')).toHaveAttribute('data-value', '')
 
   await page.getByTestId('issues-search').fill('Assigned todo')
   await expect(page.getByText('Assigned todo issue')).toBeVisible()
   await expect(page.getByText('Done launch note')).toHaveCount(0)
   await page.getByTestId('issues-clear-filters').click()
 
-  await page.selectOption('[data-testid="issues-status-filter"]', 'todo')
-  await page.selectOption('[data-testid="issues-assignee-filter"]', assigneeId)
-  await page.selectOption('[data-testid="issues-priority-filter"]', '3')
+  await chooseOption(page.getByTestId('issues-status-filter'), 'todo')
+  await chooseOption(page.getByTestId('issues-assignee-filter'), assigneeId)
+  await chooseOption(page.getByTestId('issues-priority-filter'), '3')
   await expect(page.getByText('Assigned todo issue')).toBeVisible()
   await expect(page.getByText('Done launch note')).toHaveCount(0)
   await page.getByTestId('issues-clear-filters').click()
+  // The page rests on open work, so finished work needs all statuses.
+  await expect(page.getByTestId('issues-status-filter')).toHaveAttribute('data-value', 'open')
+  await expect(page.getByText('Done launch note')).toHaveCount(0)
+  await chooseOption(page.getByTestId('issues-status-filter'), 'all')
   await expect(page.getByText('Done launch note')).toBeVisible()
 
   const issueIds = await page.locator('[data-testid^="issue-row-"]').evaluateAll((rows) =>
@@ -183,7 +189,8 @@ test('navigates the workspace Issues page and completes the issue workflow', asy
       .map((row) => row.getAttribute('data-testid')?.replace('issue-row-', ''))
       .filter((id): id is string => Boolean(id)),
   )
-  const columns = ['key', 'title', 'status', 'priority', 'assignee', 'milestone'] as const
+  // Status is not a column here: grouped rows sit under a status heading instead of a badge.
+  const columns = ['key', 'title', 'priority', 'assignee', 'milestone'] as const
   for (const column of columns) {
     const boxes = await Promise.all(
       issueIds.map((id) => page.getByTestId(`issue-${column}-${id}`).boundingBox()),
@@ -326,29 +333,29 @@ test('bounds issue requests and rows while searching beyond the first page', asy
   await expect(page.locator('[data-testid^="issue-row-"]')).toHaveCount(50)
   await expect(page.getByTestId('issues-count')).toHaveText('56 issues')
   expect(issueRequests.every((url) => url.searchParams.get('limit') === '50' && !url.searchParams.has('cursor'))).toBe(true)
-  await page.getByRole('button', { name: 'Next page' }).click()
+  await page.getByRole('button', { name: /next page/i }).click()
   await expect(page.locator('[data-testid^="issue-row-"]')).toHaveCount(6)
   await expect(page.getByText('Paged issue 54', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Next page' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: /next page/i })).toBeDisabled()
   await page.screenshot({ path: 'test-results/issues-pagination-desktop.png', fullPage: true })
   await page.getByTestId('issues-search').fill('Paged issue 54')
   await expect(page.locator('[data-testid^="issue-row-"]')).toHaveCount(1)
   await expect(page.getByTestId('issues-count')).toHaveText('1 of 56 issues')
   expect(issueRequests.at(-1)?.searchParams.has('cursor')).toBe(false)
-  await page.getByTestId('issues-priority-filter').selectOption('0')
+  await chooseOption(page.getByTestId('issues-priority-filter'), '0')
   await expect(page.getByText('Paged issue 54', { exact: true })).toBeVisible()
   await page.getByTestId('issues-clear-filters').click()
   await expect(page.locator('[data-testid^="issue-row-"]')).toHaveCount(50)
-  await expect(page.getByRole('button', { name: 'Previous page' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: /previous page/i })).toBeDisabled()
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: 'Next page' }).click()
+  await page.getByRole('button', { name: /next page/i }).click()
   await expect(page.locator('[data-testid^="issue-row-"]')).toHaveCount(6)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  await page.getByRole('button', { name: 'Previous page' }).focus()
+  await page.getByRole('button', { name: /previous page/i }).focus()
   await page.keyboard.press('Shift+Tab')
   await page.keyboard.press('Tab')
-  await expect(page.getByRole('button', { name: 'Previous page' })).toBeFocused()
-  expect(await page.getByRole('button', { name: 'Previous page' }).evaluate((button) => getComputedStyle(button).outlineWidth)).toBe('2px')
+  await expect(page.getByRole('button', { name: /previous page/i })).toBeFocused()
+  expect(await page.getByRole('button', { name: /previous page/i }).evaluate((button) => getComputedStyle(button).outlineWidth)).toBe('2px')
   await page.screenshot({ path: 'test-results/issues-pagination-mobile.png', fullPage: true })
   await page.keyboard.press('Enter')
   await expect(page.locator('[data-testid^="issue-row-"]')).toHaveCount(50)

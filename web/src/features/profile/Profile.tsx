@@ -1,11 +1,18 @@
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
+import { ErrorNote } from '../../ui/ErrorNote'
 import { useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from '@tanstack/react-router'
-import { NavLink } from '../../app/nav'
+import { Card } from '@astryxdesign/core/Card'
+import { List, ListItem } from '@astryxdesign/core/List'
+import { Text } from '@astryxdesign/core/Text'
+
 import { api } from '../../lib/api'
 import { userLabel } from '../../lib/userLabel'
 import { useSession } from '../auth/useSession'
+import { Avatar } from '../../ui/Avatar'
 import { Button } from '../../ui/Button'
+import { SectionNav } from '../../ui/SectionNav'
 import { EmptyState } from '../../ui/EmptyState'
 import { PageHeader, SectionHeader } from '../../ui/PageHeader'
 import { ErrorState, LoadingState } from '../../ui/QueryState'
@@ -15,6 +22,7 @@ import { AgentConfig } from './AgentConfig'
 import { GitHubAccountsTable } from './GitHubAccountsTable'
 import { apiTokensQuery, type CreatedApiToken } from './apiTokens'
 import { PROFILE_PAGES, type ProfilePageId } from './profilePages'
+import { TextField } from '../../ui/fields'
 
 export function ProfileRoute() {
   const { slug, page } = useParams({ from: '/w/$slug/settings/profile/$page' })
@@ -32,24 +40,27 @@ export function Profile({ slug, page = 'general' }: { slug: string; page?: Profi
     <PageHeader eyebrow="Profile" title={current.label} description={current.description} />
     <div className="grid gap-4 lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-8">
       <div className="min-w-0">
-        <nav aria-label="Profile sections" className="lg:sticky lg:top-4">
-          <ul className="flex flex-wrap gap-1 border-b border-grey-200 pb-2 lg:flex-col lg:flex-nowrap lg:gap-0.5 lg:border-b-0 lg:pb-0">
-            {PROFILE_PAGES.map((section) => <li key={section.id} className="shrink-0">
-              <NavLink to={`/w/${slug}/settings/profile/${section.id}`}
-                className="flex min-h-11 items-center rounded-[var(--radius-control)] border border-transparent px-2.5 text-sm text-grey-700 no-underline hover:bg-grey-100 hover:text-ink lg:min-h-8"
-                activeClassName="border-grey-200 bg-grey-100 font-medium !text-ink">
-                {section.label}
-              </NavLink>
-            </li>)}
-          </ul>
-        </nav>
+        <SectionNav
+          label="Profile sections"
+          current={page}
+          items={PROFILE_PAGES.map((section) => ({
+            id: section.id,
+            label: section.label,
+            href: `/w/${slug}/settings/profile/${section.id}`,
+          }))}
+        />
       </div>
       <div key={page} className="min-w-0">
         {page === 'general' ? <section className="space-y-3" aria-labelledby="identity-heading">
           <SectionHeader id="identity-heading" title="Identity" />
-          <p className="break-words font-medium">{userLabel(session.user)}</p>
-          {session.user.email && session.user.email !== userLabel(session.user) ? <p className="break-all text-sm text-grey-500">{session.user.email}</p> : null}
-          <p className="max-w-[46rem] text-grey-500">Your identity and personal API tokens are shared across your organisations. Agent setup uses the current organisation.</p>
+          <div className="flex items-center gap-3">
+            <Avatar user={session.user} size="lg" />
+            <div className="min-w-0">
+              <Text as="p" weight="semibold" display="block" className="break-words">{userLabel(session.user)}</Text>
+              {session.user.email && session.user.email !== userLabel(session.user) ? <Text as="p" type="supporting" color="secondary" display="block" className="break-all">{session.user.email}</Text> : null}
+            </div>
+          </div>
+          <Text as="p" color="secondary" display="block" className="max-w-[46rem]">Your identity and personal API tokens are shared across your organisations. Agent setup uses the current organisation.</Text>
         </section> : null}
         {page === 'github' ? <GitHubProfile slug={slug} /> : null}
         {page === 'agent-config' && session.workspace ? <AgentConfig workspace={session.workspace} /> : null}
@@ -79,18 +90,15 @@ function TokenForm({
 }) {
   return (
     <form className="flex max-w-2xl flex-col gap-2 sm:flex-row sm:items-end" onSubmit={onSubmit}>
-      <label className="min-w-0 flex-1">
-        <span className="mb-0.5 block text-xs text-grey-700">Token name</span>
-        <input
-          className="ui-control block min-h-10 w-full px-2 py-1 md:min-h-8"
-          type="text"
-          name="name"
-          autoComplete="off"
-          required
-          value={name}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      </label>
+      <TextField
+        className="flex-1"
+        label="Token name"
+        name="name"
+        autoComplete="off"
+        required
+        value={name}
+        onChange={onChange}
+      />
       <Button className="self-start sm:self-auto" variant="primary" type="submit" disabled={isPending || !name.trim()}>
         {isPending ? 'Creating…' : 'Create token'}
       </Button>
@@ -169,7 +177,8 @@ export function ApiTokens() {
       <p className="text-grey-500">Create a personal token for tools that need to write to your worklog.</p>
 
       {createdToken ? (
-        <div className="ui-surface bg-grey-100 p-4" role="status" aria-live="polite">
+        <div role="status" aria-live="polite">
+        <Card variant="muted" padding={5}>
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <p className="font-medium">Token created</p>
@@ -185,11 +194,12 @@ export function ApiTokens() {
               {copied ? 'Copied' : 'Copy'}
             </Button>
           </div>
-          {copyError ? <p role="alert" className="mt-2 text-sm text-blocked">{copyError}</p> : null}
+          {copyError ? <ErrorNote className="mt-2">{copyError}</ErrorNote> : null}
+        </Card>
         </div>
       ) : null}
 
-      {create.error ? <p role="alert" className="text-blocked">{create.error.message}</p> : null}
+      {create.error ? <ErrorNote>{create.error.message}</ErrorNote> : null}
       {tokens.error ? (
         <ErrorState
           message="Could not load API tokens."
@@ -197,7 +207,7 @@ export function ApiTokens() {
           retrying={tokens.isRefetching}
         />
       ) : null}
-      {revoke.error ? <p role="alert" className="text-blocked">{revoke.error.message}</p> : null}
+      {revoke.error ? <ErrorNote>{revoke.error.message}</ErrorNote> : null}
       {tokens.isPending ? <LoadingState label="Loading API tokens…" /> : null}
 
       {tokens.data?.tokens.length === 0 ? (
@@ -211,11 +221,13 @@ export function ApiTokens() {
       {tokens.data && tokens.data.tokens.length > 0 ? (
         <>
           {form}
-          <ul className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
+          <div className="border-y border-grey-200">
+          <List hasDividers density="balanced" edge="flush" aria-label="API tokens">
             {tokens.data.tokens.map((token) => (
-              <li key={token.id} className="flex flex-wrap items-center gap-3 border-t border-grey-200 px-3 py-3 first:border-t-0">
+              <ListItem key={token.id} itemKey={token.id} label={(
+              <div className="flex flex-wrap items-center gap-3 py-1">
                 <div className="min-w-0 flex-1">
-                  <p className="break-all">{token.name}</p>
+                  <Text as="p" weight="medium" display="block" className="break-all">{token.name}</Text>
                   <p className="break-words text-xs text-grey-700">
                     {token.kind === 'desktop' ? 'Desktop app · All organisations, current roles' : token.kind === 'setup' ? 'Machine setup key' : token.project_key ? <>{token.parent_id ? 'Derived project key' : 'Project key'} · {token.workspace_slug} / {token.project_key}</> : 'Personal token'}
                   </p>
@@ -242,22 +254,23 @@ export function ApiTokens() {
                 >
                   Revoke
                 </Button>
-                {confirmingId === token.id ? (
-                  <div className="basis-full border border-grey-200 bg-grey-100 p-2" role="group" aria-label={`Confirm revocation of ${token.name}`}>
-                    <p className="text-sm">Revoke {token.name}? {token.kind === 'setup'
-                      ? 'This revokes the machine setup key and all project keys derived from it. Every repository using those keys will stop working.'
-                      : 'Any clients using it will stop working.'}</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Button variant="danger" disabled={revoke.isPending} onClick={() => revoke.mutate(token.id)}>
-                        {revoke.isPending ? 'Revoking…' : 'Confirm revoke'}
-                      </Button>
-                      <Button disabled={revoke.isPending} onClick={() => setConfirmingId(null)}>Cancel</Button>
-                    </div>
-                  </div>
-                ) : null}
-              </li>
+                <ConfirmDialog
+                  open={confirmingId === token.id}
+                  onClose={() => { revoke.reset(); setConfirmingId(null) }}
+                  title={`Revoke ${token.name}?`}
+                  description={token.kind === 'setup'
+                    ? 'This revokes the machine setup key and all project keys derived from it. Every repository using those keys will stop working.'
+                    : 'Any clients using it will stop working.'}
+                  actionLabel="Confirm revoke"
+                  pending={revoke.isPending}
+                  error={revoke.error ? `${revoke.error.message} Try again, or cancel.` : null}
+                  onConfirm={() => revoke.mutate(token.id)}
+                />
+              </div>
+              )} />
             ))}
-          </ul>
+          </List>
+          </div>
         </>
       ) : null}
 

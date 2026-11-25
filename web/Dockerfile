@@ -1,7 +1,7 @@
 FROM node:22-alpine AS build
 WORKDIR /src
 RUN npm install -g pnpm@12.16.1
-COPY web/package.json web/pnpm-lock.yaml ./
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY web/ ./
 RUN pnpm run build

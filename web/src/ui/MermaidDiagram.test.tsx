@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 
 import { Markdown } from './Markdown'
 import { renderDiagram } from './mermaid'
+import { pageStatus } from '../test-utils'
 
 vi.mock('./mermaid', () => ({
   renderDiagram: vi.fn(),
@@ -46,9 +47,26 @@ describe('Mermaid Markdown', () => {
     let resolve!: (svg: string) => void
     vi.mocked(renderDiagram).mockImplementation(() => new Promise(done => { resolve = done }))
     render(<StrictMode><Markdown source={'```mermaid\nflowchart LR\nA-->B\n```'} /></StrictMode>)
-    expect(screen.getByRole('status')).toHaveTextContent('Rendering diagram')
+    expect(pageStatus()).toHaveTextContent('Rendering diagram')
     resolve('<svg></svg>')
     await screen.findByTitle('Rendered Mermaid diagram')
+  })
+
+  it('switches between the diagram and its source, and opens it larger', async () => {
+    render(<Markdown source={'```mermaid\nflowchart LR\nA-->B\n```'} />)
+    await screen.findByTitle('Rendered Mermaid diagram')
+    expect(screen.getByRole('radio', { name: 'Diagram' })).toBeChecked()
+    await userEvent.click(screen.getByRole('radio', { name: 'Source' }))
+    expect(screen.getByRole('radio', { name: 'Source' })).toBeChecked()
+    expect(screen.getByText(/flowchart LR/)).toBeVisible()
+    expect(screen.queryByTitle('Rendered Mermaid diagram')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('radio', { name: 'Diagram' }))
+    // jsdom has no modal dialogs, so stand in for the two calls Astryx makes.
+    HTMLDialogElement.prototype.showModal = function showModal() { this.open = true }
+    HTMLDialogElement.prototype.close = function close() { this.open = false }
+    await userEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    expect(await screen.findByTitle('Expanded Mermaid diagram')).toHaveAttribute('sandbox', '')
+    expect(screen.getByRole('dialog', { name: 'Mermaid diagram' })).toBeInTheDocument()
   })
 
   it('can retry a transient rendering failure', async () => {

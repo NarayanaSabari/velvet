@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import type { Membership } from '../../lib/types'
-import { SectionHeader } from '../../ui/PageHeader'
 import { LinkedRepositories } from '../onboarding/AgentSetup'
 import { onboardingQuery } from '../onboarding/onboardingQuery'
 import { RepoSetup } from '../onboarding/RepoSetup'
@@ -30,8 +29,9 @@ export function AgentConfig({ workspace }: { workspace: Membership }) {
   const baseUrl = setup.data?.base_url ?? window.location.origin
 
   return (
-    <section id={AGENT_CONFIG_ANCHOR} className="scroll-mt-4 space-y-3" aria-labelledby="agent-config-heading">
-      <SectionHeader id="agent-config-heading" title="Agent config" />
+    // The page title already says "Agent config", so the section is named
+    // for assistive technology without repeating it on the page.
+    <section id={AGENT_CONFIG_ANCHOR} className="scroll-mt-4 space-y-3" aria-label="Agent config">
       <p className="max-w-[46rem] text-grey-500 [overflow-wrap:anywhere]">
         Connect Claude Code, Codex, Cursor, or any agent that can run commands, so it logs your work in {workspace.workspace_name} as you go.
       </p>

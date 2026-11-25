@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -76,7 +77,40 @@ type IssueFilter struct {
 	Statuses    []string
 	Cursor      string
 	Limit       int
+	// GroupByStatus orders by workflow status, then by priority with the
+	// most urgent first, then by position. A paged list can then be read as
+	// status groups that never split out of order, each led by urgent work.
+	GroupByStatus bool
 }
+
+// issueStatusOrder is the order status groups are read in: work under way
+// first, finished work last. It matches the sprint page's grouping.
+var issueStatusOrder = []string{"in_progress", "in_review", "todo", "backlog", "done", "cancelled"}
+
+func issueStatusRank(status string) int {
+	for rank, name := range issueStatusOrder {
+		if name == status {
+			return rank + 1
+		}
+	}
+	return len(issueStatusOrder) + 1
+}
+
+// The SQL twin of issueStatusRank. Unknown statuses sort last in both.
+const issueStatusRankSQL = `COALESCE(array_position(
+	ARRAY['in_progress','in_review','todo','backlog','done','cancelled'], i.status::text), 7)`
+
+// issuePriorityRank orders P1 first and P4 last. Priority 0 means none was
+// set, so it follows every issue that has one.
+func issuePriorityRank(priority int) int {
+	if priority == 0 {
+		return 5
+	}
+	return priority
+}
+
+// The SQL twin of issuePriorityRank.
+const issuePriorityRankSQL = `CASE WHEN i.priority = 0 THEN 5 ELSE i.priority END`
 
 const (
 	defaultIssueLimit = 50
@@ -269,9 +303,17 @@ func (s *Store) ListIssues(ctx context.Context, workspaceID uuid.UUID, f IssueFi
 		limit = maxIssueLimit
 	}
 
-	cursorPosition, cursorID, err := decodeIssueCursor(f.Cursor)
+	cursorRank, cursorPosition, cursorID, err := decodeIssueCursor(f.Cursor)
 	if err != nil {
 		return nil, "", err
+	}
+	var cursorStatusRank, cursorPriorityRank *int
+	if cursorRank != nil {
+		cursorStatusRank, cursorPriorityRank = &cursorRank.status, &cursorRank.priority
+	}
+	// A cursor only continues the ordering it was issued under.
+	if f.Cursor != "" && (cursorRank != nil) != f.GroupByStatus {
+		return nil, "", fmt.Errorf("%w: cursor is not valid", ErrInvalidCursor)
 	}
 
 	var statuses []string
@@ -290,16 +332,21 @@ func (s *Store) ListIssues(ctx context.Context, workspaceID uuid.UUID, f IssueFi
 		  AND ($4::uuid IS NULL OR i.assignee_id = $4)
 		  AND ($5::text[] IS NULL OR i.status::text = ANY($5))
 		  AND ($6::uuid IS NULL OR i.project_id = $6)
-		  AND ($7::text IS NULL OR (i.position, i.id) > ($7, $8::uuid))
+		  AND ($7::text IS NULL OR
+		       (CASE WHEN $14::boolean THEN `+issueStatusRankSQL+` ELSE 0 END,
+		        CASE WHEN $14::boolean THEN `+issuePriorityRankSQL+` ELSE 0 END, i.position, i.id)
+		       > (COALESCE($15::int, 0), COALESCE($16::int, 0), $7, $8::uuid))
 		  AND (NOT $10::boolean OR i.assignee_id IS NULL)
 		  AND (NOT $11::boolean OR i.project_id IS NULL)
 		  AND ($12::int IS NULL OR i.priority = $12)
 		  AND ($13::text = '' OR strpos(lower(i.key), lower($13)) > 0
 		       OR strpos(lower(i.title), lower($13)) > 0 OR strpos(lower(i.description), lower($13)) > 0)
-		ORDER BY i.position, i.id
+		ORDER BY CASE WHEN $14::boolean THEN `+issueStatusRankSQL+` ELSE 0 END,
+		         CASE WHEN $14::boolean THEN `+issuePriorityRankSQL+` ELSE 0 END, i.position, i.id
 		LIMIT $9`,
 		workspaceID, f.MilestoneID, f.SprintID, f.AssigneeID, statuses,
-		f.ProjectID, cursorPosition, cursorID, limit+1, f.Unassigned, f.Unfiled, f.Priority, f.Search)
+		f.ProjectID, cursorPosition, cursorID, limit+1, f.Unassigned, f.Unfiled, f.Priority, f.Search,
+		f.GroupByStatus, cursorStatusRank, cursorPriorityRank)
 	if err != nil {
 		return nil, "", err
 	}
@@ -326,7 +373,13 @@ func (s *Store) ListIssues(ctx context.Context, workspaceID uuid.UUID, f IssueFi
 	if len(out) > limit {
 		out = out[:limit]
 		last := out[len(out)-1]
-		next = encodeIssueCursor(last.Position, last.ID)
+		if f.GroupByStatus {
+			next = encodeGroupedIssueCursor(
+				issueCursorRank{status: issueStatusRank(last.Status), priority: issuePriorityRank(last.Priority)},
+				last.Position, last.ID)
+		} else {
+			next = encodeIssueCursor(last.Position, last.ID)
+		}
 	}
 	return out, next, nil
 }
@@ -358,23 +411,46 @@ func encodeIssueCursor(position string, id uuid.UUID) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(position + "|" + id.String()))
 }
 
-func decodeIssueCursor(cursor string) (*string, *uuid.UUID, error) {
+// issueCursorRank is the part of a grouped cursor that precedes position.
+type issueCursorRank struct{ status, priority int }
+
+// A grouped cursor leads with the status and priority ranks, which is how it
+// is told apart from a plain one: position keys never contain the separator.
+func encodeGroupedIssueCursor(rank issueCursorRank, position string, id uuid.UUID) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(
+		strconv.Itoa(rank.status) + "|" + strconv.Itoa(rank.priority) + "|" + position + "|" + id.String()))
+}
+
+// decodeIssueCursor returns a nil rank for a plain cursor and the ranks for
+// one issued while grouping by status.
+func decodeIssueCursor(cursor string) (*issueCursorRank, *string, *uuid.UUID, error) {
+	invalid := fmt.Errorf("%w: cursor is not valid", ErrInvalidCursor)
 	if cursor == "" {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: cursor is not valid", ErrInvalidCursor)
+		return nil, nil, nil, invalid
 	}
-	position, rawID, found := strings.Cut(string(raw), "|")
-	if !found {
-		return nil, nil, fmt.Errorf("%w: cursor is not valid", ErrInvalidCursor)
+	parts := strings.Split(string(raw), "|")
+	var rank *issueCursorRank
+	if len(parts) == 4 {
+		status, statusErr := strconv.Atoi(parts[0])
+		priority, priorityErr := strconv.Atoi(parts[1])
+		if statusErr != nil || priorityErr != nil || status < 1 || priority < 1 {
+			return nil, nil, nil, invalid
+		}
+		rank = &issueCursorRank{status: status, priority: priority}
+		parts = parts[2:]
 	}
-	id, err := uuid.Parse(rawID)
+	if len(parts) != 2 {
+		return nil, nil, nil, invalid
+	}
+	id, err := uuid.Parse(parts[1])
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: cursor is not valid", ErrInvalidCursor)
+		return nil, nil, nil, invalid
 	}
-	return &position, &id, nil
+	return rank, &parts[0], &id, nil
 }
 
 // GetIssueByKey loads the issue with its labels and its direct children, which

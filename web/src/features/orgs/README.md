@@ -5,7 +5,7 @@ Create and leave organisations (workspaces).
 
 ## Interface
 - `NewOrganisation({ navigate, publicLayout })` (`NewOrganisation.tsx`).
-- `LeaveOrganisation` (`LeaveOrganisation.tsx`).
+- `LeaveOrganisationDialog` (`LeaveOrganisation.tsx`), opened from the account menu.
 
 ## Invariants
 - Both take an injectable `navigate` for tests.

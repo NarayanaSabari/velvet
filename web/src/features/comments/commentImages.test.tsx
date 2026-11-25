@@ -22,7 +22,7 @@ describe('comment images', () => {
     }]} />)
     const img = screen.getByRole('img', { name: 'Login screen' })
     expect(img).toHaveAttribute('src', image.content_url)
-    expect(screen.getByRole('link', { name: 'Open full image: Login screen (new tab)' })).toHaveAttribute('href', image.content_url)
+    expect(screen.getByRole('button', { name: 'View image: Login screen' })).toBeInTheDocument()
   })
 
   it('refuses an image URL from another workspace', () => {
@@ -32,7 +32,8 @@ describe('comment images', () => {
       body: 'Proof below', created_at: '2026-01-01T00:00:00Z', edited_at: null, deleted_at: null,
       images: [image],
     }]} />)
-    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    // The author's avatar is also announced as an image, so look for a picture element.
+    expect(document.querySelector('img')).toBeNull()
     expect(screen.getByText('Image preview unavailable.')).toBeInTheDocument()
   })
 

@@ -1,5 +1,10 @@
+import { FormDialog } from '../../ui/FormDialog'
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
+import { Card } from '@astryxdesign/core/Card'
+import { Heading } from '@astryxdesign/core/Heading'
+import { List, ListItem } from '@astryxdesign/core/List'
 
 import { api } from '../../lib/api'
 import type { DashboardPayload, Issue, Milestone } from '../../lib/types'
@@ -16,24 +21,30 @@ import { IssueForm, type IssueInput } from '../work/CoreForms'
 import { useWorkLinks } from '../work/workLinks'
 import { formatDay } from '../../lib/formatDate'
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="mb-6">
-      <SectionHeader title={title} />
+      <SectionHeader title={title} action={action} />
       {children}
     </section>
   )
 }
 
+// The same row as the Issues page: the whole row is one link, with the key
+// in a fixed column so titles line up down the list.
 function IssueLine({ slug, issue }: { slug: string; issue: Issue }) {
   return (
-    <div className="flex items-center gap-2 sm:items-start sm:py-1">
-      <NavLink to={`/w/${slug}/issues/${issue.key}`} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 sm:min-h-0 sm:items-start">
-        <span className="shrink-0 text-grey-700">{issue.key}</span>
-        <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{issue.title}</span>
-      </NavLink>
-      <StatusBadge status={issue.status} />
-    </div>
+    <ListItem
+      itemKey={issue.id}
+      href={`/w/${slug}/issues/${issue.key}`}
+      label={(
+        <span className="grid min-w-0 grid-cols-[5rem_minmax(0,1fr)] items-baseline gap-x-2">
+          <span className="font-mono text-xs text-grey-500">{issue.key}</span>
+          <span className="min-w-0 text-sm font-medium text-ink [overflow-wrap:anywhere]">{issue.title}</span>
+        </span>
+      )}
+      endContent={<StatusBadge status={issue.status} />}
+    />
   )
 }
 
@@ -62,9 +73,14 @@ function MilestoneSummary({ slug, milestone }: { slug: string; milestone: Milest
       <NavLink to={`/w/${slug}/milestones/${milestone.id}`} className="flex min-h-11 min-w-0 flex-1 items-center [overflow-wrap:anywhere] sm:block sm:min-h-0">
         {milestone.name}
       </NavLink>
-      <span className="shrink-0 text-grey-500">
-        {counts.done ?? 0}/{total}
-      </span>
+      {/* "0/0" reads like nothing got done; an empty milestone says so instead. */}
+      {total === 0 ? (
+        <span className="shrink-0 text-grey-500">No issues yet</span>
+      ) : (
+        <span className="shrink-0 tabular-nums text-grey-500" aria-label={`${counts.done ?? 0} of ${total} issues done`}>
+          {counts.done ?? 0}/{total}
+        </span>
+      )}
     </div>
   )
 }
@@ -88,7 +104,7 @@ export function Dashboard({ slug }: { slug: string }) {
     <PageHeader
       title="Dashboard"
       description="Each project's current sprint, your assigned work, and latest activity in one view."
-      actions={canWrite && !creatingIssue && query.data ? (
+      actions={canWrite && query.data ? (
         <Button variant="primary" onClick={() => setCreatingIssue(true)}>New issue</Button>
       ) : undefined}
     />
@@ -121,14 +137,7 @@ export function Dashboard({ slug }: { slug: string }) {
       <ConnectAgentCard slug={slug} />
 
       {canWrite && creatingIssue ? (
-        <section className="ui-surface mb-6 p-4" aria-labelledby="dashboard-new-issue-heading">
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 id="dashboard-new-issue-heading" className="font-medium">New issue</h2>
-              <p className="mt-1 text-sm text-grey-500">Capture work now. Project and milestone are optional.</p>
-            </div>
-            <Button onClick={() => setCreatingIssue(false)}>Cancel</Button>
-          </div>
+        <FormDialog title="New issue" description="Capture work now. Project and milestone are optional." onClose={() => setCreatingIssue(false)}>
           <IssueForm
             links={{ projects: links.projects, milestones: links.milestones }}
             onSubmit={async (input) => {
@@ -136,16 +145,18 @@ export function Dashboard({ slug }: { slug: string }) {
               setCreatingIssue(false)
             }}
           />
-        </section>
+        </FormDialog>
       ) : null}
 
       {data.unread_mentions > 0 ? (
-        <p className="ui-surface mb-6 bg-grey-100 px-3 py-2 text-sm">
-          <NavLink to={`/w/${slug}/mentions`} className="underline">
-            {data.unread_mentions} unread{' '}
-            {data.unread_mentions === 1 ? 'mention' : 'mentions'}
-          </NavLink>
-        </p>
+        <div className="mb-6">
+          <Card padding={4}>
+            <NavLink to={`/w/${slug}/mentions`} className="text-sm underline">
+              {data.unread_mentions} unread{' '}
+              {data.unread_mentions === 1 ? 'mention' : 'mentions'}
+            </NavLink>
+          </Card>
+        </div>
       ) : null}
 
       <div className="grid gap-x-8 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,30rem)]">
@@ -187,13 +198,21 @@ export function Dashboard({ slug }: { slug: string }) {
               <EmptyState title="Nothing assigned to you" message="Enjoy the quiet." />
             ) : (
               groups.map(([id, group]) => (
-                <div key={id} className="mb-3">
-                  <h3 className="text-sm text-grey-500">{group.name}</h3>
-                  <div className="divide-y divide-grey-200 border-y border-grey-200">
+                <div key={id} className="border-b border-grey-200" data-testid="dashboard-issue-group">
+                  <List
+                    hasDividers
+                    density="balanced"
+                    edge="flush"
+                    header={(
+                      <div className="px-2 pt-4 pb-2">
+                        <Heading level={3}>{group.name}</Heading>
+                      </div>
+                    )}
+                  >
                     {group.issues.map((issue) => (
                       <IssueLine key={issue.id} slug={slug} issue={issue} />
                     ))}
-                  </div>
+                  </List>
                 </div>
               ))
             )}
@@ -201,16 +220,29 @@ export function Dashboard({ slug }: { slug: string }) {
         </div>
 
         <div className="min-w-0">
-          <Section title="My recent activity">
+          <Section
+            title="My recent activity"
+            action={(
+              <NavLink to={`/w/${slug}/feed`} className="text-grey-500 underline hover:text-ink">
+                See team feed
+              </NavLink>
+            )}
+          >
             {data.activity.length === 0 ? (
               <EmptyState title="No activity yet" />
             ) : (
-              <div className="divide-y divide-grey-200 border-y border-grey-200">
-                {data.activity.map((a) => (
-                  <div key={a.id} className="py-1.5">
-                    <ActivityRow activity={a} />
-                  </div>
-                ))}
+              // These rows are not links themselves: each one carries its
+              // own links to the issue, milestone or pull request it names.
+              <div className="border-b border-grey-200">
+                <List hasDividers density="balanced" edge="flush" aria-label="My recent activity">
+                  {data.activity.map((a) => (
+                    <ListItem
+                      key={a.id}
+                      itemKey={a.id}
+                      label={<ActivityRow activity={a} slug={slug} hideActor />}
+                    />
+                  ))}
+                </List>
               </div>
             )}
           </Section>

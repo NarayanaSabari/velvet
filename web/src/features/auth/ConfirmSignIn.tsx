@@ -1,3 +1,7 @@
+import { LoadingState } from '../../ui/QueryState'
+import { ErrorNote } from '../../ui/ErrorNote'
+import { Text } from '@astryxdesign/core/Text'
+
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '../../lib/api'
@@ -21,12 +25,19 @@ export function ConfirmSignIn({ navigate = navigateTo }: { navigate?: (to: strin
     },
   })
   if (!token) return <Expired />
-  return <PublicAuthPage title="Confirm sign-in">
-    <div className="space-y-4">
-      <p className="text-grey-500">Sign in to Velvet using the link sent to your email.</p>
-      <Button className="min-h-12 w-full" variant="primary" disabled={confirm.isPending} onClick={() => confirm.mutate()}>{confirm.isPending ? 'Signing in…' : 'Sign in'}</Button>
-      {confirm.isPending ? <p role="status" className="text-grey-500">Signing in…</p> : null}
-      {confirm.error ? <p role="alert" className="text-blocked">{confirm.error.message}</p> : null}
-    </div>
-  </PublicAuthPage>
+
+  return (
+    <PublicAuthPage
+      title="Confirm sign-in"
+      lead="You opened a sign-in link. Choose Sign in to finish on this device."
+    >
+      <div className="space-y-4">
+        <Button className="min-h-12 w-full" variant="primary" disabled={confirm.isPending} onClick={() => confirm.mutate()}>{confirm.isPending ? 'Signing in…' : 'Sign in'}</Button>
+        {confirm.isPending ? <LoadingState className="">Signing in…</LoadingState> : null}
+        {confirm.error
+          ? <ErrorNote>{confirm.error.message}</ErrorNote>
+          : <Text as="p" type="supporting" color="secondary" display="block">Didn’t ask for this? Close this page and nothing happens.</Text>}
+      </div>
+    </PublicAuthPage>
+  )
 }

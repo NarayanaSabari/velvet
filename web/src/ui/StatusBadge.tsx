@@ -1,3 +1,5 @@
+import { Badge } from '@astryxdesign/core/Badge'
+
 import type { IssueStatus } from '../lib/types'
 
 const LABELS: Record<IssueStatus, string> = {
@@ -11,20 +13,8 @@ const LABELS: Record<IssueStatus, string> = {
 
 // Colour appears only on `done`, and never as the sole signal: the label text
 // carries the status on its own.
-const TONE: Partial<Record<IssueStatus, string>> = {
-  done: 'border-done text-done',
-}
-
 export function StatusBadge({ status }: { status: IssueStatus }) {
-  return (
-    <span
-      className={`inline-block border px-1 text-xs whitespace-nowrap ${
-        TONE[status] ?? 'border-grey-300 bg-grey-100 text-grey-700'
-      }`}
-    >
-      {LABELS[status]}
-    </span>
-  )
+  return <Badge variant={status === 'done' ? 'success' : 'neutral'} label={LABELS[status]} />
 }
 
 export { LABELS as STATUS_LABELS }

@@ -1,3 +1,7 @@
+import { ErrorNote } from '../../ui/ErrorNote'
+import { List, ListItem } from '@astryxdesign/core/List'
+import { Text } from '@astryxdesign/core/Text'
+
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
@@ -11,6 +15,7 @@ import { RelativeTime } from '../../ui/RelativeTime'
 import { useSession } from '../auth/useSession'
 import { pullRequestStateLabel } from './pullRequestState'
 import { SuggestionLine } from './SuggestionLine'
+import { TextField } from '../../ui/fields'
 
 /**
  * Pull requests the linker could not match to an issue, plus project notes
@@ -70,13 +75,15 @@ export function UnlinkedPRs({ slug }: { slug: string }) {
       ) : (
         <>
           {suggested > 0 ? (
-            <p className="mb-2 text-xs text-grey-500">{suggested} of {prs.length} have a suggested issue.</p>
+            <Text as="p" type="supporting" color="secondary" display="block" className="mb-2">{suggested} of {prs.length} have a suggested issue.</Text>
           ) : null}
-          <ul aria-label="Unlinked pull requests" className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
-            {prs.map((pr) => (
-              <UnlinkedRow key={pr.id} pr={pr} slug={slug} canWrite={canWrite} />
-            ))}
-          </ul>
+          <div className="border-y border-grey-200">
+            <List hasDividers density="balanced" edge="flush" aria-label="Unlinked pull requests">
+              {prs.map((pr) => (
+                <UnlinkedRow key={pr.id} pr={pr} slug={slug} canWrite={canWrite} />
+              ))}
+            </List>
+          </div>
         </>
       )}
 
@@ -117,12 +124,14 @@ function SuggestedNotes({
   return (
     <section aria-labelledby="suggested-notes" className="mt-8">
       <SectionHeader id="suggested-notes" title="Notes that may belong on an issue" meta={notes.length} />
-      <p className="mb-2 text-xs text-grey-500">
+      <Text as="p" type="supporting" color="secondary" display="block" className="mb-2">
         Logged against a project. Filing one moves it, with its replies, onto the issue's log.
-      </p>
-      <ul className="overflow-hidden rounded-[var(--radius-surface)] border border-grey-200">
+      </Text>
+      <div className="border-b border-grey-200">
+      <List hasDividers density="balanced" edge="flush" aria-label="Notes that may belong on an issue">
         {notes.map((note) => (
-          <li key={note.comment.id} className="border-t border-grey-200 px-3 py-3 text-sm first:border-t-0">
+          <ListItem key={note.comment.id} itemKey={note.comment.id} label={(
+          <div className="min-w-0 py-1 text-sm">
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-grey-500">
               <span className="font-mono">{note.project_key}</span>
               <span>{note.comment.author.name || note.comment.author.github_login}</span>
@@ -137,9 +146,11 @@ function SuggestedNotes({
               canWrite={canWrite}
               invalidate={[['suggested-notes', slug]]}
             />
-          </li>
+          </div>
+          )} />
         ))}
-      </ul>
+      </List>
+      </div>
     </section>
   )
 }
@@ -168,7 +179,8 @@ function UnlinkedRow({ pr, slug, canWrite }: { pr: PullRequest; slug: string; ca
   const merged = pr.state === 'merged' || Boolean(pr.merged_at)
 
   return (
-    <li className="border-t border-grey-200 px-3 py-3 text-sm first:border-t-0">
+    <ListItem itemKey={pr.id} label={(
+    <div className="min-w-0 py-1 text-sm">
       <div className="flex flex-wrap items-baseline gap-2">
         <a className="inline-flex min-h-11 items-center text-grey-500 underline sm:min-h-0" href={pr.html_url} target="_blank" rel="noreferrer">
           #{pr.number}
@@ -205,25 +217,24 @@ function UnlinkedRow({ pr, slug, canWrite }: { pr: PullRequest; slug: string; ca
           if (key.trim()) attach.mutate(key)
         }}
       >
-        <label className="sr-only" htmlFor={`attach-${pr.id}`}>
-          Issue key for pull request {pr.number}
-        </label>
-        <input
-          id={`attach-${pr.id}`}
-          className="ui-control min-h-9 w-32 px-2 py-1 text-sm"
+        <TextField
+          className="w-32"
+          label={`Issue key for pull request ${pr.number}`}
+          hideLabel
           placeholder="ENG-42"
           value={key}
-          onChange={(event) => {
-            setKey(event.target.value)
+          onChange={(value) => {
+            setKey(value)
             setError(null)
           }}
         />
         <Button type="submit" disabled={!key.trim() || attach.isPending}>
           {attach.isPending ? 'Attaching…' : 'Attach'}
         </Button>
-        {error ? <span className="text-blocked">{error}</span> : null}
+        {error ? <ErrorNote className="basis-full">{error}</ErrorNote> : null}
       </form>
       ) : null}
-    </li>
+    </div>
+    )} />
   )
 }

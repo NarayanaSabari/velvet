@@ -202,7 +202,7 @@ test('merging a PR leaves completion to a human status choice', async ({
 
   await page.goto('/w/lab/issues/ENG-1')
   await expect(page.getByText('PR #42 merged', { exact: true })).toBeVisible()
-  const status = page.getByRole('button', { name: 'Status' })
+  const status = page.getByRole('combobox', { name: 'Status' })
   await expect(status).toHaveAttribute('data-current-status', 'backlog')
 
   // The merged event is evidence only. The redesigned status control records

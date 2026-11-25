@@ -1,6 +1,11 @@
-import { useId, useRef, useState, type KeyboardEvent } from 'react'
+import { ErrorNote } from '../../ui/ErrorNote'
+import { useRef, useState, type KeyboardEvent } from 'react'
+import { SegmentedControl, SegmentedControlItem } from '@astryxdesign/core/SegmentedControl'
+import { Text } from '@astryxdesign/core/Text'
+import { Token } from '@astryxdesign/core/Token'
 
 import { Button } from '../../ui/Button'
+import { TextAreaField } from '../../ui/fields'
 import { Markdown } from '../../ui/Markdown'
 
 function submitShortcut() {
@@ -24,7 +29,6 @@ export function CommentComposer({
   const [failed, setFailed] = useState(false)
   const [attachFailed, setAttachFailed] = useState(false)
   const [preview, setPreview] = useState(false)
-  const editorId = useId()
   const editor = useRef<HTMLTextAreaElement>(null)
   const picker = useRef<HTMLInputElement>(null)
   const draftVersion = useRef(0)
@@ -84,17 +88,18 @@ export function CommentComposer({
   }
 
   return (
-    <div className="mt-3 [&_button]:min-h-11 sm:[&_button]:min-h-9">
-      <label htmlFor={editorId} className="mb-1 block text-sm font-medium">Comment</label>
-      <div className="min-w-0 rounded-[var(--radius-control)] border border-grey-300 bg-paper">
-        <div className="flex flex-wrap items-center gap-1 border-b border-grey-200 p-2">
-          <Button variant={preview ? 'ghost' : 'secondary'} aria-pressed={!preview} onClick={() => setPreview(false)}>
-            Write
-          </Button>
-          <Button variant={preview ? 'secondary' : 'ghost'} aria-pressed={preview} onClick={() => setPreview(true)}>
-            Preview
-          </Button>
-          <Button variant="ghost" className="ml-auto" onClick={insertDiagram}>+ Diagram</Button>
+    <div className="mt-4">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <SegmentedControl
+          label="Comment view"
+          value={preview ? 'preview' : 'write'}
+          onChange={(next) => setPreview(next === 'preview')}
+        >
+          <SegmentedControlItem value="write" label="Write" />
+          <SegmentedControlItem value="preview" label="Preview" />
+        </SegmentedControl>
+        <div className="ml-auto flex flex-wrap gap-1">
+          <Button variant="ghost" onClick={insertDiagram}>+ Diagram</Button>
           {onAttach ? (
             <>
               <Button variant="ghost" onClick={() => picker.current?.click()}>+ Images</Button>
@@ -113,52 +118,53 @@ export function CommentComposer({
             </>
           ) : null}
         </div>
-        <textarea
+      </div>
+      {/* Hidden, not unmounted, during a preview: the draft keeps its
+          selection, so a diagram still lands where the cursor was. */}
+      <div hidden={preview}>
+        <TextAreaField
           ref={editor}
-          id={editorId}
-          hidden={preview}
-          aria-describedby={`${editorId}-help`}
-          className="min-h-28 w-full rounded-b-[var(--radius-control)] bg-paper px-3 py-2 text-sm"
-          rows={3}
+          label="Comment"
+          hideLabel
+          description="Markdown and Mermaid diagrams supported."
+          rows={4}
           value={body}
           placeholder={placeholder}
-          onChange={(e) => {
+          onChange={(next) => {
             draftVersion.current += 1
-            setBody(e.target.value)
+            setBody(next)
           }}
           onKeyDown={onKeyDown}
         />
-        {preview ? (
-          <div role="region" aria-label="Comment preview" className="min-h-28 min-w-0 p-3">
-            {body.trim() ? <Markdown source={body} /> : <p className="text-sm text-grey-500">Nothing to preview yet.</p>}
-          </div>
-        ) : null}
       </div>
+      {preview ? (
+        <div role="region" aria-label="Comment preview" className="min-h-28 min-w-0 rounded-[var(--radius-control)] border border-grey-200 p-3">
+          {body.trim() ? <Markdown source={body} /> : <Text color="secondary">Nothing to preview yet.</Text>}
+        </div>
+      ) : null}
       {files.length ? (
-        <ul className="mt-2 flex flex-wrap gap-2 text-xs" aria-label="Images to attach">
+        <ul className="mt-2 flex flex-wrap gap-2" aria-label="Images to attach">
           {files.map((file, index) => (
-            <li key={`${file.name}-${index}`} className="flex items-center gap-1 rounded-[var(--radius-control)] border border-grey-200 px-2 py-1">
-              <span className="max-w-48 truncate">{file.name}</span>
-              <Button variant="ghost" aria-label={`Remove ${file.name}`} onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}>×</Button>
+            <li key={`${file.name}-${index}`}>
+              <Token label={file.name} onRemove={() => setFiles((current) => current.filter((_, i) => i !== index))} />
             </li>
           ))}
         </ul>
       ) : null}
-      <p id={`${editorId}-help`} className="mt-1 text-xs text-grey-500">Markdown and Mermaid diagrams supported.</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button variant="primary" disabled={busy} onClick={() => void submit()}>
           {busy ? 'Commenting…' : 'Comment'}
         </Button>
-        <span className="text-xs text-grey-500">{submitShortcut()} to post</span>
+        <Text type="supporting" color="secondary">{submitShortcut()} to post</Text>
         {failed ? (
-          <span role="alert" className="text-xs text-blocked">
+          <ErrorNote>
             Could not post. Your draft is still here - try again.
-          </span>
+          </ErrorNote>
         ) : null}
         {attachFailed ? (
-          <span role="alert" className="text-xs text-blocked">
+          <ErrorNote>
             Comment posted, but the images did not upload. They stay listed for your next comment.
-          </span>
+          </ErrorNote>
         ) : null}
       </div>
     </div>

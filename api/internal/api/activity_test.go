@@ -96,6 +96,36 @@ func TestDashboardReturnsMyWorkAndMentions(t *testing.T) {
 	require.NotEmpty(t, dash.Activity)
 }
 
+// The dashboard is the caller's own view. A teammate's work belongs on the
+// team feed, so it must not appear under "My recent activity".
+func TestDashboardActivityIsOnlyTheCallers(t *testing.T) {
+	f := testutil.NewFixture(t)
+	createIssue(t, f, map[string]any{"title": "Mine"})
+
+	var teammate string
+	require.NoError(t, f.Pool.QueryRow(t.Context(),
+		`INSERT INTO app_user (email, name) VALUES ('teammate@example.com', 'Teammate') RETURNING id`).Scan(&teammate))
+	_, err := f.Pool.Exec(t.Context(), `
+		INSERT INTO activity (workspace_id, actor_id, verb, target_type, target_id, metadata)
+		SELECT id, $1, 'created_issue', 'issue', gen_random_uuid(), '{"title":"Theirs"}'
+		FROM workspace WHERE slug = 'lab'`, teammate)
+	require.NoError(t, err)
+
+	rec := f.Do(http.MethodGet, "/api/v1/w/lab/dashboard", nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var dash store.DashboardPayload
+	f.DecodeInto(rec, &dash)
+	require.NotEmpty(t, dash.Activity)
+	for _, a := range dash.Activity {
+		require.NotNil(t, a.Actor)
+		require.Equal(t, f.User.ID, a.Actor.ID)
+	}
+	require.NotContains(t, rec.Body.String(), "Theirs")
+
+	// The team feed still shows everyone.
+	require.Contains(t, f.Do(http.MethodGet, "/api/v1/w/lab/activity", nil).Body.String(), "Theirs")
+}
+
 func TestActivityOfAnotherWorkspaceIsInvisible(t *testing.T) {
 	f := testutil.NewFixture(t)
 

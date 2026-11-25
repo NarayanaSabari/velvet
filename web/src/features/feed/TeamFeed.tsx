@@ -1,3 +1,6 @@
+import { ErrorNote } from '../../ui/ErrorNote'
+import { List, ListItem } from '@astryxdesign/core/List'
+
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
@@ -10,6 +13,7 @@ import { useActivity, type ActivityFilters } from '../activity/useActivity'
 import { useSession } from '../auth/useSession'
 import { userLabel } from '../../lib/userLabel'
 import { membersQuery } from '../work/workLinks'
+import { SelectField } from '../../ui/fields'
 
 const VERBS = [
   'commented',
@@ -48,54 +52,39 @@ export function TeamFeed({ slug }: { slug: string }) {
         description="Follow the comments, status changes, evidence, and planning updates made across the organisation."
       />
 
-      <div className="ui-surface mb-4 grid gap-3 bg-grey-100 p-3 text-sm sm:grid-cols-3">
-        <label className="min-w-0">
-          <span className="mb-1 block text-xs text-grey-700">Person</span>
-          <select
-            className="ui-control min-h-10 w-full px-2 py-1 text-sm leading-5 md:min-h-8"
-            value={filters.actor_id ?? ''}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, actor_id: e.target.value || undefined }))
-            }
-          >
-            <option value="">Everyone</option>
-            {people.map((person) => (
-              <option key={person.id} value={person.id}>{userLabel(person)}</option>
-            ))}
-          </select>
-        </label>
+      {/* The filters sit on the page, as on Issues, with a rule beneath. */}
+      <div className="mb-2 grid gap-3 border-b border-grey-200 pb-4 sm:grid-cols-3 xl:max-w-3xl">
+        <SelectField
+          label="Person"
+          value={filters.actor_id ?? ''}
+          onChange={(value) => setFilters((f) => ({ ...f, actor_id: value || undefined }))}
+          options={[
+            { value: '', label: 'Everyone' },
+            ...people.map((person) => ({ value: person.id, label: userLabel(person) })),
+          ]}
+        />
 
-        <label className="min-w-0">
-          <span className="mb-1 block text-xs text-grey-700">Activity</span>
-          <select
-            aria-label="Verb"
-            className="ui-control min-h-10 w-full px-2 py-1 text-sm leading-5 md:min-h-8"
-            value={filters.verb ?? ''}
-            onChange={(e) => setFilters((f) => ({ ...f, verb: e.target.value || undefined }))}
-          >
-            <option value="">All activity</option>
-            {VERBS.map((verb) => (
-              <option key={verb} value={verb}>
-                {VERB_LABELS[verb]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SelectField
+          label="Activity"
+          aria-label="Verb"
+          value={filters.verb ?? ''}
+          onChange={(value) => setFilters((f) => ({ ...f, verb: value || undefined }))}
+          options={[
+            { value: '', label: 'All activity' },
+            ...VERBS.map((verb) => ({ value: verb, label: VERB_LABELS[verb] ?? verb })),
+          ]}
+        />
 
-        <label className="min-w-0">
-          <span className="mb-1 block text-xs text-grey-700">Work type</span>
-          <select
-            className="ui-control min-h-10 w-full px-2 py-1 text-sm leading-5 md:min-h-8"
-            value={filters.target_type ?? ''}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, target_type: e.target.value || undefined }))
-            }
-          >
-            <option value="">Issues and milestones</option>
-            <option value="issue">Issues</option>
-            <option value="milestone">Milestones</option>
-          </select>
-        </label>
+        <SelectField
+          label="Work type"
+          value={filters.target_type ?? ''}
+          onChange={(value) => setFilters((f) => ({ ...f, target_type: value || undefined }))}
+          options={[
+            { value: '', label: 'Issues and milestones' },
+            { value: 'issue', label: 'Issues' },
+            { value: 'milestone', label: 'Milestones' },
+          ]}
+        />
       </div>
 
       {query.isPending ? (
@@ -117,19 +106,19 @@ export function TeamFeed({ slug }: { slug: string }) {
           <EmptyState title="Nothing here yet" message="Activity appears as the team works." />
         )
       ) : (
-        <div className="divide-y divide-grey-200 rounded-[var(--radius-surface)] border border-grey-200">
-          {rows.map((a) => (
-            <div key={a.id} className="px-3 py-2 transition-colors hover:bg-grey-100">
-              <ActivityRow activity={a} />
-            </div>
-          ))}
+        <div className="border-b border-grey-200">
+          <List hasDividers density="balanced" edge="flush" aria-label="Team activity">
+            {rows.map((a) => (
+              <ListItem key={a.id} itemKey={a.id} label={<ActivityRow activity={a} slug={slug} />} />
+            ))}
+          </List>
         </div>
       )}
 
       {query.error && rows.length > 0 ? (
-        <p role="alert" className="mt-3 text-sm text-blocked">
+        <ErrorNote className="mt-3">
           Could not load more activity. Try again.
-        </p>
+        </ErrorNote>
       ) : null}
 
       {query.hasNextPage ? (

@@ -1,4 +1,10 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { ErrorNote } from '../../ui/ErrorNote'
+import { useEffect, useId, useState } from 'react'
+import { Card } from '@astryxdesign/core/Card'
+import { List, ListItem } from '@astryxdesign/core/List'
+import { StatusDot } from '@astryxdesign/core/StatusDot'
+import { Tab, TabList } from '@astryxdesign/core/TabList'
+import { Text } from '@astryxdesign/core/Text'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { Button } from '../../ui/Button'
@@ -30,43 +36,18 @@ function CopyTabs({ tabs, label, copyLabel, testId }: {
   const tabsId = useId()
   const [selected, setSelected] = useState(tabs[0]!.id)
   const current = tabs.find((tab) => tab.id === selected) ?? tabs[0]!
-  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
-
-  const moveTab = (offset: number) => {
-    const index = tabs.findIndex((tab) => tab.id === current.id)
-    const next = tabs[(index + offset + tabs.length) % tabs.length]!
-    setSelected(next.id)
-    tabRefs.current[next.id]?.focus()
-  }
 
   return (
     <div>
-      <div role="tablist" aria-label={label} className="flex flex-wrap gap-1 border-b border-grey-200">
+      <TabList role="tablist" value={current.id} onChange={setSelected} hasDivider aria-label={label}>
         {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            ref={(element) => { tabRefs.current[tab.id] = element }}
-            type="button"
-            role="tab"
-            id={`${tabsId}-${tab.id}`}
-            aria-selected={tab.id === current.id}
-            aria-controls={`${tabsId}-panel`}
-            tabIndex={tab.id === current.id ? 0 : -1}
-            onClick={() => setSelected(tab.id)}
-            onKeyDown={(event) => {
-              if (event.key === 'ArrowRight') { event.preventDefault(); moveTab(1) }
-              if (event.key === 'ArrowLeft') { event.preventDefault(); moveTab(-1) }
-            }}
-            className={`-mb-px min-h-11 border-b-2 px-3 text-sm ${tab.id === current.id ? 'border-ink font-medium text-ink' : 'border-transparent text-grey-700 hover:text-ink'}`}
-          >
-            {tab.label}
-          </button>
+          <Tab key={tab.id} value={tab.id} label={tab.label} panelId={`${tabsId}-panel`} />
         ))}
-      </div>
-      <div id={`${tabsId}-panel`} role="tabpanel" aria-labelledby={`${tabsId}-${current.id}`} className="space-y-3 pt-4">
-        <p className="text-sm text-grey-700 [overflow-wrap:anywhere]">{current.where}</p>
+      </TabList>
+      <div id={`${tabsId}-panel`} role="tabpanel" aria-label={current.label} className="space-y-3 pt-4">
+        <Text as="p" color="secondary" display="block" className="[overflow-wrap:anywhere]">{current.where}</Text>
         <CopyField label={copyLabel(current)} value={current.code} multiline testId={testId} />
-        {current.after ? <p className="text-xs text-grey-500 [overflow-wrap:anywhere]">{current.after}</p> : null}
+        {current.after ? <Text as="p" type="supporting" color="secondary" display="block" className="[overflow-wrap:anywhere]">{current.after}</Text> : null}
       </div>
     </div>
   )
@@ -115,35 +96,55 @@ export function LinkedRepositories({ slug, workspaceName }: { slug: string; work
       aria-live="polite"
       data-testid="agent-connection"
       data-connected={connected ? 'true' : 'false'}
-      className={`flex items-start gap-3 rounded-[var(--radius-surface)] border p-4 text-sm ${connected ? 'border-done' : 'border-grey-200'}`}
     >
-      <span
-        aria-hidden="true"
-        className={`mt-1.5 inline-block size-2 shrink-0 rounded-full ${connected ? 'bg-done' : linked.length ? 'bg-grey-500' : 'animate-pulse bg-grey-500 motion-reduce:animate-none'}`}
-      />
-      {linked.length === 0 ? (
-        <div>
-          <p className="font-medium">Waiting for velvet init…</p>
-          <p className="mt-1 text-grey-700">Approve velvet login in your browser, then run velvet init in the repository and choose its organisation and project in the terminal.</p>
+      <Card padding={5}>
+        <div className="flex items-start gap-3">
+          {/* The dot repeats what the words beside it say; it pulses only while waiting. */}
+          <span className="mt-1.5 shrink-0" aria-hidden="true">
+            <StatusDot
+              variant={connected ? 'success' : 'neutral'}
+              label={connected ? 'Connected' : linked.length ? 'Linked' : 'Waiting'}
+              isPulsing={linked.length === 0}
+            />
+          </span>
+          {linked.length === 0 ? (
+            <div>
+              <Text as="p" weight="semibold" display="block">Waiting for velvet init…</Text>
+              <Text as="p" color="secondary" display="block" className="mt-1">Approve velvet login in your browser, then run velvet init in the repository and choose its organisation and project in the terminal.</Text>
+            </div>
+          ) : (
+            <div className="min-w-0 flex-1">
+              <Text as="p" weight="semibold" display="block">{connected ? 'Your agent is connected.' : 'Repository linked.'}</Text>
+              <Text as="p" color="secondary" display="block" className="mt-1 [overflow-wrap:anywhere]">
+                {connected
+                  ? `Ask it to log what it just did, and the entry appears in ${workspaceName}.`
+                  : 'Run velvet whoami there to check it works.'}
+              </Text>
+              <div className="mt-3 border-t border-grey-200">
+                <List hasDividers density="compact" edge="flush" aria-label="Linked repositories">
+                  {linked.map((token) => (
+                    <ListItem
+                      key={token.id}
+                      itemKey={token.id}
+                      label={(
+                        <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 [overflow-wrap:anywhere]">
+                          <Text type="code">{token.project_key}</Text>
+                          <Text>{token.name}</Text>
+                        </span>
+                      )}
+                      endContent={(
+                        <Text type="supporting" color="secondary">
+                          {token.last_used_at ? <>last used <RelativeTime iso={token.last_used_at} /></> : 'not used yet'}
+                        </Text>
+                      )}
+                    />
+                  ))}
+                </List>
+              </div>
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="min-w-0">
-          <p className="font-medium">{connected ? 'Your agent is connected.' : 'Repository linked.'}</p>
-          <p className="mt-1 text-grey-700 [overflow-wrap:anywhere]">
-            {connected
-              ? `Ask it to log what it just did, and the entry appears in ${workspaceName}.`
-              : 'Run velvet whoami there to check it works.'}
-          </p>
-          <ul className="mt-2 space-y-1 text-xs text-grey-500" aria-label="Linked repositories">
-            {linked.map((token) => (
-              <li key={token.id} className="[overflow-wrap:anywhere]">
-                <span className="font-mono text-grey-700">{token.project_key}</span> · {token.name} ·{' '}
-                {token.last_used_at ? <>last used <RelativeTime iso={token.last_used_at} /></> : 'not used yet'}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      </Card>
     </div>
   )
 }
@@ -172,11 +173,15 @@ export function CopyField({ label, value, multiline = false, testId }: { label: 
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <span id={labelId} className="text-xs text-grey-500">{label}</span>
-        <Button className="min-h-11 shrink-0" aria-label={`Copy ${label}`} onClick={() => void copy()}>
+        <Text type="supporting" color="secondary" id={labelId}>{label}</Text>
+        <Button className="shrink-0" aria-label={`Copy ${label}`} onClick={() => void copy()}>
           {copied ? 'Copied' : 'Copy'}
         </Button>
       </div>
+      {/* A plain block on purpose. Astryx's CodeBlock draws each line as its
+          own element, so its text no longer contains the line breaks; this
+          text is what people select by hand and what the setup checks read,
+          so it has to be the file exactly as written. */}
       <pre
         aria-labelledby={labelId}
         data-testid={testId}
@@ -185,7 +190,7 @@ export function CopyField({ label, value, multiline = false, testId }: { label: 
       >
         {value}
       </pre>
-      {failed ? <p role="alert" className="mt-1 text-xs text-blocked">Could not copy. Select the text and copy it manually.</p> : null}
+      {failed ? <ErrorNote className="mt-1">Could not copy. Select the text and copy it manually.</ErrorNote> : null}
     </div>
   )
 }

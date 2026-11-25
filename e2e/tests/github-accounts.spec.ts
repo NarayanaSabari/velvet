@@ -2,6 +2,7 @@ import { test as base, expect, type Page } from '@playwright/test'
 import { createHash, randomUUID } from 'node:crypto'
 import { sql } from './fixtures'
 import { control, deliver, invite } from './onboarding-helpers'
+import { chooseOption, dropdown } from './dropdown'
 
 type Accounts = {
   first: string
@@ -125,7 +126,7 @@ test('scoped OAuth keeps the global account and other organisation unchanged', a
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   expect((await effective(page, first)).github_login).toBe('runtime-client-a')
   await section.getByRole('button', { name: 'Remove organisation link for Client A', exact: true }).click()
-  await page.getByRole('button', { name: 'Confirm remove organisation link for Client A', exact: true }).click()
+  await page.getByRole('button', { name: 'Remove link', exact: true }).click()
   await expect(section).toContainText(`@${globalLogin}`)
   await expect(table.getByTestId(`github-account-row-${first}`)).toContainText('Global fallback')
   await expect(table.getByTestId(`github-account-row-${second}`)).toContainText('runtime-client-b')
@@ -151,7 +152,7 @@ test('changing an organisation account and removing the global fallback preserve
   expect((await page.request.get('/api/v1/me').then((response) => response.json())).user.github_login).toBe(globalLogin)
 
   await page.getByRole('button', { name: 'Unlink GitHub profile', exact: true }).click()
-  await page.getByRole('button', { name: 'Confirm unlink GitHub profile', exact: true }).click()
+  await page.getByRole('button', { name: 'Remove link', exact: true }).click()
   await expect(page.getByRole('link', { name: 'Link GitHub profile', exact: true })).toBeVisible()
   expect((await page.request.get('/api/v1/me').then((response) => response.json())).user.github_login).toBeNull()
   expect((await effective(page, first)).github_login).toBe('runtime-client-b')
@@ -163,7 +164,7 @@ test('table actions link and remove another organisation without touching the cu
   await page.goto(`/w/${first}/settings/profile/github`)
   const table = page.getByRole('table', { name: 'GitHub accounts by organisation' })
   await table.getByTestId('github-account-row-global').getByRole('button', { name: 'Unlink GitHub profile' }).click()
-  await page.getByRole('button', { name: 'Confirm unlink GitHub profile' }).click()
+  await page.getByRole('button', { name: 'Remove link' }).click()
   const firstRow = table.getByTestId(`github-account-row-${first}`)
   const secondRow = table.getByTestId(`github-account-row-${second}`)
   await expect(firstRow).toContainText('Not linked')
@@ -179,10 +180,10 @@ test('table actions link and remove another organisation without touching the cu
 
   await page.goto(`/w/${first}/settings/profile/github`)
   await secondRow.getByRole('button', { name: 'Remove organisation link for Client B' }).click()
-  const confirmation = page.getByRole('group', { name: 'Confirm organisation link removal for Client B' })
+  const confirmation = page.getByRole('alertdialog', { name: 'Remove the GitHub link for Client B?' })
   await expect(confirmation).toContainText('Remove the GitHub link for Client B?')
   await expect(confirmation.getByRole('button', { name: 'Cancel' })).toBeFocused()
-  await confirmation.getByRole('button', { name: 'Confirm remove organisation link for Client B' }).click()
+  await confirmation.getByRole('button', { name: 'Remove link' }).click()
   await expect(secondRow).toContainText('Not linked')
   await expect(page).toHaveURL(`/w/${first}/settings/profile/github`)
   expect(await effective(page, first)).toBeNull()
@@ -309,7 +310,7 @@ test('organisation GitHub settings stay scoped, keyboard accessible and containe
     }
   }
   await page.setViewportSize({ width: 1280, height: 900 })
-  await page.getByRole('combobox', { name: 'Organisation', exact: true }).selectOption(second)
+  await chooseOption(dropdown(page, 'Organisation'), second)
   await expect(page).toHaveURL(`/w/${second}`)
   await page.goto(`/w/${second}/settings/profile/github`)
   const current = page.getByTestId(`github-account-row-${second}`)
@@ -352,15 +353,14 @@ test('scoped identity loading and removal errors recover without changing anothe
     await route.fulfill({ status: 503, json: { error: { code: 'unavailable', message: 'Removal paused' } } })
   })
   await section.getByRole('button', { name: 'Remove organisation link for Client A', exact: true }).click()
-  await page.getByRole('button', { name: 'Confirm remove organisation link for Client A', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Removing…', exact: true })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Remove link', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Remove link', exact: true })).toHaveAttribute('aria-busy', 'true')
   releaseRemoval()
-  await expect(page.getByRole('group', { name: 'Confirm organisation link removal for Client A', exact: true }).getByRole('alert')).toContainText('Removal paused')
+  await expect(page.getByRole('alertdialog', { name: 'Remove the GitHub link for Client A?', exact: true })).toContainText('Removal paused')
   expect((await effective(page, first)).github_login).toBe('runtime-client-a')
   expect((await effective(page, second)).github_login).toBe(globalLogin)
   await page.unroute(`**/api/v1/w/${first}/me/github`)
-  await page.getByRole('button', { name: 'Confirm remove organisation link for Client A', exact: true }).click()
+  await page.getByRole('button', { name: 'Remove link', exact: true }).click()
   await expect(section).toContainText('Global fallback')
   await expect(section.getByRole('link', { name: 'Change GitHub account for Client A', exact: true })).toBeFocused()
 })
@@ -414,7 +414,7 @@ test('long organisation names and handles wrap inside the table and global unlin
     await page.screenshot({ path: `test-results/github-accounts-long-390-${colorScheme}.png`, fullPage: true })
   }
   await page.getByRole('button', { name: 'Unlink GitHub profile', exact: true }).click()
-  await page.getByRole('button', { name: 'Confirm unlink GitHub profile', exact: true }).click()
+  await page.getByRole('button', { name: 'Remove link', exact: true }).click()
   const fallback = page.getByTestId(`github-account-row-${second}`)
   await expect(fallback).toContainText('Not linked')
   await expect(fallback.getByText('None', { exact: true })).toBeVisible()

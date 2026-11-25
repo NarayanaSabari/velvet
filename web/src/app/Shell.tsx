@@ -1,14 +1,20 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { ErrorNote } from '../ui/ErrorNote'
+import { useState, type MouseEventHandler, type ReactNode } from 'react'
+import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from '@astryxdesign/core/DropdownMenu'
+import { IconButton } from '@astryxdesign/core/IconButton'
+import { Selector } from '@astryxdesign/core/Selector'
+import { SideNav, SideNavItem, SideNavSection } from '@astryxdesign/core/SideNav'
 
 import { useSession } from '../features/auth/useSession'
 import { useStream } from '../lib/useStream'
 import { SignIn } from '../features/auth/SignIn'
 import { Onboarding } from '../features/onboarding/Onboarding'
-import { LeaveOrganisation } from '../features/orgs/LeaveOrganisation'
-import { SignOutButton } from '../features/auth/SignOutButton'
+import { LeaveOrganisationDialog } from '../features/orgs/LeaveOrganisation'
+import { SignOutButton, useSignOut } from '../features/auth/SignOutButton'
 import { CommandPalette } from '../features/palette/CommandPalette'
 import { COMMAND_PALETTE_TEST_IDS } from '../features/palette/paletteTestIds'
 import { Avatar } from '../ui/Avatar'
+import { Button } from '../ui/Button'
 import { Icon, type IconName } from '../ui/Icon'
 import { LoadingState } from '../ui/QueryState'
 import { userLabel } from '../lib/userLabel'
@@ -53,15 +59,6 @@ const ROLE_LABEL: Record<Role, string> = { admin: 'Admin', member: 'Member', vie
 // Supporting text on this surface uses grey-700: grey-500 on grey-100 falls
 // below 4.5:1 in the light scheme.
 const SIDEBAR_HOVER = 'hover:bg-grey-200/60 focus-visible:bg-grey-200/60'
-const NAV_ITEM =
-  `group flex min-h-8 items-center gap-2.5 rounded-[var(--radius-control)] border border-transparent px-2 py-1 text-sm text-ink ${SIDEBAR_HOVER}`
-const NAV_ACTIVE =
-  'border-grey-200 bg-paper font-medium shadow-[0_1px_2px_rgba(0,0,0,0.06)] hover:bg-paper focus-visible:bg-paper'
-const NAV_ICON = 'size-4 shrink-0 text-grey-500 group-hover:text-ink group-aria-[current=page]:text-ink'
-// Rows are 44px on phones, where the More menu lives, and compact from sm up
-// where only the desktop account menu uses them.
-const MENU_ITEM =
-  'flex min-h-11 items-center rounded-[var(--radius-control)] px-2 py-1.5 text-sm hover:bg-grey-100 focus-visible:bg-grey-100 sm:min-h-0'
 const TAB_ITEM =
   'group flex min-h-12 flex-col items-center justify-center gap-1 rounded-[var(--radius-control)] px-1 py-1 text-xs leading-tight text-grey-700 hover:bg-grey-100 focus-visible:bg-grey-100'
 const TAB_ICON = 'size-5 shrink-0 text-grey-500 group-aria-[current=page]:text-ink'
@@ -103,138 +100,85 @@ function WorkspaceSwitcher({
     return <div className="flex min-w-0 items-center gap-2.5 p-1">{identity}</div>
   }
 
-  // The native select stays the real control, stretched invisibly over the
-  // identity row, so keyboard, screen reader, and mobile pickers all behave
-  // natively while the row carries the visible design and focus ring.
+  // Astryx's dropdown is the control. Its closed state shows the identity
+  // row, and choosing an organisation loads that organisation's pages.
   return (
-    <label
-      className={`relative flex min-w-0 cursor-pointer items-center gap-2.5 rounded-[var(--radius-control)] p-1 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-ink ${SIDEBAR_HOVER}`}
-    >
-      {identity}
-      <Icon name="selector" className="size-4 shrink-0 text-grey-500" />
-      <select
-        aria-label="Organisation"
-        className="absolute inset-0 w-full cursor-pointer text-sm opacity-0"
-        value={workspace.workspace_slug}
-        onChange={(event) => {
-          window.location.href = `/w/${event.target.value}`
-        }}
-      >
-        {memberships.map((membership) => (
-          <option key={membership.id} value={membership.workspace_slug}>
-            {membership.workspace_name}
-          </option>
-        ))}
-      </select>
-    </label>
+    <Selector
+      label="Organisation"
+      isLabelHidden
+      variant="ghost"
+      width="100%"
+      value={workspace.workspace_slug}
+      data-value={workspace.workspace_slug}
+      data-option-values={JSON.stringify(memberships.map((membership) => membership.workspace_slug))}
+      options={memberships.map((membership) => ({ value: membership.workspace_slug, label: membership.workspace_name }))}
+      renderValue={() => <span className="flex min-w-0 items-center gap-2.5 text-left">{identity}</span>}
+      onChange={(value) => {
+        if (value && value !== workspace.workspace_slug) window.location.href = `/w/${value}`
+      }}
+    />
   )
 }
 
-function SidebarLink({ to, item, alsoActiveFor }: { to: string; item: NavItem; alsoActiveFor?: string[] }) {
-  return (
-    <NavLink to={to} alsoActiveFor={alsoActiveFor} className={NAV_ITEM} activeClassName={NAV_ACTIVE}>
-      <Icon name={item.icon} className={NAV_ICON} />
-      <span className="min-w-0 truncate">{item.label}</span>
-    </NavLink>
-  )
-}
-
-function SidebarSection({
-  id,
-  label,
-  children,
-}: {
-  id: string
-  label: string
-  children: ReactNode
+/**
+ * Lets Astryx's nav items render through Velvet's own link, so navigation
+ * stays inside the router. Astryx has already decided whether the item is
+ * current and says so with aria-current.
+ */
+function SideNavLink({ href, to, children, className, onClick, ...attributes }: {
+  href?: string
+  to?: string
+  children?: ReactNode
+  className?: string
+  onClick?: MouseEventHandler<HTMLAnchorElement>
+  [attribute: string]: unknown
 }) {
   return (
-    <div className="pt-4 first:pt-0">
-      <p id={id} className="px-2 pb-1 text-xs font-medium text-grey-700">
-        {label}
-      </p>
-      <ul aria-labelledby={id} className="space-y-0.5">
-        {children}
-      </ul>
-    </div>
-  )
-}
-
-function MenuLink({ to, children, onSelect }: { to: string; children: ReactNode; onSelect: () => void }) {
-  return (
     <NavLink
-      to={to}
-      role="menuitem"
-      tabIndex={-1}
-      onClick={onSelect}
-      className={MENU_ITEM}
-      activeClassName="bg-grey-100 font-medium"
+      to={to ?? href ?? '#'}
+      className={className}
+      onClick={onClick}
+      current={attributes['aria-current'] === 'page'}
+      attributes={attributes}
     >
       {children}
     </NavLink>
   )
 }
 
-function usePopupMenu(
-  open: boolean,
-  setOpen: (open: boolean) => void,
-  setConfirming: (confirming: boolean) => void,
-) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
+function SidebarItem({ to, item, alsoActiveFor = [] }: { to: string; item: NavItem; alsoActiveFor?: string[] }) {
+  return (
+    <SideNavItem
+      label={item.label}
+      href={to}
+      as={SideNavLink}
+      icon={<Icon name={item.icon} className="size-4 shrink-0" />}
+      isSelected={[to, ...alsoActiveFor].some((path) => isNavLinkActive(path))}
+    />
+  )
+}
 
-  useEffect(() => {
-    if (!open) return
-
-    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus()
-
-    function closeAndReturnFocus() {
-      setConfirming(false)
-      setOpen(false)
-      triggerRef.current?.focus()
-    }
-    function onPointerDown(event: PointerEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setConfirming(false)
-        setOpen(false)
-      }
-    }
-    function onKeyDown(event: globalThis.KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        closeAndReturnFocus()
-      }
-    }
-
-    document.addEventListener('pointerdown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open, setConfirming, setOpen])
-
-  function onMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? [])]
-    if (items.length === 0) return
-    const current = items.indexOf(document.activeElement as HTMLElement)
-    let next: number | null = null
-    if (event.key === 'ArrowDown') next = current < 0 ? 0 : (current + 1) % items.length
-    if (event.key === 'ArrowUp') next = current <= 0 ? items.length - 1 : current - 1
-    if (event.key === 'Home') next = 0
-    if (event.key === 'End') next = items.length - 1
-    if (event.key === 'Tab') {
-      setConfirming(false)
-      setOpen(false)
-    }
-    if (next !== null) {
-      event.preventDefault()
-      items[next]?.focus()
-    }
-  }
-
-  return { containerRef, triggerRef, menuRef, onMenuKeyDown }
+/**
+ * The two actions every menu ends with. Leaving asks first, in a dialog; a
+ * failed sign-out is reported beside the menu that offered it.
+ */
+function useSessionActions(workspaceSlug: string) {
+  const [leaving, setLeaving] = useState(false)
+  const { signOut, failed } = useSignOut()
+  const items = (
+    <>
+      <DropdownMenuDivider />
+      <DropdownMenuItem label="Leave organisation" variant="destructive" onClick={() => setLeaving(true)} />
+      <DropdownMenuItem label="Sign out" onClick={() => void signOut()} />
+    </>
+  )
+  const extras = (
+    <>
+      <LeaveOrganisationDialog slug={workspaceSlug} isOpen={leaving} onOpenChange={setLeaving} />
+      {failed ? <ErrorNote className="px-2 pt-1">Could not sign out. Try again.</ErrorNote> : null}
+    </>
+  )
+  return { items, extras }
 }
 
 function AccountMenu({
@@ -246,66 +190,38 @@ function AccountMenu({
   user: Parameters<typeof Avatar>[0]['user']
   workspaceSlug: string
 }) {
-  const [open, setOpen] = useState(false)
-  const [openedByKeyboard, setOpenedByKeyboard] = useState(false)
-  const [leaveConfirming, setLeaveConfirming] = useState(false)
   const label = userLabel(user)
-  const { containerRef, triggerRef, menuRef, onMenuKeyDown } = usePopupMenu(open, setOpen, setLeaveConfirming)
+  const session = useSessionActions(workspaceSlug)
 
   return (
-    <div ref={containerRef} className="relative">
-      <button
-        ref={triggerRef}
-        type="button"
-        className={`flex w-full items-center gap-2.5 rounded-[var(--radius-control)] p-1 text-left ${SIDEBAR_HOVER}`}
-        aria-label="Open account menu"
-        aria-expanded={open}
-        aria-haspopup="menu"
-        aria-controls="account-menu"
-        onClick={(event) => {
-          setOpenedByKeyboard(event.detail === 0)
-          if (open) setLeaveConfirming(false)
-          setOpen((isOpen) => !isOpen)
-        }}
+    <>
+      <DropdownMenu
+        placement="above"
+        menuWidth="13rem"
+        renderTrigger={(trigger) => (
+          <button
+            {...trigger}
+            type="button"
+            className={`flex w-full items-center gap-2.5 rounded-[var(--radius-control)] p-1 text-left ${SIDEBAR_HOVER}`}
+            aria-label="Open account menu"
+          >
+            <Avatar user={user} size="lg" />
+            <span className="min-w-0 flex-1 leading-tight">
+              <span className="block truncate text-sm font-medium text-ink">{label}</span>
+              {user?.email && user.email !== label ? (
+                <span className="block truncate text-xs text-grey-700">{user.email}</span>
+              ) : null}
+            </span>
+            <Icon name="selector" className="size-4 shrink-0 text-grey-500" />
+          </button>
+        )}
       >
-        <Avatar user={user} size="lg" />
-        <span className="min-w-0 flex-1 leading-tight">
-          <span className="block truncate text-sm font-medium text-ink">{label}</span>
-          {user?.email && user.email !== label ? (
-            <span className="block truncate text-xs text-grey-700">{user.email}</span>
-          ) : null}
-        </span>
-        <Icon name="selector" className="size-4 shrink-0 text-grey-500" />
-      </button>
-
-      <div
-        ref={menuRef}
-        id="account-menu"
-        role={leaveConfirming ? 'alertdialog' : 'menu'}
-        aria-label={leaveConfirming ? `Leave ${workspaceSlug}` : undefined}
-        aria-hidden={!open}
-        inert={!open}
-        onKeyDown={leaveConfirming ? undefined : onMenuKeyDown}
-        className={`absolute bottom-[calc(100%+0.5rem)] left-0 z-40 w-full min-w-52 origin-bottom-left rounded-[var(--radius-surface)] border border-grey-200 bg-paper p-1 shadow-[0_8px_24px_rgba(0,0,0,0.08)] ${
-          openedByKeyboard ? 'transition-none' : 'shell-popup-menu transition-[opacity,transform] duration-[150ms] ease-[var(--ease-out)]'
-        } ${
-          open
-            ? 'pointer-events-auto visible scale-100 opacity-100'
-            : 'pointer-events-none invisible scale-[0.97] opacity-0'
-        }`}
-      >
-        {!leaveConfirming ? <MenuLink to={`${base}/settings/profile`} onSelect={() => setOpen(false)}>Profile</MenuLink> : null}
-        {!leaveConfirming ? <MenuLink to="/orgs/new" onSelect={() => setOpen(false)}>New organisation</MenuLink> : null}
-        <LeaveOrganisation
-          key="leave-organisation"
-          slug={workspaceSlug}
-          menuItem
-          confirming={leaveConfirming}
-          onConfirmingChange={setLeaveConfirming}
-        />
-        {!leaveConfirming ? <SignOutButton menuItem /> : null}
-      </div>
-    </div>
+        <DropdownMenuItem label="Profile" href={`${base}/settings/profile`} />
+        <DropdownMenuItem label="New organisation" href="/orgs/new" />
+        {session.items}
+      </DropdownMenu>
+      {session.extras}
+    </>
   )
 }
 
@@ -318,10 +234,7 @@ function MoreMenu({
   isAdmin: boolean
   workspaceSlug: string
 }) {
-  const [open, setOpen] = useState(false)
-  const [openedByKeyboard, setOpenedByKeyboard] = useState(false)
-  const [leaveConfirming, setLeaveConfirming] = useState(false)
-  const { containerRef, triggerRef, menuRef, onMenuKeyDown } = usePopupMenu(open, setOpen, setLeaveConfirming)
+  const session = useSessionActions(workspaceSlug)
   // A button is not a page, so it does not take aria-current. It carries the
   // selected look of a tab and a description saying the current page is inside.
   const currentInside = [
@@ -330,63 +243,40 @@ function MoreMenu({
   ].some((to) => isNavLinkActive(to))
 
   return (
-    <div ref={containerRef} className="relative">
-      <button
-        ref={triggerRef}
-        type="button"
-        className={`${TAB_ITEM} aria-expanded:bg-grey-100 aria-expanded:text-ink${currentInside ? ' bg-grey-100 font-medium text-ink' : ''}`}
-        data-active={currentInside ? 'true' : undefined}
-        aria-label="More"
-        aria-describedby={currentInside ? 'mobile-more-current' : undefined}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        aria-controls="mobile-more-menu"
-        onClick={(event) => {
-          setOpenedByKeyboard(event.detail === 0)
-          if (open) setLeaveConfirming(false)
-          setOpen((isOpen) => !isOpen)
-        }}
+    <div className="relative">
+      <DropdownMenu
+        placement="above"
+        alignment="end"
+        menuWidth="14rem"
+        menuMaxHeight={560}
+        renderTrigger={(trigger) => (
+          <button
+            {...trigger}
+            type="button"
+            className={`${TAB_ITEM} w-full aria-expanded:bg-grey-100 aria-expanded:text-ink${currentInside ? ' bg-grey-100 font-medium text-ink' : ''}`}
+            data-active={currentInside ? 'true' : undefined}
+            aria-label="More"
+            aria-describedby={currentInside ? 'mobile-more-current' : undefined}
+          >
+            <Icon name="more" className={`${TAB_ICON}${currentInside ? ' text-ink' : ''}`} />
+            <span>More</span>
+          </button>
+        )}
       >
-        <Icon name="more" className={`${TAB_ICON}${currentInside ? ' text-ink' : ''}`} />
-        <span>More</span>
-      </button>
-      {currentInside ? <span id="mobile-more-current" hidden>Current page is in this menu</span> : null}
-
-      <div
-        ref={menuRef}
-        id="mobile-more-menu"
-        role={leaveConfirming ? 'alertdialog' : 'menu'}
-        aria-label={leaveConfirming ? `Leave ${workspaceSlug}` : undefined}
-        aria-hidden={!open}
-        inert={!open}
-        onKeyDown={leaveConfirming ? undefined : onMenuKeyDown}
-        className={`absolute bottom-[calc(100%+0.5rem)] right-0 z-40 w-56 origin-bottom-right rounded-[var(--radius-surface)] border border-grey-200 bg-paper p-1 shadow-[0_8px_24px_rgba(0,0,0,0.08)] ${
-          openedByKeyboard ? 'transition-none' : 'shell-popup-menu transition-[opacity,transform] duration-[150ms] ease-[var(--ease-out)]'
-        } ${
-          open
-            ? 'pointer-events-auto visible scale-100 opacity-100'
-            : 'pointer-events-none invisible scale-[0.97] opacity-0'
-        }`}
-      >
-        {!leaveConfirming ? <MenuLink to={`${base}/feed`} onSelect={() => setOpen(false)}>Team feed</MenuLink> : null}
-        {!leaveConfirming ? <MenuLink to={`${base}/projects`} onSelect={() => setOpen(false)}>Projects</MenuLink> : null}
-        {!leaveConfirming ? <MenuLink to={`${base}/unlinked`} onSelect={() => setOpen(false)}>Unlinked PRs</MenuLink> : null}
-        {!leaveConfirming ? <MenuLink to={`${base}/reports`} onSelect={() => setOpen(false)}>Reports</MenuLink> : null}
-        {!leaveConfirming && isAdmin ? <MenuLink to={`${base}/admin`} onSelect={() => setOpen(false)}>Administration</MenuLink> : null}
-        {!leaveConfirming ? <div role="separator" className="my-1 border-t border-grey-200" /> : null}
+        <DropdownMenuItem label="Team feed" href={`${base}/feed`} />
+        <DropdownMenuItem label="Projects" href={`${base}/projects`} />
+        <DropdownMenuItem label="Unlinked PRs" href={`${base}/unlinked`} />
+        <DropdownMenuItem label="Reports" href={`${base}/reports`} />
+        {isAdmin ? <DropdownMenuItem label="Administration" href={`${base}/admin`} /> : null}
+        <DropdownMenuDivider />
         {/* Outside the workspace: the work log spans every organisation. */}
-        {!leaveConfirming ? <MenuLink to="/me/worklog" onSelect={() => setOpen(false)}>My work log</MenuLink> : null}
-        {!leaveConfirming ? <MenuLink to={`${base}/settings/profile`} onSelect={() => setOpen(false)}>Profile</MenuLink> : null}
-        {!leaveConfirming ? <MenuLink to="/orgs/new" onSelect={() => setOpen(false)}>New organisation</MenuLink> : null}
-        <LeaveOrganisation
-          key="leave-organisation"
-          slug={workspaceSlug}
-          menuItem
-          confirming={leaveConfirming}
-          onConfirmingChange={setLeaveConfirming}
-        />
-        {!leaveConfirming ? <SignOutButton menuItem /> : null}
-      </div>
+        <DropdownMenuItem label="My work log" href="/me/worklog" />
+        <DropdownMenuItem label="Profile" href={`${base}/settings/profile`} />
+        <DropdownMenuItem label="New organisation" href="/orgs/new" />
+        {session.items}
+      </DropdownMenu>
+      {currentInside ? <span id="mobile-more-current" hidden>Current page is in this menu</span> : null}
+      {session.extras}
     </div>
   )
 }
@@ -439,81 +329,77 @@ export function Shell({
         Skip to content
       </a>
       <aside
-        className="hidden w-full shrink-0 border-b border-grey-200 bg-grey-100 p-3 sm:sticky sm:top-0 sm:flex sm:h-screen sm:max-h-screen sm:w-52 sm:flex-col sm:overflow-hidden sm:border-r sm:border-b-0 xl:w-60"
+        className="hidden shrink-0 border-grey-200 bg-grey-100 sm:sticky sm:top-0 sm:flex sm:h-screen sm:max-h-screen sm:w-52 sm:flex-col sm:overflow-hidden sm:border-r xl:w-60"
         data-testid="desktop-sidebar"
       >
-        <div className="mb-4 shrink-0 space-y-3" data-testid="desktop-sidebar-header">
-          <WorkspaceSwitcher memberships={memberships} workspace={workspace} />
-          <button
-            type="button"
-            data-testid={COMMAND_PALETTE_TEST_IDS.trigger}
-            aria-keyshortcuts="Meta+K Control+K"
-            className="flex min-h-9 w-full items-center gap-2 rounded-[var(--radius-control)] border border-grey-200 bg-paper px-2 text-left text-sm text-grey-700 hover:border-grey-300 hover:text-ink"
-            onClick={() => setPaletteOpen(true)}
-          >
-            <Icon name="search" className="size-4 shrink-0 text-grey-500" />
-            <span className="min-w-0 flex-1 truncate">Search</span>
-            <kbd aria-hidden="true" className="shrink-0 rounded-[4px] border border-grey-200 px-1 font-sans text-xs text-grey-700">
-              {shortcut}
-            </kbd>
-          </button>
-        </div>
-
-        <nav
+        <SideNav
           aria-label="Workspace navigation"
-          className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1 py-0.5"
           data-testid="desktop-sidebar-nav"
+          // Velvet's frame sets the sidebar's width; Astryx's nav fills it.
+          className="h-full w-full min-w-0"
+          header={(
+            <div className="space-y-3" data-testid="desktop-sidebar-header">
+              <WorkspaceSwitcher memberships={memberships} workspace={workspace} />
+              <Button
+                className="w-full justify-start"
+                data-testid={COMMAND_PALETTE_TEST_IDS.trigger}
+                aria-label="Search"
+                aria-keyshortcuts="Meta+K Control+K"
+                onClick={() => setPaletteOpen(true)}
+              >
+                <span className="flex w-full items-center gap-2">
+                  <Icon name="search" className="size-4 shrink-0 text-grey-500" />
+                  <span className="min-w-0 flex-1 truncate text-left">Search</span>
+                  <kbd aria-hidden="true" className="shrink-0 rounded-[4px] border border-grey-300 px-1 font-sans text-xs text-grey-700">
+                    {shortcut}
+                  </kbd>
+                </span>
+              </Button>
+            </div>
+          )}
+          footer={(
+            <div data-testid="desktop-sidebar-footer">
+              <AccountMenu base={base} user={user} workspaceSlug={workspace.workspace_slug} />
+            </div>
+          )}
         >
-          <SidebarSection id="sidebar-workspace" label="Workspace">
+          <SideNavSection title="Workspace">
             {WORKSPACE_NAV.map((item) => (
-              <li key={item.label}>
-                <SidebarLink to={base + item.path} item={item} alsoActiveFor={item.path === '/sprints' ? [`${base}/milestones`] : undefined} />
-              </li>
+              <SidebarItem
+                key={item.label}
+                to={base + item.path}
+                item={item}
+                alsoActiveFor={item.path === '/sprints' ? [`${base}/milestones`] : undefined}
+              />
             ))}
-            {workspace.role === 'admin' ? (
-              <li>
-                <SidebarLink to={base + ADMIN_NAV.path} item={ADMIN_NAV} />
-              </li>
-            ) : null}
-          </SidebarSection>
-          <SidebarSection id="sidebar-activity" label="Activity">
+            {workspace.role === 'admin' ? <SidebarItem to={base + ADMIN_NAV.path} item={ADMIN_NAV} /> : null}
+          </SideNavSection>
+          <SideNavSection title="Activity">
             {ACTIVITY_NAV.map((item) => (
-              <li key={item.label}>
-                <SidebarLink to={base + item.path} item={item} />
-              </li>
+              <SidebarItem key={item.label} to={base + item.path} item={item} />
             ))}
-          </SidebarSection>
+          </SideNavSection>
           {/* Separated because it leaves the workspace: the work log spans
               every organisation this person belongs to. */}
-          <SidebarSection id="sidebar-personal" label="Across organisations">
-            <li>
-              <SidebarLink to="/me/worklog" item={{ label: 'My work log', path: '/me/worklog', icon: 'worklog' }} />
-            </li>
-          </SidebarSection>
-        </nav>
-
-        <div className="mt-auto shrink-0 border-t border-grey-200 pt-3" data-testid="desktop-sidebar-footer">
-          <AccountMenu
-            base={base}
-            user={user}
-            workspaceSlug={workspace.workspace_slug}
-          />
-        </div>
+          <SideNavSection title="Across organisations">
+            <SidebarItem to="/me/worklog" item={{ label: 'My work log', path: '/me/worklog', icon: 'worklog' }} />
+          </SideNavSection>
+        </SideNav>
       </aside>
 
       <header className="flex items-center gap-2 border-b border-grey-200 bg-grey-100 p-2 sm:hidden">
         <div className="min-w-0 flex-1">
           <WorkspaceSwitcher memberships={memberships} workspace={workspace} />
         </div>
-        <button
-          type="button"
-          aria-label="Search"
-          aria-keyshortcuts="Meta+K Control+K"
-          className="flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-grey-700 hover:bg-grey-200/60 hover:text-ink"
+        <span className="ui-touch shrink-0">
+        <IconButton
+          label="Search"
+          variant="ghost"
+          size="lg"
+          icon={<Icon name="search" className="size-5" />}
           onClick={() => setPaletteOpen(true)}
-        >
-          <Icon name="search" className="size-5" />
-        </button>
+        />
+        </span>
       </header>
 
       <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-3 pb-24 pt-4 sm:p-4">{children}</main>

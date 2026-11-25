@@ -132,11 +132,13 @@ Use `Shell` and `NavLink` rather than recreating workspace navigation inside a p
 
 At 640px and above, the shell shows a sticky sidebar on the `grey-100` surface with the organisation identity and switcher, a Search control that opens the command palette, scrollable navigation, and the account menu pinned to the bottom.
 
+Search is Astryx's `CommandPalette`, opened from the sidebar or with Cmd/Ctrl+K. Velvet supplies its results: commands ranked by how well they match, shown at once, then issues the server finds. Enter runs the top result unless an arrow key has highlighted another. New issue opens its own Astryx `Dialog` with the form.
+The account menu in the sidebar and the More menu in the phone tab bar are Astryx `DropdownMenu`s that open above their trigger. Both end with Leave organisation, which asks first in an Astryx `AlertDialog`, and Sign out. On phones every menu row and the header's search button is a 44px touch target.
 The sidebar navigation is grouped under visible section labels: Workspace for planning surfaces and Administration, Activity for the team feed, mentions, and unlinked pull requests, and Across organisations for the work log.
 
 Each navigation link pairs a 16px icon from `web/src/ui/Icon.tsx` with its text label, and the icon never replaces the label.
 
-The current page is lifted onto a bordered paper surface with medium weight and ink icon, so selection is carried by shape and weight rather than by fill alone.
+The desktop sidebar is Astryx's Side Nav inside Velvet's own page frame: its sections, items, and selected state are Astryx's, and the current page is marked with `aria-current="page"` and a filled row at medium weight, so selection is never colour alone. The organisation switcher is an Astryx dropdown. The account menu and the phone tab bar are still Velvet's own.
 
 Supporting text on the grey sidebar surface uses `grey-700`, because `grey-500` on `grey-100` falls below 4.5:1 in the light scheme.
 
@@ -164,10 +166,17 @@ Issue rows should keep the issue key and title prominent, while status, priority
 
 Let important issue titles wrap when needed, and truncate only secondary text when the available width is genuinely constrained.
 
-`web/src/ui/List.tsx` provides the keyboard-navigable listbox pattern with `j`, `k`, Arrow keys, and Enter.
+Every failure is reported the same way, through `web/src/ui/ErrorNote.tsx`: an Astryx error `Banner` with an icon, announced as an alert. A plain message is one line; with a title, the title says what happened and the message says what to do. A way to recover, such as Try again, sits at the end of the banner. No page writes its own red line of text for an error. Waiting is one line, a small spinner and a few words announced as a status (`LoadingState`), with nothing drawn around it, whether a page is loading or a button's action is in progress. A record or page that does not exist is an Astryx `Card` with the title, one line of explanation and a button back (`NotFoundState`).
+Lists of things to open are Astryx `List`s whose rows are links, reached with Tab and opened with Enter.
+Every list of records follows the same shape: an Astryx `List` with dividers and rules above and below, no rounded box. Team feed, Mentions, Unlinked PRs, the work log and Projects all use it; a row that holds its own links or controls is not itself a link. An unread mention leads with an ink dot, a heavier name and an Unread badge. Report tables are Astryx `Table`s inside a named, focusable scroll region.
+The Sprints page draws every project's sprints on one shared calendar from the `lg` breakpoint up (`web/src/features/sprints/SprintStrip.tsx`): a row per project, a bar per sprint as wide as the sprint is long, month marks along the top and a line for today. A bar is a link to its sprint. State is drawn by shape as well as fill and named in the key above: solid ink is running, a dashed outline has not started, quiet grey is finished. Each link also reads out the sprint's dates and state. Below `lg` the page keeps a list per project, because a calendar needs width. Under the calendar, Running now gives one `Card` per project for its active sprint: the dates, a `ProgressBar` for how far through them it is, its milestones with done counts, and what comes next. The calendar says when; these say how it is going. A card is marked Behind, with an amber `Badge` and the numbers in words, when at least half the sprint's days have gone and the share of issues done is 25 points or more under the share of days gone. The count is every issue the sprint's own page lists: those under its milestones and its project's issues with no milestone yet. Cancelled issues are left out, and a sprint with no issues is not judged. The sprint's own page repeats the same reading under its title, from the same function (`sprintPace` in `web/src/features/sprints/sprintDays.ts`), so the two pages cannot disagree.
+The Projects page is a grid of Astryx `Card`s, one per project: the open-issue count as the one large number and a link to those issues, the split by status beneath, then the current sprint and Archive or Restore. Archiving still confirms inside the card.
 
 `web/src/features/issues/IssueList.tsx` and the issue groups in `web/src/features/sprints/SprintBoard.tsx` are the reference row treatments.
+Both are Astryx `List`s whose rows are links to the issue. On the sprint page each status keeps its collapsible heading with a count, and the rows under it are 40px linked rows.
 
+The Administration and Profile pages use the same parts: the section list beside each page is `web/src/ui/SectionNav.tsx`, an Astryx `List` of links with the current one selected and counts as supporting text; members, invitations and repositories are `List`s with dividers; fixed facts (slug, issue prefix, what each role can do) are `MetadataList`s; optional detail sits in a `Collapsible`; and the GitHub connection is a `Card`. Confirmations for removing a member or revoking an invitation still open inline under their row. The sign-in pages (Sign in, Check email, Confirm sign-in, Expired link, Invite, Recovery) keep the public split layout and hand the page to the task: the headline beside them is 48px, not the landing page's 71px, and the title (32px), one line of help and the action sit together as one block centred in the panel (`PublicAuthPage`). Each page has one main action at 48px; a fallback, such as asking for another link, is a secondary button. The longer tasks (onboarding, connecting the CLI, a new organisation) use the `expanded` form: a centred bordered surface without the landing content. The longer public pages (Onboarding, New organisation, CLI approval) follow the sign-in pages inside a centred bordered card: an account bar across the top (who is signed in, the way back, Sign out), then a 32px title with one line of help, then the work in a column no wider than it needs. On New organisation an invitation that is waiting leads; with none, creating leads. On Onboarding the connection status comes before the setup, and the four setup commands are an Astryx `CollapsibleGroup` with one step open at a time and a button that moves on to the next. CLI approval lays the decision out in order: check the code (the largest thing on the page, with who asked beneath it and the one sentence saying when to approve), then what approving allows as a short list, then Approve and Refuse. A repository request replaces the list with the choice of organisation and project. After the choice, the outcome is the page's title, Connected or Request refused, with the one next step set apart beneath it. When something is wrong the page says what happened and what to do about it, in a titled `ErrorNote`: a code that no longer works keeps the field so a new one can be entered, and a request that cannot go ahead at all (unrecognised, or a viewer in every organisation) takes over the title. A link that looks like a button is an Astryx `Button` with an `href`, never a hand-styled anchor; the one exception is Change / Link in the GitHub accounts table, which must clear private data before leaving the page. The public frame around the landing, sign-in and onboarding pages uses Astryx link `Button`s in its header and landing actions, and Astryx `Heading` and `Text` for its titles and copy. Its layout grid and the large landing headline stay in `landing.css`, because the headline scales fluidly with the window, which Astryx's type scale does not do. First-run onboarding shows its two steps in an Astryx `Stepper`, the suggested organisation in a `Card` with a `MetadataList`, and pending invitations as a `List`. The dashboard's prompt to connect an agent is a muted `Card` whose main action is an Astryx link button. In Profile > Agent config the four setup commands are an Astryx `CollapsibleGroup`: one step open at a time, each saying whether it is needed once per machine or once per repository, with a button that moves on to the next. Agent setup (Profile > Agent config and first-run onboarding) uses Astryx type for its numbered steps, a `TabList` to choose the instructions file, a `Card` with a `StatusDot` for the connection state, and a `List` of linked repositories. Its command and file blocks stay plain `pre` elements, because Astryx's `CodeBlock` drops the line breaks from the block's text and that text must be the file exactly as written. On Profile, API tokens are a `List`, a newly created token is shown once in a muted `Card`, and GitHub accounts by organisation is an Astryx `Table` with a row header per organisation.
+The sprint page's title and its Milestones and Issues headings are Astryx `Heading`s. A milestone is an Astryx `ClickableCard`, one link to the milestone, holding its name, done count, a `ProgressBar`, the latest update and its footer. Each status group in the list is an Astryx `Collapsible` whose heading shows the label and count. The List | Board choice is a `SegmentedControl`. Astryx has no board, so the board's layout and drag-and-drop are Velvet's own, built from Astryx parts: each column is a muted `Card` with a `Heading` and count, each issue a `Card` inside the draggable list item, silent work carries a warning `Badge`, cancelled issues fold into a `Collapsible` under Done, and the move message is an Astryx `Toast` with Undo. A dashed outline around a column shows where a dragged card will land.
 The sprint page is the one place issues may appear as cards: its Issues section offers a List | Board switch, the board choice is kept in `?view=board`, and `web/src/features/sprints/SprintKanban.tsx` owns the board.
 The board has five columns in workflow order (Backlog, Todo, In progress, In review, Done), folds Cancelled under Done, and shows only the latest three Done cards until Show all is chosen.
 Dragging a card and choosing from its status menu both change status, so the keyboard path is never weaker than the pointer path, and viewers see the board without either control.
@@ -192,6 +201,7 @@ Images use protected same-origin API URLs, never public storage links.
 Full-size viewing and download use ordinary keyboard-accessible links, and an unavailable preview keeps the caption and actions readable.
 Only eligible writers see Delete, with an inline permanent-deletion confirmation, Cancel initially focused, and Escape returning focus to the trigger.
 Loading, retry, empty, deletion failure, and deleting states must remain explicit, and large dimensions or long filenames must not widen the page.
+Attached images are an Astryx list with dividers: a fixed thumbnail that opens the viewer, the file name, caption, who added it and its size, then Open in new tab, Download and Delete. Delete asks in the shared confirm dialog.
 This release's empty state directs the person to their agent, because browser upload is not yet provided.
 
 The rail contains status, metadata, labels, linked evidence, and sub-issues.
@@ -306,7 +316,9 @@ Prefer the existing primitives before adding a local variant.
 
 Primary actions use paper-colored text on an ink fill, secondary actions use a neutral border, ghost actions remain quiet, and danger actions use the blocked semantic color only for destructive intent.
 
-`web/src/ui/EmptyState.tsx` is the shared empty, no-data, and no-results structure. Its `compact` form is one muted line for narrow rails and for sections stacked on a detail page, so a new issue does not open as a column of large boxes.
+`web/src/ui/ConfirmDialog.tsx` is the question asked before anything is removed, revoked, archived, deleted or closed: an Astryx alert dialog whose title asks, whose description says what will happen, and whose action button repeats the verb. A failure replaces the description and the dialog stays open for a retry; Escape does not abandon an action in flight; focus returns to the control that asked. Do not confirm inline in a row. Deleting an organisation is the exception: it stays a type-the-name form.
+`web/src/ui/FormDialog.tsx` is the create form (New issue, New sprint, New project): an Astryx dialog over the page, so the page behind keeps its place. Its title names the dialog, one line says what the form makes, and the close button, Escape and a successful save all close it; a click on the backdrop does not discard typing. The old hand-drawn `ui-surface` panel is gone; use an Astryx card or dialog.
+`web/src/ui/EmptyState.tsx` is the shared empty, no-data, and no-results structure. Its full form is Astryx's empty state inside an Astryx card, the same card the not-found state uses. Its `compact` form is one muted line for narrow rails and for sections stacked on a detail page, so a new issue does not open as a column of large boxes.
 
 A page keeps its heading while it loads and when loading fails, so the person always knows where they are and can retry in place.
 
@@ -316,7 +328,23 @@ A page keeps its heading while it loads and when loading fails, so the person al
 
 Use the existing form patterns in `web/src/features/work/CoreForms.tsx` with a visible label above each control, native validation where appropriate, and a clear submit state.
 
+Form controls come from `web/src/ui/fields.tsx`, which draws them with Astryx: `TextField`, `TextAreaField`, `SelectField`, and `CheckboxField`. A dropdown is Astryx's pop-up list and not a native select, so the browser cannot mark it required; a form that needs a choice checks it on submit and shows the reason under the control. Date and file inputs stay native inside `NativeField`. Each field keeps a 44px touch target below the `sm` breakpoint.
+
 The Issues filter toolbar keeps search, status, assignee, project, priority, and Clear filters as one semantic group.
+
+Each filter shows a one-word label above its control and carries a fuller accessible name, such as "Filter by status", and Clear filters appears only while something is filtered.
+
+The Issues page opens on open statuses, so finished work never leads the list; "All statuses" brings done and cancelled issues back and is written to the address as `status=all`.
+
+An issue row keeps its labels beside the title and its date on one line, so a row is a single line unless the title itself wraps.
+
+The Issues list reads as status groups in workflow order (In progress, In review, Todo, Backlog, Done, Cancelled). Inside a group the most urgent priority leads (P1 to P4, then issues with none set). The API orders the pages that way, so a group never appears out of sequence across pages, and a group shows its count only when the whole result fits on one page. A row under a status heading drops its status badge and keeps the status in its accessible name; a list filtered to one status has no headings, so its rows keep the badge.
+
+The Issues page is the pattern for page layouts on Astryx. The page title and section titles are Astryx `Heading`s through `PageHeader` and `SectionHeader`. Each status group is an Astryx `List` (dividers, balanced density, flush edge) whose header is a level 3 `Heading` with the count beside it as supporting `Text`; each issue is a `ListItem` with an `href`, so the whole row is one link. The columns inside a row stay Velvet's grid so keys, titles, priority, assignee and date line up across groups. Labels are small `Token`s. Paging is Astryx's compact `Pagination` with the page number announced beside it. Links inside Astryx components route through `web/src/app/AppLink.tsx`, set once with `LinkProvider`.
+
+Issue detail and the Milestone page follow it too. A milestone's issues, in its narrow side panel, are an Astryx `List` of linked rows from `IssueList`: key, full title, then status beneath, because the column is too narrow to put status beside the title. On Issue detail: the title is a level 1 `Heading` under a supporting-text line with the key and project. The sections of the page and of its side panel use `PanelHeading`, a second-level heading drawn at 16px semibold, in sentence case rather than small capitals. Read-only field names are label `Text`, read-only labels are `Token`s, and sub-issues are a `List` of linked rows. Headings written inside a description are 18px at most, so they never outrank the page title.
+
+The Dashboard follows it: My open issues is one `List` per milestone with a level 3 `Heading`, each issue a linked `ListItem` with its status badge at the end. My recent activity is a `List` whose rows are not links, because each activity row carries its own links to the issue, milestone or pull request it names.
 
 Every active issue filter is written to the address (`q`, `status`, `assignee`, `project`, `priority`) so a reload or a shared link keeps the same view.
 
@@ -326,8 +354,14 @@ A clear action is disabled when no filter is active and must reset every filter 
 
 Preserve drafts when a request fails, as `CommentComposer` does, and explain how to retry.
 
+The issue timeline is an Astryx `List`: a comment leads with its author's avatar and an event with a small dot in the same column, so every line of text starts at the same edge, and each row ends with its time. Reply is a ghost `Button` under the comment it answers.
+`CommentComposer` is a `SegmentedControl` for Write and Preview above an Astryx text area, with attached files shown as removable `Token`s.
 `CommentComposer` offers Write and Preview plus a Diagram action that inserts a fenced `mermaid` sample at the selection without discarding the surrounding draft.
 The shared `Markdown` renderer displays Mermaid fences in comments and replies, including agent-authored comments, with the same Diagram / Source, Copy source, and Expand controls.
+Diagram / Source is Astryx's `SegmentedControl`, a choice of one view, and Expand opens Astryx's `Dialog`, which returns focus to Expand when it closes.
+A diagram's box takes the height the diagram needs at the width it has, between 10rem and 30rem, and never draws it larger than its own size; Expand shows a diagram that is still too small to read.
+A screenshot under a comment is at most 15rem wide and 15rem tall, so a tall capture does not push the conversation apart.
+Pressing any image thumbnail opens it full size over the page in Astryx's `Lightbox`, with zoom, and with previous and next when the set holds more than one. The Images section keeps Open in new tab and Download as text links beside each image.
 Rendering is lazy and local, with a flat monochrome theme that follows the system color scheme.
 Expanded diagrams use a native dialog with Escape dismissal and focus returned to Expand.
 Loading and syntax errors are explicit, and a failed diagram always keeps its source readable.
@@ -362,7 +396,7 @@ Use semantic landmarks, one clear page heading, correctly associated labels, and
 
 Keep the visible focus ring from `index.css` and never replace it with a color-only hover treatment.
 
-Preserve the listbox keyboard contract and return focus to a trigger when a custom menu closes, as `StatusSelect` does.
+The issue status picker (`StatusSelect`) is an Astryx Selector drawn as a quiet button, with each status's dot beside its name; Astryx owns its pop-up, placement and keyboard, so do not hand-build a menu where a Selector or DropdownMenu fits.
 
 Do not make keyboard users traverse a different information architecture from pointer users.
 
@@ -410,7 +444,7 @@ A pull request merge, evidence attachment, branch name, or deployment event neve
 
 ## Resolved deviation: Issues page
 
-`web/src/features/issues/IssuesPage.tsx` now renders issues as a dense row-based list with shared top and bottom boundaries and dividers between rows.
+`web/src/features/issues/IssuesPage.tsx` now renders issues as a dense row-based list with dividers between rows, bounded above by the section heading's rule and below by the list's own, so no two rules stack.
 
 The rows preserve the issue links, filtering behavior, count, create flow, loading state, error retry, empty state, no-results state, and accessible names while exposing status, priority, assignee, and milestone metadata responsively.
 

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Recap } from './Recap'
 import type { WorklogEntry } from '../../lib/types'
+import { pageAlert, pageStatus } from '../../test-utils'
 
 function entry(overrides: Partial<WorklogEntry> = {}): WorklogEntry {
   return {
@@ -114,9 +115,9 @@ describe('Recap', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('nope', { status: 500 })))
     renderRecap()
 
-    expect(screen.getByRole('status')).toHaveTextContent('Loading your work log')
+    expect(pageStatus()).toHaveTextContent('Loading your work log')
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('Could not load your work log.'),
+      expect(pageAlert()).toHaveTextContent('Could not load your work log.'),
     )
   })
 

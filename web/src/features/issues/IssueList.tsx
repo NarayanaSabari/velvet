@@ -1,35 +1,46 @@
+import { List, ListItem } from '@astryxdesign/core/List'
+
 import type { Issue } from '../../lib/types'
-import { List } from '../../ui/List'
 import { EmptyState } from '../../ui/EmptyState'
 import { StatusBadge } from '../../ui/StatusBadge'
 
-/** The keyboard-navigable issue list every view reuses. */
+/**
+ * A compact list of issues for a narrow column, such as a milestone's side
+ * panel. Each row is one link to its issue: the key, the full title, and the
+ * status beneath.
+ */
 export function IssueList({
   issues,
-  onOpen,
+  slug,
   ariaLabel = 'Issues',
 }: {
   issues: Issue[]
-  onOpen?: (issue: Issue) => void
+  slug: string
   ariaLabel?: string
 }) {
   if (issues.length === 0) return <EmptyState title="No issues here" />
 
   return (
-    <List
-      items={issues}
-      ariaLabel={ariaLabel}
-      keyExtractor={(issue) => issue.id}
-      onActivate={(issue) => onOpen?.(issue)}
-      renderItem={(issue) => (
-        <span className="grid min-w-0 grid-cols-[5rem_minmax(0,1fr)] items-start gap-x-2 gap-y-1 text-sm">
-          <span className="w-20 shrink-0 text-grey-500">{issue.key}</span>
-          <span className="min-w-0 break-words [overflow-wrap:anywhere]">{issue.title}</span>
-          <span className="col-start-2">
-            <StatusBadge status={issue.status} />
-          </span>
-        </span>
-      )}
-    />
+    <div className="border-y border-grey-200">
+      <List hasDividers density="balanced" edge="flush" aria-label={ariaLabel}>
+        {issues.map((issue) => (
+          <ListItem
+            key={issue.id}
+            itemKey={issue.id}
+            href={`/w/${slug}/issues/${issue.key}`}
+            label={(
+              <span className="block min-w-0">
+                <span className="block font-mono text-xs text-grey-500">{issue.key}</span>
+                {/* The whole title stays readable; it wraps, never truncates. */}
+                <span className="block min-w-0 text-sm font-medium break-words text-ink [overflow-wrap:anywhere]">{issue.title}</span>
+                {/* Under the title, not beside it: the column is narrow and
+                    the title needs its whole width. */}
+                <span className="mt-1 block"><StatusBadge status={issue.status} /></span>
+              </span>
+            )}
+          />
+        ))}
+      </List>
+    </div>
   )
 }

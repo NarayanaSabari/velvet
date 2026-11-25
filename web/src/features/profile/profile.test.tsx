@@ -109,8 +109,10 @@ describe('Profile API tokens', () => {
     expect(await screen.findByText('Build agent')).toBeInTheDocument()
     expect(await screen.findByText('Release agent')).toBeInTheDocument()
     expect(screen.getByText(/Never used/)).toBeInTheDocument()
-    expect(document.querySelector(`time[dateTime="${createdAt}"]`)).toBeInTheDocument()
-    expect(document.querySelector(`time[dateTime="${lastUsedAt}"]`)).toBeInTheDocument()
+    // Compared as moments: the rendered attribute may be the same instant written differently.
+    const shown = [...document.querySelectorAll('time')].map((time) => new Date(time.dateTime).getTime())
+    expect(shown).toContain(new Date(createdAt).getTime())
+    expect(shown).toContain(new Date(lastUsedAt).getTime())
   })
 
   it('shows the plaintext token once after creating it', async () => {
@@ -173,12 +175,12 @@ describe('Profile API tokens', () => {
     expect(await screen.findByText('Machine setup key')).toBeInTheDocument()
     expect(screen.getByText('Derived project key · lab / billing')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Revoke Laptop setup' }))
-    const warning = screen.getByRole('group', { name: 'Confirm revocation of Laptop setup' })
+    const warning = screen.getByRole('alertdialog', { name: 'Revoke Laptop setup?' })
     expect(warning).toHaveTextContent('all project keys derived from it')
     expect(warning).toHaveTextContent('Every repository using those keys will stop working')
     expect(fetch).not.toHaveBeenCalledWith('/api/v1/me/tokens/setup-1', expect.objectContaining({ method: 'DELETE' }))
     await user.click(within(warning).getByRole('button', { name: 'Cancel' }))
-    expect(screen.queryByRole('group', { name: 'Confirm revocation of Laptop setup' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('alertdialog', { name: 'Revoke Laptop setup?' })).not.toBeInTheDocument()
     expect(screen.getByText('Billing repository')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Revoke Laptop setup' }))
@@ -226,13 +228,18 @@ describe('Profile agent config', () => {
 
     renderProfile()
 
-    const section = (await screen.findByRole('heading', { name: 'Agent config', level: 2 })).closest('section')!
+    const section = await screen.findByRole('region', { name: 'Agent config' })
     expect(section).toHaveAttribute('id', 'agent-config')
     expect(await within(section).findByTestId('cli-install')).toHaveTextContent('https://velvet.example.com/install.sh')
     expect(within(section).getByTestId('cli-init')).toHaveTextContent('velvet init --server https://velvet.example.com')
     expect(within(section).getByText(/To disconnect one repository, revoke its project key/)).toHaveTextContent('Running velvet logout signs out this whole machine and revokes all project keys derived from its setup key')
     expect(within(section).getByText(/Projects: velvet, billing\./)).toBeInTheDocument()
     expect(within(section).getByTestId('agent-connection')).toHaveTextContent('Waiting for velvet init…')
+    // The four commands are steps, with the first open.
+    const steps = within(section).getByTestId('repo-setup-steps')
+    expect(within(steps).getAllByRole('button', { expanded: true }).map((button) => button.textContent)).toEqual([expect.stringContaining('1. Install the CLI')])
+    await user.click(within(steps).getByRole('button', { name: 'Done, next: sign in to the CLI' }))
+    expect(within(steps).getAllByRole('button', { expanded: true }).map((button) => button.textContent)).toEqual([expect.stringContaining('2. Sign in to the CLI')])
 
     const block = within(section).getByTestId('repo-instructions')
     expect(block).toHaveTextContent('## Velvet work log')

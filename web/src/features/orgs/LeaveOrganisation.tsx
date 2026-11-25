@@ -1,62 +1,52 @@
-import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { AlertDialog } from '@astryxdesign/core/AlertDialog'
+
 import { ApiError, api } from '../../lib/api'
-import { Button } from '../../ui/Button'
 import { clearPrivateQueries, navigateTo } from '../auth/sessionNavigation'
 
-export function LeaveOrganisation({
-  slug,
-  navigate = navigateTo,
-  menuItem = false,
-  confirming,
-  onConfirmingChange,
-}: {
-  slug: string
-  navigate?: (to: string) => void
-  menuItem?: boolean
-  confirming?: boolean
-  onConfirmingChange?: (confirming: boolean) => void
-}) {
-  const [localConfirming, setLocalConfirming] = useState(false)
-  const isConfirming = confirming ?? localConfirming
-  const containerRef = useRef<HTMLDivElement>(null)
-  const moveFocusAfterChange = useRef(false)
+function useLeave(slug: string, navigate: (to: string) => void) {
   const client = useQueryClient()
-  const leave = useMutation({
+  return useMutation({
     mutationFn: () => api.post(`/w/${slug}/leave`),
     onSuccess: async () => { await clearPrivateQueries(client); navigate('/') },
   })
+}
 
-  useEffect(() => {
-    if (!menuItem || !moveFocusAfterChange.current) return
-    moveFocusAfterChange.current = false
-    containerRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
-  }, [isConfirming, menuItem])
+function leaveErrorMessage(error: Error): string {
+  return error instanceof ApiError && error.code === 'last_admin'
+    ? 'You are the only admin. Make someone else an admin in Administration, then leave.'
+    : error.message
+}
 
-  function setConfirming(next: boolean) {
-    moveFocusAfterChange.current = true
-    setLocalConfirming(next)
-    onConfirmingChange?.(next)
-  }
-
-  return <div ref={containerRef} role={menuItem && !isConfirming ? 'none' : undefined} className={menuItem ? 'text-sm' : 'mt-3 text-sm'}>
-    {isConfirming ? <div className="space-y-2">
-      <p>Leave {slug}? You will need an invitation to rejoin.</p>
-      <Button variant="danger" disabled={leave.isPending} onClick={() => leave.mutate()}>
-        {leave.isPending ? 'Leaving organisation…' : 'Confirm leave'}
-      </Button>{' '}
-      <Button disabled={leave.isPending} onClick={() => setConfirming(false)}>Cancel</Button>
-    </div> : <button
-      type="button"
-      role={menuItem ? 'menuitem' : undefined}
-      tabIndex={menuItem ? -1 : undefined}
-      className={menuItem ? 'flex min-h-11 w-full items-center rounded-[var(--radius-control)] px-2 py-1.5 text-left text-grey-700 hover:bg-grey-100 focus-visible:bg-grey-100 sm:min-h-0' : 'text-grey-500 underline'}
-      onClick={() => setConfirming(true)}
-    >Leave organisation</button>}
-    {leave.error ? <p role="alert" className="mt-2 text-blocked">
-      {leave.error instanceof ApiError && leave.error.code === 'last_admin'
-        ? 'You are the only admin. Make someone else an admin in Administration, then leave.'
-        : leave.error.message}
-    </p> : null}
-  </div>
+/**
+ * The confirmation a menu opens before someone leaves an organisation.
+ * A failure replaces the description, so the reason is read where the
+ * decision is being made.
+ */
+export function LeaveOrganisationDialog({
+  slug,
+  isOpen,
+  onOpenChange,
+  navigate = navigateTo,
+}: {
+  slug: string
+  isOpen: boolean
+  onOpenChange: (isOpen: boolean) => void
+  navigate?: (to: string) => void
+}) {
+  const leave = useLeave(slug, navigate)
+  return (
+    <AlertDialog
+      isOpen={isOpen}
+      onOpenChange={(open) => {
+        if (!open) leave.reset()
+        onOpenChange(open)
+      }}
+      title={`Leave ${slug}?`}
+      description={leave.error ? leaveErrorMessage(leave.error) : 'You will need an invitation to rejoin.'}
+      actionLabel="Confirm leave"
+      isActionLoading={leave.isPending}
+      onAction={() => leave.mutate()}
+    />
+  )
 }

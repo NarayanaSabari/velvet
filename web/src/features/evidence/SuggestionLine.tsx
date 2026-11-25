@@ -1,3 +1,4 @@
+import { ErrorNote } from '../../ui/ErrorNote'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
@@ -82,7 +83,7 @@ export function SuggestionLine({
           </Button>
         </div>
       ) : null}
-      {error ? <p role="alert" className="mt-2 text-sm text-blocked">{error}</p> : null}
+      {error ? <ErrorNote className="mt-2">{error}</ErrorNote> : null}
     </div>
   )
 }

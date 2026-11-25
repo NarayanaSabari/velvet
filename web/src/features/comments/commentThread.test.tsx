@@ -29,23 +29,23 @@ describe('CommentComposer', () => {
 
     const box = screen.getByRole('textbox', { name: 'Comment' })
     await user.type(box, '**Progress** update')
-    await user.click(screen.getByRole('button', { name: 'Preview' }))
+    await user.click(screen.getByRole('radio', { name: 'Preview' }))
 
     expect(screen.getByRole('region', { name: 'Comment preview' }).querySelector('strong')).toHaveTextContent('Progress')
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Preview' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('radio', { name: 'Preview' })).toBeChecked()
     expect(onSubmit).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('button', { name: 'Write' }))
+    await user.click(screen.getByRole('radio', { name: 'Write' }))
     expect(screen.getByRole('textbox')).toHaveValue('**Progress** update')
-    expect(screen.getByRole('button', { name: 'Write' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('radio', { name: 'Write' })).toBeChecked()
   })
 
   it('explains an empty preview', async () => {
     const user = userEvent.setup()
     render(<CommentComposer onSubmit={vi.fn()} />)
 
-    await user.click(screen.getByRole('button', { name: 'Preview' }))
+    await user.click(screen.getByRole('radio', { name: 'Preview' }))
     expect(screen.getByRole('region', { name: 'Comment preview' })).toHaveTextContent('Nothing to preview yet.')
   })
 
@@ -73,7 +73,7 @@ describe('CommentComposer', () => {
     const box = screen.getByRole('textbox') as HTMLTextAreaElement
     await user.type(box, 'Replace this')
     box.setSelectionRange(8, 12)
-    await user.click(screen.getByRole('button', { name: 'Preview' }))
+    await user.click(screen.getByRole('radio', { name: 'Preview' }))
     await user.click(screen.getByRole('button', { name: '+ Diagram' }))
 
     expect(screen.getByRole('textbox')).toHaveValue('Replace \n```mermaid\nflowchart TD\n  A[Start] --> B[Next step]\n```\n')

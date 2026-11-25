@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { createHash, randomBytes } from 'node:crypto'
 import { sql } from './fixtures'
+import { chooseOption, dropdown, expectChosen } from './dropdown'
 
 /**
  * Administration as an admin uses it, on its own throwaway organisation so the
@@ -93,21 +94,21 @@ test('an admin protects the last admin, maps a repository, and invites someone',
   await expect(page.getByText(/The only admin\. Make someone else an admin/)).toBeVisible()
 
   // Promoting a second admin lifts the guard.
-  await page.getByLabel('Role for Milo Member').selectOption('admin')
+  await chooseOption(dropdown(page, 'Role for Milo Member'), 'admin')
   await expect(self).toBeEnabled()
   expect(sql(`SELECT m.role FROM membership m JOIN app_user u ON u.id = m.user_id WHERE u.email = '${memberEmail}'`)).toBe('admin')
-  await page.getByLabel('Role for Milo Member').selectOption('member')
+  await chooseOption(dropdown(page, 'Role for Milo Member'), 'member')
   await expect(self).toBeDisabled()
 
   // A repository is mapped to a project, which the API then reports.
   await openSection(page, /Repositories/, 'Repositories', 'repositories')
   await expect(page.getByText('Connected to admin-ux-org.')).toBeVisible()
-  const mapping = page.getByLabel('Project for admin-ux-org/site')
-  await expect(mapping).toHaveValue('')
-  await mapping.selectOption({ label: 'Marketing site' })
+  const mapping = dropdown(page, 'Project for admin-ux-org/site')
+  await expect(mapping).toHaveAttribute('data-value', '')
+  await chooseOption(mapping, { label: 'Marketing site' })
   await expect.poll(() => sql(`SELECT p.key FROM repo r JOIN project p ON p.id = r.project_id WHERE r.github_id = ${repoGithubId}`)).toBe('site')
   await page.reload()
-  await expect(page.getByLabel('Project for admin-ux-org/site').locator('option:checked')).toHaveText('Marketing site')
+  await expectChosen(dropdown(page, 'Project for admin-ux-org/site'), 'Marketing site')
 
   // An invitation is confirmed, shows when it expires, and updates the count.
   await openSection(page, /Invitations/, 'Invitations', 'invitations')

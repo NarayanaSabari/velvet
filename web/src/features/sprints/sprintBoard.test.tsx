@@ -76,11 +76,62 @@ describe('MilestoneRow', () => {
     expect(screen.getByText(/no updates yet/i)).toBeInTheDocument()
   })
 
+  it('says a milestone has no updates once, not as two separate messages', () => {
+    render(<MilestoneRow milestone={{ ...base, issue_counts: {}, last_comment: null }} />)
+    expect(screen.getAllByText(/no updates yet/i)).toHaveLength(1)
+    expect(screen.queryByText(/no comment yet/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/no update in/i)).not.toBeInTheDocument()
+  })
+
+  it('marks silence on work that is under way', () => {
+    render(<MilestoneRow milestone={{ ...base, status: 'in_progress', issue_counts: {}, last_comment: null }} />)
+    expect(screen.getByText(/no updates yet/i).querySelector('.bg-stale')).not.toBeNull()
+  })
+
+  it('does not warn about a milestone that has not started', () => {
+    render(<MilestoneRow milestone={{ ...base, status: 'planned', issue_counts: {}, last_comment: null }} />)
+    expect(screen.getByText(/no updates yet/i).querySelector('.bg-stale')).toBeNull()
+  })
+
+  it('shows a recent update without a stale warning', () => {
+    render(<MilestoneRow milestone={{
+      ...base,
+      issue_counts: { in_progress: 1 },
+      last_comment: { id: 'c1', body: 'Moving along', created_at: new Date().toISOString() },
+    }} />)
+    expect(screen.getByText('Moving along')).toHaveClass('line-clamp-2')
+    expect(screen.queryByText(/no update in/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/no updates yet/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps the status row last so footers line up across cards', () => {
+    const threeWeeksAgo = new Date(Date.now() - 21 * 864e5).toISOString()
+    render(<MilestoneRow milestone={{
+      ...base,
+      target_date: '2026-11-28',
+      issue_counts: { in_progress: 1 },
+      last_comment: { id: 'c1', body: 'Starting', created_at: threeWeeksAgo },
+    }} />)
+    const card = screen.getByTestId('milestone-card-m1')
+    const footer = card.lastElementChild as HTMLElement
+    expect(footer).toHaveClass('mt-auto')
+    expect(footer).toHaveTextContent(/in progress/i)
+    const warning = screen.getByText(/no update in 21 days/i)
+    expect(warning.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('shows a thin progress bar for the done/total rollup', () => {
     render(<MilestoneRow milestone={{ ...base, issue_counts: { done: 3, todo: 5 }, last_comment: null }} />)
 
     expect(screen.getByRole('progressbar', { name: 'Ship auth progress' })).toHaveAttribute('aria-valuenow', '38')
     expect(screen.getByText('3/8')).toBeInTheDocument()
+  })
+
+  it('says an empty milestone has no issues yet instead of 0/0', () => {
+    render(<MilestoneRow milestone={{ ...base, issue_counts: {}, last_comment: null }} />)
+
+    expect(screen.getByText('No issues yet')).toBeInTheDocument()
+    expect(screen.queryByText('0/0')).toBeNull()
   })
 
   it('keeps a long milestone name readable instead of truncating it', () => {
@@ -99,12 +150,14 @@ describe('IssueGroups', () => {
   it('renders every status in the fixed order with its count, including unfiled issues', () => {
     const { container } = render(
       <IssueGroups
+        slug="lab"
         issues={[issue('i5', 'done'), issue('i1', 'in_progress'), issue('i6', 'cancelled')]}
       />,
     )
 
-    const summaries = [...container.querySelectorAll('summary')].map((summary) =>
-      summary.textContent?.replace(/\s+/g, ' ').trim(),
+    // Each status heading reads as its label and its count.
+    const summaries = [...container.querySelectorAll('[data-testid^="sprint-group-"]')].map((heading) =>
+      [...heading.children].map((part) => part.textContent?.trim()).join(' '),
     )
     expect(summaries).toEqual([
       'In progress 1',
@@ -115,6 +168,8 @@ describe('IssueGroups', () => {
       'Cancelled 1',
     ])
     expect(screen.getByText('ENG-i1')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /ENG-i1/ })).toHaveAttribute('href', '/w/lab/issues/ENG-i1')
+    expect(screen.getByRole('list', { name: 'In progress issues' })).toBeInTheDocument()
     expect(screen.getByText('ENG-i5')).toBeInTheDocument()
     expect(screen.getByText('ENG-i6')).toBeInTheDocument()
   })
@@ -123,6 +178,7 @@ describe('IssueGroups', () => {
     const longTitle = 'Supercalifragilisticexpialidocious_identifier_that_never_breaks_across_lines'
     render(
       <IssueGroups
+        slug="lab"
         issues={[{ ...issue('i1', 'in_progress'), title: longTitle }]}
       />,
     )

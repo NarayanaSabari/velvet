@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { createHash } from 'node:crypto'
 import { resetWorkspaceData, sql } from './fixtures'
 import { control, createOrganisation, deliver, invite, mailLink, requestSignIn, signup, unique } from './onboarding-helpers'
+import { chooseOption, dropdown } from './dropdown'
 
 test.describe.configure({ mode: 'serial' })
 test.beforeAll(() => {
@@ -25,7 +26,8 @@ test('signup, fresh invite acceptance, listed invite, switching and member remov
   const memberPage = await memberContext.newPage()
   try {
     await memberPage.goto(link)
-    await expect(memberPage.getByText(`This invitation is for ${member}.`)).toBeVisible()
+    await expect(memberPage.getByText('Invitation for')).toBeVisible()
+    await expect(memberPage.getByText(member, { exact: true })).toBeVisible()
     expect((await memberPage.request.get('/api/v1/me')).status()).toBe(401)
     const since = new Date()
     await memberPage.getByRole('button', { name: 'Sign in and accept' }).click()
@@ -42,12 +44,12 @@ test('signup, fresh invite acceptance, listed invite, switching and member remov
     })).status()).toBe(403)
 
     await createOrganisation(page, second, 'Second organisation')
-    await page.getByRole('combobox', { name: 'Organisation', exact: true }).selectOption(first)
+    await chooseOption(dropdown(page, 'Organisation'), first)
     await expect(page).toHaveURL(new RegExp(`/w/${first}$`))
-    await page.getByRole('combobox', { name: 'Organisation', exact: true }).selectOption(second)
+    await chooseOption(dropdown(page, 'Organisation'), second)
     await expect(page).toHaveURL(new RegExp(`/w/${second}$`))
     await page.reload()
-    await expect(page.getByRole('combobox', { name: 'Organisation', exact: true })).toHaveValue(second)
+    await expect(dropdown(page, 'Organisation')).toHaveAttribute('data-value', second)
     await invite(page, second, listed)
     const listedContext = await browser.newContext({ baseURL })
     try {
@@ -65,7 +67,7 @@ test('signup, fresh invite acceptance, listed invite, switching and member remov
     await memberPage.reload()
     await expect(memberPage.getByRole('heading', { name: 'Organisation not found' })).toBeVisible()
     await memberPage.goto(link)
-    await expect(memberPage.getByRole('heading', { name: 'Link expired' })).toBeVisible()
+    await expect(memberPage.getByRole('heading', { name: 'This link no longer works' })).toBeVisible()
   } finally { await memberContext.close() }
 })
 
@@ -105,18 +107,18 @@ test('expired and reused sign-in links, invite resend and revoke clear earlier e
     const visitor = await fresh.newPage()
     for (const link of [original, resent, expiredInvite]) {
       await visitor.goto(link)
-      await expect(visitor.getByRole('heading', { name: 'Link expired' })).toBeVisible()
+      await expect(visitor.getByRole('heading', { name: 'This link no longer works' })).toBeVisible()
     }
     await visitor.goto(used)
     await visitor.getByRole('button', { name: 'Sign in', exact: true }).click()
-    await expect(visitor.getByRole('heading', { name: 'Link expired' })).toBeVisible()
+    await expect(visitor.getByRole('heading', { name: 'This link no longer works' })).toBeVisible()
     const expired = await requestSignIn(visitor, `expired-${suffix}@example.test`)
     const token = new URLSearchParams(new URL(expired).hash.slice(1)).get('token')!
     const hash = createHash('sha256').update(token).digest('hex')
     expect(sql(`UPDATE login_token SET expires_at=now()-interval '1 minute' WHERE token_hash='${hash}' RETURNING id`)).toMatch(/[0-9a-f-]{36}/)
     await visitor.goto(expired)
     await visitor.getByRole('button', { name: 'Sign in', exact: true }).click()
-    await expect(visitor.getByRole('heading', { name: 'Link expired' })).toBeVisible()
+    await expect(visitor.getByRole('heading', { name: 'This link no longer works' })).toBeVisible()
     expect((await visitor.request.get('/api/v1/me')).status()).toBe(401)
   } finally { await fresh.close() }
 })
@@ -145,7 +147,7 @@ test('owner-verified GitHub setup discovers evidence, retries sync, removes and 
   const state = new URL(setup.headers().location).searchParams.get('state')!
   await page.goto(`/api/v1/github/setup?installation_id=123&state=${state}`)
   await expect(page).toHaveURL(/\/auth\/recovery$/)
-  await expect(page.getByRole('heading', { name: 'Could not connect GitHub' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'GitHub was not connected' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Return to Velvet' })).toBeVisible()
   expect((await page.request.get(`/api/v1/w/${slug}/github`).then((r) => r.json())).status).toBe('disconnected')
 
@@ -153,7 +155,7 @@ test('owner-verified GitHub setup discovers evidence, retries sync, removes and 
   await page.goto(`/w/${slug}/admin/repositories`)
   await page.getByRole('link', { name: 'Connect GitHub', exact: true }).click()
   await expect(page).toHaveURL(/\/auth\/recovery$/)
-  await expect(page.getByRole('heading', { name: 'Could not connect GitHub' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'GitHub was not connected' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Return to Velvet' })).toBeVisible()
   expect((await page.request.get(`/api/v1/w/${slug}/github`).then((r) => r.json())).status).toBe('disconnected')
   await control(page.request, { readOnly: false })
@@ -191,7 +193,7 @@ test('owner-verified GitHub setup discovers evidence, retries sync, removes and 
   await deliver(page.request, 'pull_request', payload)
   await page.goto(`/w/${slug}/issues/${issue.key}`)
   await expect(page.getByRole('link', { name: '#71', exact: true }).first()).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Status' })).toHaveAttribute(
+  await expect(page.getByRole('combobox', { name: 'Status' })).toHaveAttribute(
     'data-current-status',
     'backlog',
   )
